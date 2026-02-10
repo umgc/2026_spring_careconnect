@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/patient")
+@RequestMapping("v1/api/patient")
 public class MoodController {
 
     @Autowired

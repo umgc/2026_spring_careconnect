@@ -517,6 +517,7 @@ class ApiService {
     headers['Content-Type'] = 'application/json';
 
     final url = Uri.parse('${ApiConstants.mood}/$userId/mood');
+    print("🔍 FINAL URL: $url");
 
     final body = jsonEncode({
       'score': score,

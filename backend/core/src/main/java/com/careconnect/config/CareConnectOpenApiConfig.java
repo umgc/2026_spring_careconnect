@@ -131,7 +131,7 @@ import org.springframework.context.annotation.Configuration;
         in = SecuritySchemeIn.COOKIE,
         paramName = "AUTH"
 )
-public class OpenApiConfig {
+public class CareConnectOpenApiConfig {
     // Configuration is handled through annotations
     // Bean configuration commented out temporarily to avoid conflicts
     

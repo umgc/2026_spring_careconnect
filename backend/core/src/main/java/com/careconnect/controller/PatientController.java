@@ -640,7 +640,7 @@ public class PatientController {
     public ResponseEntity<Map<String, Object>> getPrimaryCareProvider(@PathVariable Long patientId) {
         return ResponseEntity.ok(patientService.getPrimaryProvider(patientId));
     }
-    
+    /* 
     @GetMapping("/{patientID}/medications")
     @Operation(summary = "Get all medications for patient",
             description = "Get all medications for a specific patient")
@@ -730,5 +730,5 @@ public class PatientController {
         medicationService.deactivateMedication(patientID, medicationId);
         return ResponseEntity.noContent().build();
     }
-
+    */
 }

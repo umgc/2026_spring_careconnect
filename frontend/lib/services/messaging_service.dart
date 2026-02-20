@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'auth_token_manager.dart';
 import 'api_service.dart';
-
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config/env_constant.dart';
 
@@ -50,44 +50,61 @@ class MessagingService {
   static Map<String, List<Map<String, dynamic>>> _localMessages = {};
 
   // Connect to WebSocket (no user registration yet)
-  static Future<void> initialize() async {
-    if (_channel != null) return; // Already connected
-    try {
-      final wsUrl = _getWebSocketUrl();
-      print('Connecting to notification WebSocket: $wsUrl');
-      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-      _isRegistered = false;
+static Future<void> initialize() async {
+  if (_channel != null) return; // Already connected
 
-      // Listen for incoming messages with robust error handling
-      _channel!.stream.listen(
-        (message) {
-          print('Received notification: $message');
-          // Optionally handle incoming messages here
-        },
-        onError: (e, stackTrace) {
-          print('WebSocket error: $e');
-          if (stackTrace != null) {
-            print('WebSocket error stack: $stackTrace');
-          }
-          _isRegistered = false;
-          // Do not rethrow, app should continue running
-        },
-        onDone: () {
-          print('WebSocket connection closed');
-          _isRegistered = false;
-        },
-        cancelOnError: true,
-      );
+  try {
+    final wsUrl = _getWebSocketUrl();
 
-      // Catch any uncaught errors from the stream (for extra safety)
-      _channel!.stream.handleError((error, stackTrace) {
-        print('WebSocket stream uncaught error: $error');
+    // 🔐 Get stored JWT token
+    final storage = const FlutterSecureStorage();
+    final token = await storage.read(key: 'jwt');
+
+    if (token == null || token.isEmpty) {
+      print('⚠️ No JWT token found. Skipping WebSocket connection.');
+      return;
+    }
+
+    // 🌐 For Flutter Web, pass token as query parameter
+    final wsUrlWithToken = "$wsUrl?token=$token";
+
+    print('Connecting to notification WebSocket: $wsUrlWithToken');
+
+    _channel = WebSocketChannel.connect(
+      Uri.parse(wsUrlWithToken),
+    );
+
+    _isRegistered = false;
+
+    // Listen for incoming messages with robust error handling
+    _channel!.stream.listen(
+      (message) {
+        print('Received notification: $message');
+        // Optionally handle incoming messages here
+      },
+      onError: (e, stackTrace) {
+        print('WebSocket error: $e');
         if (stackTrace != null) {
-          print('WebSocket stream error stack: $stackTrace');
+          print('WebSocket error stack: $stackTrace');
         }
-        // Do not rethrow, app should continue running
-      });
-
+        _isRegistered = false;
+        // Do NOT rethrow — app must continue running
+      },
+      onDone: () {
+        print('WebSocket connection closed');
+        _isRegistered = false;
+      },
+      cancelOnError: true,
+    );
+  } catch (e, stackTrace) {
+    print('❌ WebSocket initialization failed: $e');
+    print(stackTrace);
+  }
+}
+  // Call this after user logs in to register them for notifications
+  static Future<void> registerUserAfterLogin(String userId) async {
+    try {
+      await initialize(); // Ensure WebSocket is connected
       // Load local messages from storage
       await _loadLocalMessages();
     } catch (e, stackTrace) {

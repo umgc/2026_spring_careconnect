@@ -9,7 +9,7 @@ import '../models/notification_settings.dart';
 import '../services/notification_settings_service.dart';
 import '../providers/locale_provider.dart';
 import '../widgets/language/language_picker.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 import '../features/telemetry/telemetry.dart';
 import '../features/telemetry/telemetry_settings.dart';
 
@@ -26,15 +26,42 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _telemetryEnabled = true;
   bool _loadingTelemetry = true;
   bool _telemetryDialogShownThisSession = false;
+  bool _isOfflineMode = false;
 
   @override
   void initState() {
     super.initState();
     _loadNotificationSettings();
     _loadTelemetrySettings();
+     _loadOfflineMode();
   }
+void _toggleOfflineMode(bool value) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('offline_mode', value);
 
-  Widget _buildLanguageCard(BuildContext context) {
+  setState(() {
+    _isOfflineMode = value;
+  });
+
+  if (!mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        value
+            ? "Offline Mode enabled. Data will be saved locally."
+            : "Offline Mode disabled. Sync restored.",
+      ),
+    ),
+  );
+}
+Future<void> _loadOfflineMode() async {
+  final prefs = await SharedPreferences.getInstance();
+  setState(() {
+    _isOfflineMode = prefs.getBool('offline_mode') ?? false;
+  });
+}
+Widget _buildLanguageCard(BuildContext context) {
     final t = AppLocalizations.of(context)!;
     final localeProvider = context.watch<LocaleProvider>();
 
@@ -407,6 +434,32 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
+  Widget _buildOfflineModeCard(BuildContext context) {
+  return Card(
+    margin: const EdgeInsets.only(bottom: 8),
+    child: ListTile(
+      leading: Icon(
+        Icons.cloud_off,
+        color: Theme.of(context).colorScheme.primary,
+        size: 24,
+      ),
+      title: Text(
+        "Offline Mode",
+        style: Theme.of(context)
+            .textTheme
+            .titleMedium
+            ?.copyWith(fontWeight: FontWeight.w500),
+      ),
+      subtitle: const Text(
+        "Save data locally and sync when reconnected",
+      ),
+      trailing: Switch(
+        value: _isOfflineMode,
+        onChanged: _toggleOfflineMode,
+      ),
+    ),
+  );
+}
 
   void _showClearCacheDialog(BuildContext context) {
     final t = AppLocalizations.of(context)!;
@@ -577,6 +630,7 @@ class _SettingsPageState extends State<SettingsPage> {
               // Appearance
               _buildSectionHeader(context, t.settingsAppearance),
               _buildThemeCard(context),
+              _buildOfflineModeCard(context),
               _buildLanguageCard(context),
               const SizedBox(height: 24),
 

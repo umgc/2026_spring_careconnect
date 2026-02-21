@@ -6,6 +6,7 @@ import 'package:care_connect_app/widgets/video_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:care_connect_app/pages/patient_check_in.dart';
 import 'package:camera/camera.dart';
+import 'package:care_connect_app/shared/widgets/offline_banner.dart';
 import 'package:http/http.dart' as http;
 
 class PatientVirtualCheckIn extends StatefulWidget {
@@ -59,50 +60,45 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
     }
   }
 
-  Future<CameraDescription> setUpCamera() async
-  {
+  Future<CameraDescription> setUpCamera() async {
     WidgetsFlutterBinding.ensureInitialized();
     final cameras = await availableCameras();
     return cameras.first;
   }
 
-  void cameraHandler() async
-  {
-    if(!videoCallActive)
-      {
-        targetCamera = setUpCamera();
-        videoCallActive = true;
-        controller = CameraController(await targetCamera, ResolutionPreset.medium);
+  void cameraHandler() async {
+    if (!videoCallActive) {
+      targetCamera = setUpCamera();
+      videoCallActive = true;
+      controller = CameraController(
+        await targetCamera,
+        ResolutionPreset.medium,
+      );
 
-        // Initialize the camera controller
-        await controller.initialize();
+      // Initialize the camera controller
+      await controller.initialize();
 
-        if (mounted) {
-          setState(() {
-            showVideoCall = true;
-          });
-        }
+      if (mounted) {
+        setState(() {
+          showVideoCall = true;
+        });
       }
+    }
   }
 
-  Future<void> startRecording() async
-  {
-    if(!recordingStarted)
-      {
-        controller.startVideoRecording();
-      }
-    else
-      {
-        controller.resumeVideoRecording();
-      }
+  Future<void> startRecording() async {
+    if (!recordingStarted) {
+      controller.startVideoRecording();
+    } else {
+      controller.resumeVideoRecording();
+    }
     recordingStarted = true;
     setState(() {
       currentlyRecording = true;
     });
   }
 
-  Future<void> pauseRecording() async
-  {
+  Future<void> pauseRecording() async {
     controller.pauseVideoRecording();
     setState(() {
       currentlyRecording = false;
@@ -112,19 +108,20 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
   void submitVideo() async {
     // TODO: Implement video submission logic
     // This is where you would upload/save the video recording
-    if(!recordingStarted)
-      {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Cannot submit, no video recorded."),
-            backgroundColor: Colors.grey,
-          ),
-        );
-        return;
-      }
+    if (!recordingStarted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Cannot submit, no video recorded."),
+          backgroundColor: Colors.grey,
+        ),
+      );
+      return;
+    }
 
     XFile video = await controller.stopVideoRecording();
-    await http.post(Uri.parse(apiURL)); ///TODO: Add a proper body that includes XFile Video
+    await http.post(Uri.parse(apiURL));
+
+    ///TODO: Add a proper body that includes XFile Video
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -163,18 +160,18 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
   ///TODO: Submit video file
 
   @override
-  Widget build(BuildContext context)  {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: DefaultAppHeader(),
       floatingActionButton: FloatingActionButton(
         backgroundColor: isCameraAvailable ? Colors.green : Colors.grey,
         foregroundColor: Colors.white,
-        onPressed: (isCheckingCamera || !isCameraAvailable) ? null : () => cameraHandler(),
+        onPressed: (isCheckingCamera || !isCameraAvailable)
+            ? null
+            : () => cameraHandler(),
         tooltip: isCheckingCamera
             ? 'Checking camera...'
-            : (isCameraAvailable
-                ? 'Start Video Call'
-                : 'Camera not available'),
+            : (isCameraAvailable ? 'Start Video Call' : 'Camera not available'),
         child: isCheckingCamera
             ? const SizedBox(
                 width: 24,
@@ -184,9 +181,7 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                   strokeWidth: 2,
                 ),
               )
-            : Icon(
-                isCameraAvailable ? Icons.video_call : Icons.videocam_off,
-              ),
+            : Icon(isCameraAvailable ? Icons.video_call : Icons.videocam_off),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -194,6 +189,8 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              const OfflineBanner(),
+              const SizedBox(height: 16),
               // Header
               Column(
                 children: [
@@ -201,9 +198,9 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                   Text(
                     "💙 Daily Check-In",
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      color: Colors.blue,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -248,10 +245,10 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
               ),
 
               // Video call widget
-              if(showVideoCall)
+              if (showVideoCall)
                 Card(
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   elevation: 2,
                   child: Padding(
@@ -270,7 +267,9 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.grey[600],
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                 ),
                               ),
                             ),
@@ -283,24 +282,28 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                 ),
                               ),
                             ),
-                            if(!currentlyRecording)
+                            if (!currentlyRecording)
                               Expanded(
-                              child: ElevatedButton.icon(
-                              label: Text("Start"),
-                              onPressed: startRecording,
-                              icon: const Icon(Icons.square),
-                              style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent,
-                              foregroundColor: Colors.red,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                                child: ElevatedButton.icon(
+                                  label: Text("Start"),
+                                  onPressed: startRecording,
+                                  icon: const Icon(Icons.square),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blueAccent,
+                                    foregroundColor: Colors.red,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              ),
-                              ),
-                            if(currentlyRecording)
+                            if (currentlyRecording)
                               Expanded(
                                 child: ElevatedButton.icon(
                                   label: const Text("Pause"),
@@ -309,22 +312,25 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.blueAccent,
                                     foregroundColor: Colors.black,
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
                                   ),
                                 ),
-                              ),],
+                              ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
-              if(showVideoCall)
-                const SizedBox(height: 16),
+              if (showVideoCall) const SizedBox(height: 16),
 
               // Mood selection card
               Card(
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 elevation: 2,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -334,9 +340,10 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                       Text(
                         "How are you feeling today?",
                         style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[600]),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue[600],
+                        ),
                       ),
                       const SizedBox(height: 12),
                       GridView.count(
@@ -378,7 +385,7 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                                     mood["label"],
                                     style: const TextStyle(fontSize: 12),
                                     textAlign: TextAlign.center,
-                                  )
+                                  ),
                                 ],
                               ),
                             ),
@@ -394,7 +401,8 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
               // Symptoms/notes card
               Card(
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 elevation: 2,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -404,9 +412,10 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                       Text(
                         "Any symptoms or notes?",
                         style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[600]),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue[600],
+                        ),
                       ),
                       const SizedBox(height: 8),
                       TextField(
@@ -442,7 +451,8 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                           // Mock submit
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                                content: Text("Check-in submitted (mock)!")),
+                              content: Text("Check-in submitted (mock)!"),
+                            ),
                           );
                         },
                   style: ElevatedButton.styleFrom(

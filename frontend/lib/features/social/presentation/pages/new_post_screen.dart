@@ -7,10 +7,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:care_connect_app/shared/widgets/offline_banner.dart';
 
 import '../../../../providers/user_provider.dart';
 import '../model/PostWithCommentCountDto.dart';
-
 
 class NewPostScreen extends StatefulWidget {
   const NewPostScreen({super.key});
@@ -49,11 +49,7 @@ class _NewPostScreenState extends State<NewPostScreen> {
 
       headers['Content-Type'] = 'application/json';
 
-      final body = jsonEncode({
-        'userId': userId,
-        'content': content,
-      });
-
+      final body = jsonEncode({'userId': userId, 'content': content});
 
       final response = await http.post(uri, headers: headers, body: body);
 
@@ -68,13 +64,13 @@ class _NewPostScreenState extends State<NewPostScreen> {
         Navigator.pop(context, newPost);
       } else {
         ScaffoldMessenger.of(
-          context
+          context,
         ).showSnackBar(SnackBar(content: Text('Error: ${response.body}')));
       }
     } catch (e) {
       setState(() => isPosting = false);
       ScaffoldMessenger.of(
-        context
+        context,
       ).showSnackBar(SnackBar(content: Text('Exception: ${e.toString()}')));
     }
   }
@@ -103,30 +99,37 @@ class _NewPostScreenState extends State<NewPostScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextFormField(
-              controller: _contentController,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'What’s on your mind?',
-                border: OutlineInputBorder(),
+      body: Column(
+        children: [
+          const OfflineBanner(),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: _contentController,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      labelText: 'What’s on your mind?',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: isPosting ? null : () => submitPost(user.id),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade900,
+                    ),
+                    child: isPosting
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text('Post'),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: isPosting ? null : () => submitPost(user.id),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade900,
-              ),
-              child: isPosting
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Post'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-
+import 'package:care_connect_app/shared/widgets/offline_banner.dart';
 import 'package:care_connect_app/config/env_constant.dart';
 import 'package:care_connect_app/services/api_service.dart';
 import 'package:care_connect_app/shared/widgets/user_avatar.dart';
@@ -45,8 +45,8 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
     } else {
       fetchFeed();
       _pollingTimer = Timer.periodic(
-          const Duration(seconds: 10),
-              (_) => fetchFeed(silent: true),
+        const Duration(seconds: 10),
+        (_) => fetchFeed(silent: true),
       );
     }
   }
@@ -88,9 +88,9 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
     } catch (e) {
       if (!silent) {
         setState(() => isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
       }
     }
   }
@@ -104,13 +104,11 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
 
     return InkWell(
       onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => CommentScreen(postId: post.id),
-            ),
-          );
-          },
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CommentScreen(postId: post.id)),
+        );
+      },
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         elevation: 2,
@@ -156,12 +154,12 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
               const Divider(height: 1),
               TextButton.icon(
                 onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CommentScreen(postId: post.id),
-                      ),
-                    );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CommentScreen(postId: post.id),
+                    ),
+                  );
                 },
                 icon: const Icon(Icons.comment, size: 18),
                 label: Text('${post.commentCount} comments'),
@@ -182,20 +180,28 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
         title: 'My Feed',
         centerTitle: true,
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-            onRefresh: fetchFeed,
-            child: posts.isEmpty
-                ? const Center(child: Text('No posts yet. Pull to refresh.'))
-                : ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: posts.length,
-              itemBuilder: (context, index) {
-                return buildPostCard(posts[index]);
-              },
-            ),
+      body: Column(
+        children: [
+          const OfflineBanner(),
+
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: fetchFeed,
+                    child: posts.isEmpty
+                        ? const Center(child: Text('No posts yet.'))
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemCount: posts.length,
+                            itemBuilder: (context, index) {
+                              return buildPostCard(posts[index]);
+                            },
+                          ),
+                  ),
           ),
+        ],
+      ),
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
         notchMargin: 8,
@@ -212,17 +218,14 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
                   children: [
                     IconButton(
                       icon: const Icon(
-                          Icons.person_search,
-                          color: Colors.white
+                        Icons.person_search,
+                        color: Colors.white,
                       ),
                       tooltip: 'Add Friend',
                       onPressed: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  SearchUserScreen()
-                          ),
+                          MaterialPageRoute(builder: (_) => SearchUserScreen()),
                         );
                       },
                     ),
@@ -233,8 +236,7 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                                  FriendRequestsScreen()
+                            builder: (_) => FriendRequestsScreen(),
                           ),
                         );
                       },
@@ -259,10 +261,7 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
                       onPressed: () async {
                         final result = await Navigator.push(
                           context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  NewPostScreen()
-                          ),
+                          MaterialPageRoute(builder: (_) => NewPostScreen()),
                         );
                         if (result is PostWithCommentCountDto) {
                           setState(() {

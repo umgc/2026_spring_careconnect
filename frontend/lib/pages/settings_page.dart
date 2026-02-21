@@ -33,35 +33,38 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _loadNotificationSettings();
     _loadTelemetrySettings();
-     _loadOfflineMode();
+    _loadOfflineMode();
   }
-void _toggleOfflineMode(bool value) async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setBool('offline_mode', value);
 
-  setState(() {
-    _isOfflineMode = value;
-  });
+  void _toggleOfflineMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('offline_mode', value);
 
-  if (!mounted) return;
+    setState(() {
+      _isOfflineMode = value;
+    });
 
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        value
-            ? "Offline Mode enabled. Data will be saved locally."
-            : "Offline Mode disabled. Sync restored.",
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          value
+              ? "Offline Mode enabled. Data will be saved locally."
+              : "Offline Mode disabled. Sync restored.",
+        ),
       ),
-    ),
-  );
-}
-Future<void> _loadOfflineMode() async {
-  final prefs = await SharedPreferences.getInstance();
-  setState(() {
-    _isOfflineMode = prefs.getBool('offline_mode') ?? false;
-  });
-}
-Widget _buildLanguageCard(BuildContext context) {
+    );
+  }
+
+  Future<void> _loadOfflineMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isOfflineMode = prefs.getBool('offline_mode') ?? false;
+    });
+  }
+
+  Widget _buildLanguageCard(BuildContext context) {
     final t = AppLocalizations.of(context)!;
     final localeProvider = context.watch<LocaleProvider>();
 
@@ -434,32 +437,27 @@ Widget _buildLanguageCard(BuildContext context) {
       ),
     );
   }
+
   Widget _buildOfflineModeCard(BuildContext context) {
-  return Card(
-    margin: const EdgeInsets.only(bottom: 8),
-    child: ListTile(
-      leading: Icon(
-        Icons.cloud_off,
-        color: Theme.of(context).colorScheme.primary,
-        size: 24,
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(
+          Icons.cloud_off,
+          color: Theme.of(context).colorScheme.primary,
+          size: 24,
+        ),
+        title: Text(
+          "Offline Mode",
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+        ),
+        subtitle: const Text("Save data locally and sync when reconnected"),
+        trailing: Switch(value: _isOfflineMode, onChanged: _toggleOfflineMode),
       ),
-      title: Text(
-        "Offline Mode",
-        style: Theme.of(context)
-            .textTheme
-            .titleMedium
-            ?.copyWith(fontWeight: FontWeight.w500),
-      ),
-      subtitle: const Text(
-        "Save data locally and sync when reconnected",
-      ),
-      trailing: Switch(
-        value: _isOfflineMode,
-        onChanged: _toggleOfflineMode,
-      ),
-    ),
-  );
-}
+    );
+  }
 
   void _showClearCacheDialog(BuildContext context) {
     final t = AppLocalizations.of(context)!;
@@ -630,7 +628,6 @@ Widget _buildLanguageCard(BuildContext context) {
               // Appearance
               _buildSectionHeader(context, t.settingsAppearance),
               _buildThemeCard(context),
-              _buildOfflineModeCard(context),
               _buildLanguageCard(context),
               const SizedBox(height: 24),
 
@@ -806,6 +803,7 @@ Widget _buildLanguageCard(BuildContext context) {
 
               // General
               _buildSectionHeader(context, t.settingsGeneral),
+              _buildOfflineModeCard(context),
               _buildSettingsCard(
                 context,
                 icon: Icons.cleaning_services,

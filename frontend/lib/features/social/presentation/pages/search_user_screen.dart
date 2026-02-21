@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'package:care_connect_app/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:care_connect_app/shared/widgets/offline_banner.dart';
 import 'package:care_connect_app/widgets/app_bar_helper.dart';
 import '../../../../providers/user_provider.dart';
 import '../model/search_user_dto.dart';
-
 
 class SearchUserScreen extends StatefulWidget {
   const SearchUserScreen({super.key});
@@ -21,7 +21,6 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
   bool isLoading = false;
 
   Future<void> searchUsers(int currentUserId) async {
-
     setState(() => isLoading = true);
     try {
       final response = await ApiService.searchUsers(
@@ -79,12 +78,10 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
     }
 
     return Scaffold(
-      appBar: AppBarHelper.createAppBar(
-        context,
-        title: 'Search Users',
-        ),
+      appBar: AppBarHelper.createAppBar(context, title: 'Search Users'),
       body: Column(
         children: [
+          const OfflineBanner(),
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: TextField(

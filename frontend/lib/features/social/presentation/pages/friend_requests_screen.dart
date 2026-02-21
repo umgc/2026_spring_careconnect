@@ -7,6 +7,7 @@ import 'package:care_connect_app/widgets/app_bar_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:care_connect_app/shared/widgets/offline_banner.dart';
 
 import '../../../../providers/user_provider.dart';
 import '../model/friend_request_dto.dart';
@@ -31,9 +32,9 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     if (_userId == null) {
       final user = Provider.of<UserProvider>(context, listen: false).user;
       if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User not logged in')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('User not logged in')));
         setState(() => isLoading = false);
         return;
       }
@@ -135,40 +136,47 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : requests.isEmpty
-          ? const Center(child: Text('No pending requests'))
-          : ListView.builder(
-              itemCount: requests.length,
-              itemBuilder: (context, index) {
-                final req = requests[index];
-                return ListTile(
-                  title: Text(req.fromUsername),
-                  subtitle: Text('Request ID: ${req.id}'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ElevatedButton(
-                        onPressed: () => acceptRequest(req.id),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
+      body: Column(
+        children: [
+          const OfflineBanner(),
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : requests.isEmpty
+                ? const Center(child: Text('No pending requests'))
+                : ListView.builder(
+                    itemCount: requests.length,
+                    itemBuilder: (context, index) {
+                      final req = requests[index];
+                      return ListTile(
+                        title: Text(req.fromUsername),
+                        subtitle: Text('Request ID: ${req.id}'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ElevatedButton(
+                              onPressed: () => acceptRequest(req.id),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                              ),
+                              child: const Text('Accept'),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () => rejectRequest(req.id),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                              ),
+                              child: const Text('Reject'),
+                            ),
+                          ],
                         ),
-                        child: const Text('Accept'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () => rejectRequest(req.id),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                        ),
-                        child: const Text('Reject'),
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                );
-              },
-            ),
+          ),
+        ],
+      ),
     );
   }
 }

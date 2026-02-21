@@ -5,6 +5,7 @@ import 'package:care_connect_app/widgets/default_app_header.dart';
 import 'package:care_connect_app/features/health/symptom-tracker/widgets/symptom_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:care_connect_app/shared/widgets/offline_banner.dart';
 import 'package:care_connect_app/providers/user_provider.dart';
 
 class SymptomsAllergiesPage extends StatefulWidget {
@@ -72,7 +73,10 @@ class _SymptomsAllergiesPageState extends State<SymptomsAllergiesPage>
       body: SafeArea(
         child: Column(
           children: [
+            const OfflineBanner(),
+            const SizedBox(height: 12),
             const DefaultAppHeader(),
+
             Expanded(
               child: Container(
                 margin: const EdgeInsets.all(16),
@@ -155,20 +159,21 @@ class _SymptomsAllergiesPageState extends State<SymptomsAllergiesPage>
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.error_outline,
-                                  color: Theme.of(context).colorScheme.error,
-                                  size: 48),
+                              Icon(
+                                Icons.error_outline,
+                                color: Theme.of(context).colorScheme.error,
+                                size: 48,
+                              ),
                               const SizedBox(height: 12),
                               Text(
                                 _errorMessage!,
                                 textAlign: TextAlign.center,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
+                                style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .error),
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.error,
+                                    ),
                               ),
                               const SizedBox(height: 12),
                               ElevatedButton.icon(
@@ -181,16 +186,16 @@ class _SymptomsAllergiesPageState extends State<SymptomsAllergiesPage>
                         ),
                       )
                     else if (_patientId != null)
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          // pass it down here
-                          SymptomTab(patientId: _patientId!),
-                          AllergiesTab(patientId: _patientId!),
-                        ],
+                      Expanded(
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            // pass it down here
+                            SymptomTab(patientId: _patientId!),
+                            AllergiesTab(patientId: _patientId!),
+                          ],
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

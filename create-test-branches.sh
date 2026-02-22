@@ -100,10 +100,6 @@ make_dirs
 echo "$CLEAN_JAVA" > "$BACKEND_DIR/CleanService.java"
 echo "$CLEAN_DART" > "$FRONTEND_DIR/clean_widget.dart"
 commit_and_push "test/all-passing" "test: all-passing — clean code, no violations"
-open_pr "test/all-passing" \
-  "[CI TEST] All Tools Passing" \
-  "## CI/CD Test — All Passing
-All tools should pass. Do not merge — test branch only."
 
 # =============================================================================
 # BRANCH 2: test/all-failing
@@ -159,10 +155,6 @@ class BadService {
 DART
 
 commit_and_push "test/all-failing" "test: all-failing — violations in every tool"
-open_pr "test/all-failing" \
-  "[CI TEST] All Tools Failing" \
-  "## CI/CD Test — All Failing
-All tools should fail. Merge should be BLOCKED. Do not merge — test branch only."
 
 # =============================================================================
 # BRANCH 3: test/fail-checkstyle

@@ -42,13 +42,7 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-                <!-- TEST ONLY: CVE-2021-44228 Log4Shell CVSS 10.0 REMOVE AFTER TESTING -->
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-            <version>2.14.1</version>
-        </dependency>
-    </dependencies>
+        </dependencies>
     </dependencyManagement>
 
     <dependencies>
@@ -366,12 +360,6 @@
             <scope>test</scope>
         </dependency>
 
-            <!-- TEST ONLY: CVE-2021-44228 Log4Shell CVSS 10.0 REMOVE AFTER TESTING -->
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-            <version>2.14.1</version>
-        </dependency>
     </dependencies>
 
     <!-- Always-on build plugins -->
@@ -427,13 +415,7 @@
                         <artifactId>checkstyle</artifactId>
                         <version>10.14.2</version>
                     </dependency>
-                        <!-- TEST ONLY: CVE-2021-44228 Log4Shell CVSS 10.0 REMOVE AFTER TESTING -->
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-            <version>2.14.1</version>
-        </dependency>
-    </dependencies>
+                </dependencies>
             </plugin>
 
             <!-- SpotBugs plugin -->

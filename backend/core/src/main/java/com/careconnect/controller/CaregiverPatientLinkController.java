@@ -129,9 +129,14 @@ public class CaregiverPatientLinkController {
     @GetMapping("/patients/{patientId}/caregivers")
     public ResponseEntity<List<CaregiverPatientLinkResponse>> getCaregiversByPatient(@PathVariable Long patientId) {
         User currentUser = getCurrentUser();
-        
-        // Patient can see their own caregivers, admins can see all
-        if (currentUser.getRole() != Role.ADMIN && !currentUser.getId().equals(patientId)) {
+
+        boolean isAdmin = currentUser.getRole() == Role.ADMIN;
+        boolean isSelfPatient = currentUser.getId().equals(patientId);
+        boolean isLinkedCaregiver = currentUser.getRole() == Role.CAREGIVER
+                && linkService.hasAccessToPatient(currentUser.getId(), patientId);
+
+        // Admins, the patient, or caregivers actively linked to the patient can view this list
+        if (!isAdmin && !isSelfPatient && !isLinkedCaregiver) {
             throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
         }
 

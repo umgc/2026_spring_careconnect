@@ -2,6 +2,7 @@
   import 'package:care_connect_app/services/api_service.dart';
 import 'package:flutter/foundation.dart';
   import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
   import '../../../../providers/user_provider.dart';
@@ -166,6 +167,58 @@ import '../model/message_dto.dart';
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pop(context),
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.videocam),
+              tooltip: 'Start video call',
+              onPressed: () async {
+                final currentUser = Provider.of<UserProvider>(
+                  context,
+                  listen: false,
+                ).user;
+
+                if (currentUser == null || _currentUserId == null) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('User not logged in')),
+                  );
+                  return;
+                }
+
+                final canCall = await ApiService.canInitiateVideoCall(
+                  currentUserId: _currentUserId!,
+                  currentUserRole: currentUser.role,
+                  caregiverId: currentUser.caregiverId,
+                  targetUserId: widget.peerUserId,
+                );
+
+                if (!mounted) return;
+
+                if (!canCall) {
+                  final message = currentUser.role == 'PATIENT'
+                      ? 'You can only call your assigned caregivers.'
+                      : 'You can only call assigned patients or caregivers in your assigned patients\' circles.';
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(message)),
+                  );
+                  return;
+                }
+
+                final callId = 'chime_call_${DateTime.now().millisecondsSinceEpoch}';
+                context.push(
+                  '/video-call-chime'
+                  '?userId=$_currentUserId'
+                  '&recipientId=${widget.peerUserId}'
+                  '&userName=${Uri.encodeComponent(currentUser.name ?? 'User')}'
+                  '&recipientName=${Uri.encodeComponent(widget.peerName)}'
+                  '&initiator=true'
+                  '&video=true'
+                  '&audio=true'
+                  '&callId=$callId',
+                );
+              },
+            ),
+          ],
         ),
         body: Column(
           children: [

@@ -56,19 +56,7 @@ class _CommunicationWidgetState extends State<CommunicationWidget> {
       // );
 
       // if (callData['success'] && mounted) {
-      //   Navigator.of(context).push(
-      //     MaterialPageRoute(
-      //       builder: (context) => RealVideoCallWidget(
-      //         // Use REAL video call widget
-      //         callId: callData['callId'],
-      //         currentUserId: widget.currentUserId,
-      //         currentUserName: widget.currentUserName,
-      //         otherUserId: widget.targetUserId,
-      //         otherUserName: widget.targetUserName,
-      //         isVideoCall: true,
-      //       ),
-      //     ),
-      //   );
+      //   // TODO: open active call screen
       // } else {
       //   _showError('Failed to start video call');
       // }
@@ -88,19 +76,7 @@ class _CommunicationWidgetState extends State<CommunicationWidget> {
       // );
 
       // if (callData['success'] && mounted) {
-      //   Navigator.of(context).push(
-      //     MaterialPageRoute(
-      //       builder: (context) => RealVideoCallWidget(
-      //         // Use REAL audio call widget
-      //         callId: callData['callId'],
-      //         currentUserId: widget.currentUserId,
-      //         currentUserName: widget.currentUserName,
-      //         otherUserId: widget.targetUserId,
-      //         otherUserName: widget.targetUserName,
-      //         isVideoCall: false, // Audio call
-      //       ),
-      //     ),
-      //   );
+      //   // TODO: open active call screen
       // } else {
       //   _showError('Failed to start audio call');
       // }

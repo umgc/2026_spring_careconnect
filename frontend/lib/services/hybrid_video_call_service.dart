@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
-// Use conditional imports to prevent Agora from loading on web
+// Legacy hybrid call service
 
 class HybridVideoCallService {
   static final HybridVideoCallService _instance =
@@ -76,7 +76,7 @@ class HybridVideoCallService {
 
         return _buildWebCallInterface(callId, recipientId, isVideoEnabled);
       } else {
-        // Mobile (Agora) implementation
+        // Mobile implementation
         return await _mobileService.startCall(
           callId: callId,
           recipientId: recipientId,

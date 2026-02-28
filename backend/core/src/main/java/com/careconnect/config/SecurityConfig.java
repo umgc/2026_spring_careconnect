@@ -97,12 +97,14 @@ public class SecurityConfig {
                                 "/api/auth/**",
                                 "/v1/api/users/reset-password",
                                 "/v1/api/users/setup-password",
-                                "/v1/api/test/health",
-                                "/oauth/**"
+                                "/v1/api/email-test/**",
+                                "/v1/api/test/**",
+                                "/oauth/**",
+                                "/ws/**"
                         ).permitAll()
                         .requestMatchers("/", "/index.html", "/favicon.ico", "/static/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/v1/api/**", "/v2/api/**", "/v3/api/**").authenticated()
+                        .requestMatchers("/v1/api/**", "/v2/api/**", "/v3/api/**", "/api/v3/calls/**").authenticated()
                         .anyRequest().denyAll()
                 )
                 .build();

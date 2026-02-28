@@ -1,4 +1,3 @@
-import 'package:care_connect_app/features/calls/presentation/pages/jitsi_meeting_screen.dart';
 import 'package:care_connect_app/features/dashboard/caregiver-dashboard/pages/caregiver-dashboard.dart';
 import 'package:care_connect_app/features/fall_alert/pages/mock_alert_lab_page.dart';
 import 'package:care_connect_app/features/fall_alert/pages/alert_details_page_patient.dart';
@@ -522,85 +521,6 @@ final GoRouter appRouter = GoRouter(
         return OAuthCallbackPage(token: token, user: user, error: error);
       },
     ),
-    GoRoute(
-      path: '/video-call',
-      builder: (context, state) {
-        final patientIdStr = state.uri.queryParameters['patientId'];
-        final patientName = state.uri.queryParameters['patientName'];
-
-        if (patientIdStr == null || patientName == null) {
-          // Instead of showing an error screen, redirect back to dashboard
-          final userProvider = Provider.of<UserProvider>(
-            context,
-            listen: false,
-          );
-          final userRole = userProvider.user?.role;
-
-          // Show error message but stay logged in
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Missing patient information for video call'),
-              ),
-            );
-
-            // Redirect to appropriate dashboard based on role
-            if (userRole != null) {
-              Future.delayed(const Duration(milliseconds: 500), () {
-                context.go('/dashboard');
-              });
-            }
-          });
-
-          return Scaffold(
-            appBar: AppBar(
-              title: const Text('Redirecting...'),
-              backgroundColor: const Color(0xFF14366E),
-            ),
-            body: const Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        final patientId = int.tryParse(patientIdStr);
-        if (patientId == null) {
-          // Handle invalid patient ID
-          final userProvider = Provider.of<UserProvider>(
-            context,
-            listen: false,
-          );
-          final userRole = userProvider.user?.role;
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Invalid patient ID for video call'),
-              ),
-            );
-
-            if (userRole != null) {
-              Future.delayed(const Duration(milliseconds: 500), () {
-                context.go('/dashboard');
-              });
-            }
-          });
-
-          return Scaffold(
-            appBar: AppBar(
-              title: const Text('Redirecting...'),
-              backgroundColor: const Color(0xFF14366E),
-            ),
-            body: const Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        // Import and use JitsiMeetingScreen here
-        // Create a unique room name based on patientId and current timestamp
-        final roomName =
-            "patient_${patientId}_${DateTime.now().millisecondsSinceEpoch}";
-
-        return JitsiMeetingScreen(roomName: roomName);
-      },
-    ),
     GoRoute(path: '/wearables', builder: (_, __) => const WearablesScreen()),
     GoRoute(
       path: '/home-monitoring',
@@ -843,10 +763,35 @@ final GoRouter appRouter = GoRouter(
       },
     ),
 
-    // Video Call Test Route
+    // Team A Chime + Bedrock sentiment test route
     GoRoute(
-      path: '/video-call-test',
-      builder: (_, __) => const VideoCallTestPage(),
+      path: '/video-call-chime',
+      builder: (context, state) {
+        final userId = state.uri.queryParameters['userId'] ?? '1';
+        final callId = state.uri.queryParameters['callId'] ??
+            'chime_call_${DateTime.now().millisecondsSinceEpoch}';
+        final recipientId = state.uri.queryParameters['recipientId'];
+        final isVideoEnabled =
+            (state.uri.queryParameters['video'] ?? 'true').toLowerCase() !=
+                'false';
+        final isAudioEnabled =
+            (state.uri.queryParameters['audio'] ?? 'true').toLowerCase() !=
+                'false';
+        final isInitiator =
+            (state.uri.queryParameters['initiator'] ?? 'false').toLowerCase() ==
+                'true';
+
+        return HybridVideoCallWidget(
+          userId: userId,
+          callId: callId,
+          recipientId: recipientId,
+          isVideoEnabled: isVideoEnabled,
+          isAudioEnabled: isAudioEnabled,
+          isInitiator: isInitiator,
+          userName: state.uri.queryParameters['userName'],
+          recipientName: state.uri.queryParameters['recipientName'],
+        );
+      },
     ),
 
     //Adding Calendar Assistant route

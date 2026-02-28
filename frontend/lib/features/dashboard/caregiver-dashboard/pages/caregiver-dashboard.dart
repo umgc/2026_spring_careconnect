@@ -57,35 +57,42 @@ class CaregiverDashboard extends StatelessWidget {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Theme.of(context).primaryColor,
-        child: Icon(
-          Icons.chat_bubble_outline,
-          color: Theme.of(context).colorScheme.onPrimary,
-        ),
-        onPressed: () {
-          final double sheetHeight = MediaQuery.of(context).size.height * 0.75;
-          showModalBottomSheet(
-            isScrollControlled: true,
-            context: context,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'chat_fab',
+            backgroundColor: Theme.of(context).primaryColor,
+            child: Icon(
+              Icons.chat_bubble_outline,
+              color: Theme.of(context).colorScheme.onPrimary,
             ),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width > 768 ? 600 : double.infinity,
-            ),
-            builder: (context) => SizedBox(
-              height: sheetHeight,
-              child: AIChat(
-                role: 'caregiver',
-                isModal: true,
-                patientId: user?.patientId,
-                userId: user?.id,
-              ),
-            ),
-          );
-        },
+            onPressed: () {
+              final double sheetHeight = MediaQuery.of(context).size.height * 0.75;
+              showModalBottomSheet(
+                isScrollControlled: true,
+                context: context,
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width > 768 ? 600 : double.infinity,
+                ),
+                builder: (context) => SizedBox(
+                  height: sheetHeight,
+                  child: AIChat(
+                    role: 'caregiver',
+                    isModal: true,
+                    patientId: user?.patientId,
+                    userId: user?.id,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

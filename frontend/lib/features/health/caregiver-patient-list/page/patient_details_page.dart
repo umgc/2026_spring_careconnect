@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 // Pain level card
@@ -18,9 +19,6 @@ import '../widgets/mood_history_card.dart';
 
 // Health tab
 import '../widgets/current_medications_card.dart';
-
-// Recent Activity tab
-import '../widgets/recent_activity_tab.dart';
 
 // Virtual Check-in history
 // Virtual Check-In domain entities
@@ -40,6 +38,7 @@ import '../widgets/recent_symptom_card.dart' as sympt;
 
 // API and models
 import '../../../../services/api_service.dart';
+import '../../../../services/call_notification_service.dart';
 import '../../../health/medication-tracker/models/medication-model.dart';
 import '../../../../providers/user_provider.dart';
 
@@ -62,6 +61,93 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
   List<Medication> medications = [];
   bool _isLoadingMedications = false;
   String? _medicationError;
+
+  Future<void> _startVideoCall(String patientName) async {
+    final user = Provider.of<UserProvider>(context, listen: false).user;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to determine your account.')),
+      );
+      return;
+    }
+
+    final role = user.role.toUpperCase();
+    final currentUserId = user.id;
+
+    int? targetUserId;
+    var recipientName = patientName;
+
+    if (role == 'CAREGIVER') {
+      targetUserId = int.tryParse(widget.patientId);
+      if (targetUserId == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid patient ID for video call.')),
+        );
+        return;
+      }
+    } else if (role == 'PATIENT') {
+      final linkedCaregiverUserIds = await ApiService.getPatientLinkedCaregiverUserIds(
+        currentUserId,
+      );
+
+      if (!mounted) return;
+
+      if (linkedCaregiverUserIds.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No assigned caregiver found for video call.')),
+        );
+        return;
+      }
+
+      targetUserId = linkedCaregiverUserIds.first;
+      recipientName = 'Caregiver';
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Video calling is not available for this role.')),
+      );
+      return;
+    }
+
+    final allowed = await ApiService.canInitiateVideoCall(
+      currentUserId: currentUserId,
+      currentUserRole: role,
+      targetUserId: targetUserId,
+      caregiverId: user.caregiverId,
+    );
+
+    if (!mounted) return;
+
+    if (!allowed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You are not allowed to start this video call.')),
+      );
+      return;
+    }
+
+    final callId = 'chime_call_${DateTime.now().millisecondsSinceEpoch}';
+    final recipientRole = role == 'CAREGIVER' ? 'PATIENT' : 'CAREGIVER';
+    await CallNotificationService.sendCallInvitation(
+      recipientId: targetUserId.toString(),
+      recipientRole: recipientRole,
+      callId: callId,
+      isVideoCall: true,
+    );
+
+    context.push(
+      '/video-call-chime'
+      '?userId=$currentUserId'
+      '&recipientId=$targetUserId'
+      '&userName=${Uri.encodeComponent(user.name ?? role)}'
+      '&recipientName=${Uri.encodeComponent(recipientName)}'
+      '&initiator=true'
+      '&video=true'
+      '&audio=true'
+      '&callId=$callId',
+    );
+  }
   
   @override
   void initState() {
@@ -260,19 +346,6 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
         ),
     ];
 
-    final activityList = const [
-      ActivityEntry(
-        title: 'Took medication: Lisinopril 10mg',
-        when: '2 hours ago',
-      ),
-      ActivityEntry(title: 'Video call completed', when: '4 hours ago'),
-      ActivityEntry(title: 'Reported pain level: 3/10', when: '6 hours ago'),
-      ActivityEntry(
-        title: 'Appointment with Dr. Smith scheduled',
-        when: 'Yesterday',
-      ),
-    ];
-
     // --- Virtual Check-In demo data ---
     final virtualCheckIns = <VirtualCheckIn>[
       VirtualCheckIn(
@@ -311,29 +384,8 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
     ];
 
     // --- Virtual Check-In configuration (popup) ---
-    final initialQuestions = <VirtualCheckInQuestion>[
-      VirtualCheckInQuestion(
-        id: 'q1',
-        type: CheckInQuestionType.numerical,
-        required: true,
-        text: 'Rate your pain level (1–10)',
-      ),
-      VirtualCheckInQuestion(
-        id: 'q2',
-        type: CheckInQuestionType.yesNo,
-        required: true,
-        text: 'Did you take your morning medications?',
-      ),
-      VirtualCheckInQuestion(
-        id: 'q3',
-        type: CheckInQuestionType.textInput,
-        required: false,
-        text: 'Any additional symptoms or concerns?',
-      ),
-    ];
-
     return DefaultTabController(
-      length: 5,
+      length: 4,
       child: Scaffold(
         appBar: _DetailsAppBar(
           title: patientName,
@@ -360,6 +412,7 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
               oxygenPercent: 98,
               temperatureF: 98.0,*/
               emergencyPhones: const ['+15559876543', '+15552227788'],
+              onStartVideoCall: () => _startVideoCall(patientName),
             ),
 
             // Tab bar row (like your mock)

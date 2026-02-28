@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
+import software.amazon.awssdk.services.chimesdkmeetings.ChimeSdkMeetingsClient;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.ssm.SsmClient;
 import software.amazon.awssdk.services.textract.TextractClient;
@@ -45,6 +47,22 @@ public class AwsAccessConfig {
     @Bean
     public TextractClient textractClient() {
         return TextractClient.builder()
+                .region(defaultAwsRegion())
+                .credentialsProvider(awsCredentialsProvider())
+                .build();
+    }
+
+    @Bean
+    public ChimeSdkMeetingsClient chimeSdkMeetingsClient() {
+        return ChimeSdkMeetingsClient.builder()
+                .region(defaultAwsRegion())
+                .credentialsProvider(awsCredentialsProvider())
+                .build();
+    }
+
+    @Bean
+    public BedrockRuntimeClient bedrockRuntimeClient() {
+        return BedrockRuntimeClient.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(awsCredentialsProvider())
                 .build();

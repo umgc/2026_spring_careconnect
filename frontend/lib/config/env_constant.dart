@@ -10,7 +10,10 @@ const String _agoraAppCertificate = String.fromEnvironment(
   'AGORA_APP_CERTIFICATE',
 );
 
-const String _backendBaseUrl = String.fromEnvironment('BACKEND_URL');
+const String _backendBaseUrl = String.fromEnvironment(
+  'BACKEND_URL',
+  defaultValue: 'http://localhost:8080',
+);
 
 const String _wsOverrideUrl = String.fromEnvironment('WEBSOCKET_SERVER_URL');
 const String _backendToken = String.fromEnvironment('CC_BACKEND_TOKEN');
@@ -48,20 +51,6 @@ String getFitbitClientSecret() {
   return secret;
 }
 
-/// Agora configuration accessors
-String getAgoraAppId() {
-  // Now reads from the _agoraAppId const
-  if (_agoraAppId.isEmpty) {
-    throw Exception('AGORA_APP_ID not set via --dart-define');
-  }
-  return _agoraAppId;
-}
-
-String getAgoraAppCertificate() {
-  // Optional, so no check
-  return _agoraAppCertificate;
-}
-
 /// Returns the unified WebSocket server base URL for both signaling and notifications
 ///
 /// Set WEBSOCKET_SERVER_URL via --dart-define to override.
@@ -89,6 +78,11 @@ String getWebRTCSignalingServerUrl() {
 /// Returns the WebSocket notification URL (points to /ws/notifications)
 String getWebSocketNotificationUrl() {
   return '${_getUnifiedWebSocketBaseUrl()}/ws/notifications';
+}
+
+/// Returns the WebSocket URL for call invitation/accept/decline events
+String getCallNotificationWebSocketUrl() {
+  return '${_getUnifiedWebSocketBaseUrl()}/ws/calls-ws';
 }
 
 /// Returns the Backend Base URL

@@ -5,8 +5,6 @@
 import 'package:flutter/material.dart';
 
 // Imports for widgetBuilder entries used below
-import 'package:care_connect_app/features/dashboard/caregiver-dashboard/pages/caregiver-dashboard.dart'; 
-import 'package:care_connect_app/widgets/hybrid_video_call_widget.dart'; // VideoCallTestPage 
 
 enum AppRole { PATIENT, CAREGIVER, FAMILY_LINK, ADMIN }
 enum NavKind { routePath, routeName, widgetBuilder }
@@ -212,21 +210,13 @@ final routeCatalog = <RouteMeta>[
   // Video and calls
   RouteMeta(
     title: 'Video Call',
-    description: 'Start a Jitsi call for a patient',
-    keywords: ['video', 'call', 'jitsi'],
+    description: 'Start an AWS Chime call',
+    keywords: ['video', 'call', 'chime'],
     kind: NavKind.routePath,
-    path: '/video-call',
+    path: '/video-call-chime',
     roles: allRoles,
     icon: Icons.video_call,
-  ),
-  RouteMeta(
-    title: 'Video Call Test',
-    description: 'Video call test page',
-    keywords: ['video', 'test'],
-    kind: NavKind.widgetBuilder,
-    builder: (_) => const VideoCallTestPage(),
-    roles: allRoles,
-    icon: Icons.video_camera_front,
+    launchable: false,
   ),
   
   // Wearables and integrations

@@ -10,6 +10,7 @@ import '../config/navigation/main_screen_config.dart';
 import '../services/api_service.dart';
 import '../services/local_db/offline_sync_service.dart';
 import '../features/telemetry/telemetry.dart';
+import '../services/call_notification_service.dart';
 
 /// Main screen of the application. This is where the user is navigated to
 /// after logging in. This contains the bottom nav bar and main screens
@@ -46,6 +47,9 @@ class _MainScreenState extends State<MainScreen> {
     _selectedIndex = widget.initialTabIndex ?? 0;
     _initializeNavigation();
     _initializeConnectivitySyncBridge();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeCallNotifications();
+    });
   }
 
   @override
@@ -53,6 +57,7 @@ class _MainScreenState extends State<MainScreen> {
     _observedUserProvider?.removeListener(_handleConnectivityTransition);
     _syncStartDelayTimer?.cancel();
     _syncCompleteBannerHideTimer?.cancel();
+    CallNotificationService.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -212,6 +217,21 @@ class _MainScreenState extends State<MainScreen> {
         _showSyncCompleteBanner = false;
       });
     });
+  }
+
+  Future<void> _initializeCallNotifications() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final user = userProvider.user;
+    if (user == null) return;
+
+    final role = user.role.toUpperCase();
+    if (role != 'CAREGIVER' && role != 'PATIENT') return;
+
+    await CallNotificationService.initialize(
+      userId: user.id.toString(),
+      userRole: role,
+      context: context,
+    );
   }
 
   /// Initialize the MainScreenConfig object.

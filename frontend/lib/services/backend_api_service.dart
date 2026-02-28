@@ -209,8 +209,6 @@ class BackendApiService {
         'callId': callId,
         'isVideoCall': isVideoCall,
         'timestamp': DateTime.now().toIso8601String(),
-        'agoraAppId':
-            '6dd0e8e31625434e8dd185bcb075cd79', // Your live Agora App ID
       };
 
       print('📞 Sending video call invitation via backend: $invitationData');

@@ -1,5 +1,5 @@
 // // Stub for mobile video call service when running on web
-// // This prevents Agora imports from being loaded on web platform
+// // This prevents unsupported mobile call imports from being loaded on web platform
 // import 'dart:async';
 // import 'package:flutter/material.dart';
 // import 'package:flutter_webrtc/flutter_webrtc.dart';

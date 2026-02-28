@@ -77,7 +77,7 @@ class CommunicationService {
   ) async {
     try {
       // For now, we'll use a simple web-based video call solution
-      // In a real app, you'd integrate a proper video SDK like Agora, Twilio, etc.
+      // In a real app, you'd integrate a production-grade video SDK.
       final String meetingId =
           'careconnect-$patientId-${DateTime.now().millisecondsSinceEpoch}';
       final Uri uri = Uri.parse('https://meet.jit.si/$meetingId');

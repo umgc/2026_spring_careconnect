@@ -310,6 +310,121 @@ class ApiService {
         .timeout(const Duration(seconds: 30));
   }
 
+  static Future<List<int>> getCaregiverLinkedPatientUserIds(
+    int caregiverId,
+  ) async {
+    try {
+      final response = await getCaregiverPatients(caregiverId);
+      if (response.statusCode != 200) {
+        return [];
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) {
+        return [];
+      }
+
+      return decoded
+          .map<int?>((item) {
+            if (item is! Map<String, dynamic>) return null;
+            final link = item['link'];
+            if (link is! Map<String, dynamic>) return null;
+            final patientUserId = link['patientUserId'];
+            if (patientUserId is int) return patientUserId;
+            if (patientUserId is String) return int.tryParse(patientUserId);
+            return null;
+          })
+          .whereType<int>()
+          .toSet()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<int>> getPatientLinkedCaregiverUserIds(
+    int patientUserId,
+  ) async {
+    try {
+      final headers = await AuthTokenManager.getAuthHeaders();
+      final response = await _httpClient
+          .get(
+            Uri.parse(
+              '${ApiConstants.baseUrl}caregiver-patient-links/patients/$patientUserId/caregivers',
+            ),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        return [];
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) {
+        return [];
+      }
+
+      return decoded
+          .map<int?>((item) {
+            if (item is! Map<String, dynamic>) return null;
+            final caregiverUserId = item['caregiverUserId'];
+            if (caregiverUserId is int) return caregiverUserId;
+            if (caregiverUserId is String) return int.tryParse(caregiverUserId);
+            return null;
+          })
+          .whereType<int>()
+          .toSet()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<bool> canInitiateVideoCall({
+    required int currentUserId,
+    required String currentUserRole,
+    required int targetUserId,
+    int? caregiverId,
+  }) async {
+    if (currentUserId == targetUserId) {
+      return false;
+    }
+
+    if (currentUserRole == 'PATIENT') {
+      final linkedCaregiverIds = await getPatientLinkedCaregiverUserIds(
+        currentUserId,
+      );
+      return linkedCaregiverIds.contains(targetUserId);
+    }
+
+    if (currentUserRole == 'CAREGIVER') {
+      if (caregiverId == null) {
+        return false;
+      }
+
+      final linkedPatientUserIds = await getCaregiverLinkedPatientUserIds(
+        caregiverId,
+      );
+
+      if (linkedPatientUserIds.contains(targetUserId)) {
+        return true;
+      }
+
+      final reachableCaregiverIds = <int>{};
+      for (final patientUserId in linkedPatientUserIds) {
+        final caregiverIds = await getPatientLinkedCaregiverUserIds(
+          patientUserId,
+        );
+        reachableCaregiverIds.addAll(caregiverIds);
+      }
+
+      return reachableCaregiverIds.contains(targetUserId);
+    }
+
+    return false;
+  }
+
   /// Check if a user with the given email exists
   static Future<Map<String, dynamic>> checkEmailExists(String email) async {
     final headers = await AuthTokenManager.getAuthHeaders();

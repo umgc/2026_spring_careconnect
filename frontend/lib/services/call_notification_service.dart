@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import '../widgets/incoming_call_popup.dart';
 import '../widgets/hybrid_video_call_widget.dart';
 import '../config/env_constant.dart';
+import '../services/auth_token_manager.dart';
 
 /// Service to handle real-time call notifications for caregivers
 class CallNotificationService {
@@ -37,25 +39,46 @@ class CallNotificationService {
 
       print('🔔 Initializing CallNotificationService for $userRole: $userId');
 
-      // Connect to backend WebSocket endpoint (not socket.io)
-      final String wsUrl = websocketUrl ?? getWebSocketNotificationUrl();
+      if (_isConnected && _currentUserId == userId && _channel != null) {
+        // Reuse existing connection, only refresh context/role references
+        return true;
+      }
+
+      if (_isConnected) {
+        dispose();
+      }
+
+      // Connect to backend call WebSocket endpoint
+      final String wsUrl = websocketUrl ?? getCallNotificationWebSocketUrl();
       print('Connecting to notification WebSocket: $wsUrl');
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
       _isConnected = true;
 
-      // Register user after connection
-      final registerMsg = {
-        'type': 'register',
-        'userId': userId,
-        'userRole': userRole,
-      };
-      _channel!.sink.add(_encode(registerMsg));
+      final token = await AuthTokenManager.getJwtToken();
+      if (token == null || token.isEmpty) {
+        print('❌ Cannot initialize call notifications: missing JWT token');
+        dispose();
+        return false;
+      }
+
+      // Authenticate and join user room
+      _channel!.sink.add(
+        _encode({
+          'type': 'authenticate',
+          'token': token,
+        }),
+      );
+      _channel!.sink.add(
+        _encode({
+          'type': 'join-user-room',
+        }),
+      );
 
       // Listen for messages
       _channel!.stream.listen(
         (message) {
           final data = _decode(message);
-          if (data == null) return;
+          if (data == null || data.isEmpty) return;
           if (data['type'] == 'incoming-video-call') {
             print('📞 Received incoming video call: $data');
             _handleIncomingCall(data);
@@ -90,10 +113,10 @@ class CallNotificationService {
 
     // Extract call information
     final callId = callData['callId'] ?? '';
-    final callerId = callData['callerId'] ?? '';
-    final callerName = callData['callerName'] ?? 'Unknown Caller';
+    final callerId = (callData['senderId'] ?? callData['callerId'] ?? '').toString();
+    final callerName = (callData['senderName'] ?? callData['callerName'] ?? 'Unknown Caller').toString();
     final isVideoCall = callData['isVideoCall'] ?? true;
-    final callerRole = callData['callerRole'] ?? 'PATIENT';
+    final callerRole = (callData['senderRole'] ?? callData['callerRole'] ?? 'PATIENT').toString();
 
     print('📞 Processing incoming call from $callerName ($callerRole)');
 
@@ -135,7 +158,7 @@ class CallNotificationService {
           callerName: callerName,
           isVideoCall: isVideoCall,
         ),
-        onDecline: () => _declineCall(callId: callId),
+        onDecline: () => _declineCall(callId: callId, callerId: callerId),
       ),
     );
   }
@@ -156,8 +179,7 @@ class CallNotificationService {
       final msg = {
         'type': 'accept-call',
         'callId': callId,
-        'acceptedBy': _currentUserId,
-        'acceptedByRole': _currentUserRole,
+        'senderId': callerId,
       };
       _channel!.sink.add(_encode(msg));
     }
@@ -183,7 +205,7 @@ class CallNotificationService {
   }
 
   /// Decline incoming call
-  static void _declineCall({required String callId}) {
+  static void _declineCall({required String callId, required String callerId}) {
     print('❌ Declining call: $callId');
 
     // Notify backend that call was declined
@@ -191,8 +213,7 @@ class CallNotificationService {
       final msg = {
         'type': 'decline-call',
         'callId': callId,
-        'declinedBy': _currentUserId,
-        'declinedByRole': _currentUserRole,
+        'senderId': callerId,
       };
       _channel!.sink.add(_encode(msg));
     }
@@ -237,19 +258,16 @@ class CallNotificationService {
 
   // Helper to encode/decode JSON
   static String _encode(Map<String, dynamic> data) {
-    return data.toString().replaceAll(
-      "'",
-      '"',
-    ); // quick-and-dirty for demo; use jsonEncode in real code
+    return jsonEncode(data);
   }
 
   static Map<String, dynamic>? _decode(dynamic message) {
     try {
       if (message is String) {
-        // quick-and-dirty for demo; use jsonDecode in real code
-        return Map<String, dynamic>.from(
-          (message).replaceAll('"', '"') == message ? {} : {},
-        ); // TODO: replace with jsonDecode
+        final decoded = jsonDecode(message);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
       }
     } catch (e) {
       print('❌ Error decoding WebSocket message: $e');
@@ -277,8 +295,6 @@ class CallNotificationService {
     _currentUserRole = null;
     _context = null;
 
-    if (!_incomingCallController.isClosed) {
-      _incomingCallController.close();
-    }
+    // Keep stream controller alive for app lifetime.
   }
 }

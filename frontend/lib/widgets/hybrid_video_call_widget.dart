@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../services/video_call_service.dart';
 import '../services/auth_token_manager.dart';
+import '../services/call_notification_service.dart';
+import '../services/user_role_storage_service.dart';
 import '../config/theme/app_theme.dart';
 import '../widgets/sentiment_dashboard_widget.dart';
+import '../widgets/chime_meeting_embed.dart';
 
 /// HybridVideoCallWidget — video call screen with live sentiment monitoring.
 ///
@@ -10,7 +13,7 @@ import '../widgets/sentiment_dashboard_widget.dart';
 ///   - Top 60%: Chime video call view
 ///   - Bottom 40%: Collapsible sentiment dashboard (bar graphs)
 ///
-/// The sentiment panel is always visible during a call and updates
+/// The sentiment panel is shown only for caregivers and updates
 /// in real time as the backend pushes WebSocket sentiment-update messages.
 class HybridVideoCallWidget extends StatefulWidget {
   final String userId;
@@ -53,6 +56,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   bool _isLoading = true;
   String? _error;
   bool _sentimentPanelExpanded = true;
+  bool _isCaregiverView = false;
+  bool _showCallRejectedSummary = false;
+  String _rejectionSummaryText = 'The recipient declined the call.';
+  bool _isRetryingRejectedCall = false;
 
   // Latest sentiment data — updated via WebSocket push
   Map<String, dynamic> _sentimentData = {};
@@ -60,7 +67,24 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   @override
   void initState() {
     super.initState();
+    _loadCurrentRole();
     _initializeCall();
+  }
+
+  Future<void> _loadCurrentRole() async {
+    try {
+      final role = await UserRoleStorageService.instance.getUserRole();
+      final isCaregiver = role?.toUpperCase() == 'CAREGIVER';
+      if (!mounted) return;
+      setState(() {
+        _isCaregiverView = isCaregiver;
+        if (!isCaregiver) {
+          _sentimentPanelExpanded = false;
+        }
+      });
+    } catch (_) {
+      // Keep safe default (no analytics panel) if role cannot be loaded.
+    }
   }
 
   Future<void> _initializeCall() async {
@@ -73,12 +97,29 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         userId: widget.userId,
         jwtToken: jwtToken,
         onCallEnded: () {
-          if (mounted) Navigator.of(context).pop();
+          if (_showCallRejectedSummary) return;
+          if (mounted && Navigator.canPop(context)) {
+            Navigator.of(context).pop();
+          }
         },
         onSentimentUpdate: (data) {
           if (mounted) {
             setState(() => _sentimentData = data);
           }
+        },
+        onCallDeclined: (event) {
+          if (!mounted || !widget.isInitiator) return;
+          final declinedBy =
+              (event['declinedByName'] ?? widget.recipientName ?? 'Recipient')
+                  .toString();
+          final reason = (event['reason'] ?? 'declined').toString().trim();
+          final reasonSuffix = reason.isEmpty ? '' : ' ($reason)';
+
+          setState(() {
+            _showCallRejectedSummary = true;
+            _isLoading = false;
+            _rejectionSummaryText = '$declinedBy declined the call$reasonSuffix.';
+          });
         },
       );
 
@@ -126,6 +167,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
       backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: bg,
+        automaticallyImplyLeading: false,
         title: Text(
           widget.recipientName != null
               ? 'Call with ${widget.recipientName}'
@@ -133,39 +175,13 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
           style: const TextStyle(color: AppTheme.videoCallText),
         ),
         iconTheme: const IconThemeData(color: AppTheme.videoCallText),
-        actions: [
-          // Toggle sentiment panel
-          IconButton(
-            icon: Icon(
-              _sentimentPanelExpanded
-                  ? Icons.analytics
-                  : Icons.analytics_outlined,
-              color: AppTheme.videoCallText,
-            ),
-            tooltip: 'Toggle sentiment panel',
-            onPressed: () =>
-                setState(() => _sentimentPanelExpanded = !_sentimentPanelExpanded),
-          ),
-          // End call
-          IconButton(
-            icon: Icon(
-              Icons.call_end,
-              color: isDark
-                  ? AppTheme.videoCallEndCallDarkTheme
-                  : AppTheme.videoCallEndCall,
-            ),
-            onPressed: () async {
-              await _videoCallService.endCall();
-              if (mounted) Navigator.of(context).pop();
-            },
-          ),
-        ],
       ),
       body: _buildBody(),
     );
   }
 
   Widget _buildBody() {
+    if (_showCallRejectedSummary) return _buildCallRejectedSummary();
     if (_isLoading) return _buildLoading();
     if (_error != null) return _buildError();
     if (_callSession == null) {
@@ -186,26 +202,209 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
       children: [
         // Video call area — takes remaining space above sentiment panel
         Expanded(
-          flex: _sentimentPanelExpanded ? 6 : 10,
+          flex: (_isCaregiverView && _sentimentPanelExpanded) ? 6 : 10,
           child: _buildChimeView(),
         ),
 
         // Sentiment dashboard — collapsible
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          height: _sentimentPanelExpanded ? null : 0,
-          child: _sentimentPanelExpanded
-              ? SentimentDashboardWidget(
-                  sentimentData: _sentimentData,
-                  callId: widget.callId,
-                  onTextSend: (text) =>
-                      _videoCallService.sendTextForAnalysis(text),
-                )
-              : const SizedBox.shrink(),
-        ),
+        if (_isCaregiverView)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            height: _sentimentPanelExpanded ? null : 0,
+            child: _sentimentPanelExpanded
+                ? SentimentDashboardWidget(
+                    sentimentData: _sentimentData,
+                    callId: widget.callId,
+                    onTextSend: (text) =>
+                        _videoCallService.sendTextForAnalysis(text),
+                  )
+                : const SizedBox.shrink(),
+          ),
       ],
     );
+  }
+
+  Widget _buildCallRejectedSummary() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF1C1C1E) : Colors.white;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: AnimatedScale(
+          scale: 1,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutBack,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 460),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white12),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 74,
+                  height: 74,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.red.withValues(alpha: 0.12),
+                  ),
+                  child: const Icon(
+                    Icons.call_end,
+                    color: Colors.redAccent,
+                    size: 38,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Call Rejected',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.videoCallText,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _rejectionSummaryText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.videoCallTextSecondary,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Would you like to try calling again?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.videoCallTextSecondary,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _isRetryingRejectedCall
+                            ? null
+                            : () {
+                                if (Navigator.canPop(context)) {
+                                  Navigator.of(context).pop();
+                                }
+                              },
+                        icon: const Icon(Icons.arrow_back),
+                        label: const Text('Return'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isRetryingRejectedCall
+                            ? null
+                            : _retryRejectedCall,
+                        icon: _isRetryingRejectedCall
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.refresh),
+                        label: Text(
+                          _isRetryingRejectedCall ? 'Retrying…' : 'Try Again',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _retryRejectedCall() async {
+    if (_isRetryingRejectedCall || !mounted) return;
+    final recipientId = widget.recipientId;
+    if (recipientId == null || recipientId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to retry: missing recipient info.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isRetryingRejectedCall = true;
+    });
+
+    try {
+      await _videoCallService.endCall();
+
+      final newCallId = 'chime_call_${DateTime.now().millisecondsSinceEpoch}';
+      final recipientRole = _isCaregiverView ? 'PATIENT' : 'CAREGIVER';
+
+      final sent = await CallNotificationService.sendCallInvitation(
+        recipientId: recipientId,
+        recipientRole: recipientRole,
+        callId: newCallId,
+        isVideoCall: widget.isVideoEnabled,
+      );
+
+      if (!sent) {
+        if (!mounted) return;
+        setState(() {
+          _isRetryingRejectedCall = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not place retry call. Please try again.')),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => HybridVideoCallWidget(
+            userId: widget.userId,
+            callId: newCallId,
+            recipientId: widget.recipientId,
+            isVideoEnabled: widget.isVideoEnabled,
+            isAudioEnabled: widget.isAudioEnabled,
+            isInitiator: true,
+            userEmail: widget.userEmail,
+            userPhone: widget.userPhone,
+            userName: widget.userName,
+            recipientEmail: widget.recipientEmail,
+            recipientPhone: widget.recipientPhone,
+            recipientName: widget.recipientName,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isRetryingRejectedCall = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Retry failed. Please try again.')),
+      );
+    }
   }
 
   // ================================================================
@@ -216,6 +415,29 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   Widget _buildChimeView() {
     if (_callSession == null) return const SizedBox.shrink();
+
+    final mediaPlacement = _callSession!.mediaPlacement;
+    final hasMediaEndpoints = mediaPlacement.values
+        .whereType<String>()
+        .any((value) => value.trim().isNotEmpty);
+    final isLocalMockSession =
+        _callSession!.joinToken.startsWith('local-join-token-');
+
+    if (hasMediaEndpoints && !isLocalMockSession) {
+      return buildChimeMeetingEmbed(
+        meetingId: _callSession!.meetingId,
+        attendeeId: _callSession!.attendeeId,
+        joinToken: _callSession!.joinToken,
+        mediaPlacement: _callSession!.mediaPlacement,
+        mediaRegion: _callSession!.mediaRegion,
+        externalUserId: _callSession!.externalUserId,
+        videoEnabled: _callSession!.isVideoEnabled,
+        audioEnabled: _callSession!.isAudioEnabled,
+        onEndCallRequested: () async {
+          await _videoCallService.endCall();
+        },
+      );
+    }
 
     return Stack(
       children: [
@@ -230,7 +452,9 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
                 const Icon(Icons.videocam, color: Colors.white54, size: 64),
                 const SizedBox(height: 16),
                 Text(
-                  'Connected to meeting',
+                  isLocalMockSession
+                      ? 'Connected to local mock meeting'
+                      : 'Connected to meeting',
                   style: const TextStyle(color: Colors.white70, fontSize: 18),
                 ),
                 const SizedBox(height: 8),

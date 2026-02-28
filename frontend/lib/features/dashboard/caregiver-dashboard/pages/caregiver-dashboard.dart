@@ -23,7 +23,7 @@ class CaregiverDashboard extends StatelessWidget {
     return Scaffold(
       appBar: DashboardAppHeader(
         userName: user?.name ?? '',
-        role: user?.role as String,
+        role: user?.role ?? '',
       ),
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(

@@ -15,7 +15,6 @@ import 'package:care_connect_app/services/api_service.dart';
 import 'package:care_connect_app/services/call_notification_service.dart';
 import 'package:care_connect_app/services/communication_service.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../services/evv_service.dart';
@@ -703,10 +702,41 @@ class _PatientDashboardState extends State<PatientDashboard> {
             ListTile(
               leading: const Icon(Icons.video_call),
               title: const Text('Video Call'),
-              subtitle: const Text('Schedule a video consultation'),
-              onTap: () {
+              subtitle: const Text('Start a video call with your provider'),
+              onTap: () async {
                 Navigator.pop(context);
-                context.push('/schedule-appointment');
+
+                if (primaryCareProvider == null) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Provider information is unavailable.'),
+                    ),
+                  );
+                  return;
+                }
+
+                final user = Provider.of<UserProvider>(
+                  this.context,
+                  listen: false,
+                ).user;
+
+                if (user == null) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please log in again to place a call.'),
+                    ),
+                  );
+                  return;
+                }
+
+                await CallIntegrationHelper.startVideoCallToCaregiver(
+                  context: this.context,
+                  currentUser: user,
+                  targetCaregiver: primaryCareProvider,
+                  isVideoCall: true,
+                );
               },
             ),
           ],
@@ -732,7 +762,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: DashboardAppHeader(
         userName: user?.name ?? '',
-        role: user?.role as String,
+        role: user?.role ?? '',
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Theme.of(context).primaryColor,

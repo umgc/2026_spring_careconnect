@@ -64,9 +64,30 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     final voice = widget.sentimentData['voice'];
     final video = widget.sentimentData['video'];
 
-    if (text  != null) _textHistory .add(_SentimentPoint(now, (text ['score'] as num).toDouble(),  text ['label'] as String));
-    if (voice != null) _voiceHistory.add(_SentimentPoint(now, (voice['score'] as num).toDouble(), voice['label'] as String));
-    if (video != null) _videoHistory.add(_SentimentPoint(now, (video['score'] as num).toDouble(), video['label'] as String));
+    bool isCompleted(dynamic section) {
+      if (section is! Map<String, dynamic>) return false;
+      return ((section['status'] as String?) ?? 'COMPLETED').toUpperCase() ==
+          'COMPLETED';
+    }
+
+    if (isCompleted(text)) {
+      _textHistory.add(_SentimentPoint(
+          now,
+          ((text as Map<String, dynamic>)['score'] as num).toDouble(),
+          ((text)['label'] as String?) ?? 'NEUTRAL'));
+    }
+    if (isCompleted(voice)) {
+      _voiceHistory.add(_SentimentPoint(
+          now,
+          ((voice as Map<String, dynamic>)['score'] as num).toDouble(),
+          ((voice)['label'] as String?) ?? 'NEUTRAL'));
+    }
+    if (isCompleted(video)) {
+      _videoHistory.add(_SentimentPoint(
+          now,
+          ((video as Map<String, dynamic>)['score'] as num).toDouble(),
+          ((video)['label'] as String?) ?? 'NEUTRAL'));
+    }
 
     // Keep last 30 points
     if (_textHistory .length > 30) _textHistory .removeAt(0);
@@ -91,6 +112,12 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     return (data['score'] as num?)?.toDouble() ?? 0.5;
   }
 
+  String _status(String channel) {
+    final data = widget.sentimentData[channel.toLowerCase()];
+    if (data == null) return 'AWAITING';
+    return ((data['status'] as String?) ?? 'COMPLETED').toUpperCase();
+  }
+
   String _label(String channel) {
     final data = widget.sentimentData[channel.toLowerCase()];
     if (data == null) return 'NEUTRAL';
@@ -113,6 +140,12 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     final overall = widget.sentimentData['overall'];
     if (overall == null) return 'NEUTRAL';
     return (overall['label'] as String?) ?? 'NEUTRAL';
+  }
+
+  String _overallStatus() {
+    final overall = widget.sentimentData['overall'];
+    if (overall == null) return 'AWAITING';
+    return ((overall['status'] as String?) ?? 'COMPLETED').toUpperCase();
   }
 
   // ================================================================
@@ -148,6 +181,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
 
   Widget _buildPanelHeader(bool isDark) {
     final hasData = widget.sentimentData.isNotEmpty;
+    final overallStatus = _overallStatus();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
       child: Row(
@@ -170,18 +204,22 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: _scoreColor(_overallScore()).withOpacity(0.15),
+                color:
+                  _statusColor(overallStatus, _overallScore()).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: _scoreColor(_overallScore()).withOpacity(0.4)),
+                    color: _statusColor(overallStatus, _overallScore())
+                      .withValues(alpha: 0.4)),
               ),
               child: Text(
-                _overallLabel(),
+                overallStatus == 'COMPLETED'
+                    ? _overallLabel()
+                    : overallStatus,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.8,
-                  color: _scoreColor(_overallScore()),
+                  color: _statusColor(overallStatus, _overallScore()),
                 ),
               ),
             )
@@ -236,9 +274,15 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     required bool isDark,
   }) {
     final score = _score(channel);
-    final label = _label(channel);
-    final notes = _notes(channel);
-    final color = _scoreColor(score);
+    final status = _status(channel);
+    final hasUsableSample = status == 'COMPLETED';
+    final label = hasUsableSample ? _label(channel) : status;
+    final notes = hasUsableSample
+        ? _notes(channel)
+        : (status == 'DEGRADED'
+            ? 'Sentiment temporarily unavailable; call continues normally.'
+            : 'Awaiting channel sample.');
+    final color = _statusColor(status, score);
     final cardBg = isDark ? const Color(0xFF252540) : Colors.white;
 
     return GestureDetector(
@@ -251,10 +295,10 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withOpacity(0.3), width: 1),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
             boxShadow: [
               BoxShadow(
-                color: color.withOpacity(0.08),
+                color: color.withValues(alpha: 0.08),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -293,17 +337,19 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
                     // Background track
                     Container(
                       height: 8,
-                      color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08),
+                        color: isDark
+                          ? Colors.white10
+                          : Colors.black.withValues(alpha: 0.08),
                     ),
                     // Filled bar
                     FractionallySizedBox(
-                      widthFactor: score.clamp(0.0, 1.0),
+                      widthFactor: hasUsableSample ? score.clamp(0.0, 1.0) : 0.0,
                       child: Container(
                         height: 8,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              color.withOpacity(0.7),
+                              color.withValues(alpha: 0.7),
                               color,
                             ],
                           ),
@@ -317,7 +363,9 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
 
               // Score percentage
               Text(
-                '${(score * 100).toStringAsFixed(0)}%',
+                hasUsableSample
+                    ? '${(score * 100).toStringAsFixed(0)}%'
+                    : '—',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -363,7 +411,9 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
 
   Widget _buildOverallScore(bool isDark) {
     final score = _overallScore();
-    final color = _scoreColor(score);
+    final status = _overallStatus();
+    final hasUsableSample = status == 'COMPLETED' || status == 'DEGRADED';
+    final color = _statusColor(status, score);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -385,9 +435,11 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
               child: Stack(
                 children: [
                   Container(height: 6,
-                      color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08)),
+                        color: isDark
+                          ? Colors.white10
+                          : Colors.black.withValues(alpha: 0.08)),
                   FractionallySizedBox(
-                    widthFactor: score.clamp(0.0, 1.0),
+                    widthFactor: hasUsableSample ? score.clamp(0.0, 1.0) : 0.0,
                     child: Container(
                       height: 6,
                       color: color,
@@ -399,7 +451,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
           ),
           const SizedBox(width: 8),
           Text(
-            '${(score * 100).toStringAsFixed(0)}%',
+            hasUsableSample ? '${(score * 100).toStringAsFixed(0)}%' : '—',
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
@@ -480,7 +532,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
       String channel, List<_SentimentPoint> history, IconData icon) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SentimentDetailScreen(
+        builder: (_) => _SentimentDetailScreen(
           channel:  channel,
           icon:     icon,
           history:  List.from(history),
@@ -502,13 +554,25 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     if (score >= 0.35) return const Color(0xFFF39C12);  // amber — neutral/anxious
     return const Color(0xFFE74C3C);                      // red — distressed
   }
+
+  static Color _statusColor(String status, double score) {
+    switch (status.toUpperCase()) {
+      case 'AWAITING':
+        return const Color(0xFF95A5A6);
+      case 'DEGRADED':
+        return const Color(0xFFF39C12);
+      case 'COMPLETED':
+      default:
+        return _scoreColor(score);
+    }
+  }
 }
 
 // ================================================================
 // DETAIL SCREEN — line graph history for a single channel
 // ================================================================
 
-class SentimentDetailScreen extends StatelessWidget {
+class _SentimentDetailScreen extends StatelessWidget {
   final String channel;
   final IconData icon;
   final List<_SentimentPoint> history;
@@ -517,8 +581,7 @@ class SentimentDetailScreen extends StatelessWidget {
   final String currentLabel;
   final String currentNotes;
 
-  const SentimentDetailScreen({
-    super.key,
+  const _SentimentDetailScreen({
     required this.channel,
     required this.icon,
     required this.history,
@@ -597,7 +660,7 @@ class SentimentDetailScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -747,7 +810,7 @@ class _SentimentLineChart extends StatelessWidget {
         color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08),
+          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
         ),
       ),
       padding: const EdgeInsets.all(16),
@@ -756,7 +819,7 @@ class _SentimentLineChart extends StatelessWidget {
           points: history,
           lineColor: color,
           gridColor:
-              isDark ? Colors.white12 : Colors.black.withOpacity(0.08),
+              isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.08),
           labelColor:
               isDark ? Colors.white38 : Colors.black38,
         ),
@@ -816,7 +879,7 @@ class _LineChartPainter extends CustomPainter {
       canvas.drawRect(
         Rect.fromLTRB(paddingLeft, paddingTop + chartH * y0,
             paddingLeft + chartW, paddingTop + chartH * y1),
-        Paint()..color = c.withOpacity(0.04),
+        Paint()..color = c.withValues(alpha: 0.04),
       );
     }
     fillZone(0.0,   0.45, const Color(0xFF2ECC71));

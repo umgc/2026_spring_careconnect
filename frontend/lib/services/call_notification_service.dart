@@ -15,6 +15,11 @@ class CallNotificationService {
   static String? _currentUserId;
   static String? _currentUserRole;
   static BuildContext? _context;
+  static String? _activeCallId;
+  static String? _currentIncomingCallId;
+  static bool _isIncomingDialogVisible = false;
+  static final Map<String, DateTime> _suppressedIncomingCallIds =
+      <String, DateTime>{};
 
   // Stream controllers for call events
   static final StreamController<Map<String, dynamic>> _incomingCallController =
@@ -37,7 +42,7 @@ class CallNotificationService {
       _currentUserRole = userRole;
       _context = context;
 
-      print('🔔 Initializing CallNotificationService for $userRole: $userId');
+      debugPrint('🔔 Initializing CallNotificationService for $userRole: $userId');
 
       if (_isConnected && _currentUserId == userId && _channel != null) {
         // Reuse existing connection, only refresh context/role references
@@ -50,13 +55,13 @@ class CallNotificationService {
 
       // Connect to backend call WebSocket endpoint
       final String wsUrl = websocketUrl ?? getCallNotificationWebSocketUrl();
-      print('Connecting to notification WebSocket: $wsUrl');
+      debugPrint('Connecting to notification WebSocket: $wsUrl');
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
       _isConnected = true;
 
       final token = await AuthTokenManager.getJwtToken();
       if (token == null || token.isEmpty) {
-        print('❌ Cannot initialize call notifications: missing JWT token');
+        debugPrint('❌ Cannot initialize call notifications: missing JWT token');
         dispose();
         return false;
       }
@@ -79,30 +84,60 @@ class CallNotificationService {
         (message) {
           final data = _decode(message);
           if (data == null || data.isEmpty) return;
-          if (data['type'] == 'incoming-video-call') {
-            print('📞 Received incoming video call: $data');
+          final type = data['type'] as String?;
+          if (type == null) return;
+
+          if (type == 'incoming-video-call') {
+            debugPrint('📞 Received incoming video call: $data');
+            _incomingCallController.add(data);
             _handleIncomingCall(data);
-          } else if (data['type'] == 'call-ended') {
-            print('📞 Call ended: $data');
-          } else if (data['type'] == 'call-answered') {
-            print('📞 Call answered: $data');
-          } else if (data['type'] == 'call-declined') {
-            print('📞 Call declined: $data');
+          } else if (type == 'call-ended') {
+            debugPrint('📞 Call ended: $data');
+            _incomingCallController.add(data);
+            final endedCallId = (data['callId'] ?? '').toString();
+            if (endedCallId.isNotEmpty) {
+              _suppressIncomingCallId(endedCallId);
+              if (_activeCallId == endedCallId) {
+                _activeCallId = null;
+              }
+              if (_currentIncomingCallId == endedCallId) {
+                _dismissIncomingCallPopup();
+              }
+            }
+            _notifyCallEnded(data);
+          } else if (type == 'call-answered') {
+            debugPrint('📞 Call answered: $data');
+            _incomingCallController.add(data);
+            final answeredCallId = (data['callId'] ?? '').toString();
+            if (answeredCallId.isNotEmpty) {
+              _activeCallId = answeredCallId;
+            }
+            _notifyCallAnswered(data);
+          } else if (type == 'call-declined') {
+            debugPrint('📞 Call declined: $data');
+            _incomingCallController.add(data);
+            final declinedCallId = (data['callId'] ?? '').toString();
+            if (declinedCallId.isNotEmpty) {
+              _suppressIncomingCallId(declinedCallId);
+            }
+            _notifyCallDeclined(data);
+          } else if (type == 'sentiment-update') {
+            _incomingCallController.add(data);
           }
         },
         onDone: () {
           _isConnected = false;
-          print('❌ CallNotificationService WebSocket closed');
+          debugPrint('❌ CallNotificationService WebSocket closed');
         },
         onError: (e) {
           _isConnected = false;
-          print('❌ CallNotificationService WebSocket error: $e');
+          debugPrint('❌ CallNotificationService WebSocket error: $e');
         },
       );
 
       return true;
     } catch (e) {
-      print('❌ Error initializing CallNotificationService: $e');
+      debugPrint('❌ Error initializing CallNotificationService: $e');
       return false;
     }
   }
@@ -112,16 +147,30 @@ class CallNotificationService {
     if (_context == null) return;
 
     // Extract call information
-    final callId = callData['callId'] ?? '';
+    final callId = (callData['callId'] ?? '').toString();
     final callerId = (callData['senderId'] ?? callData['callerId'] ?? '').toString();
     final callerName = (callData['senderName'] ?? callData['callerName'] ?? 'Unknown Caller').toString();
     final isVideoCall = callData['isVideoCall'] ?? true;
     final callerRole = (callData['senderRole'] ?? callData['callerRole'] ?? 'PATIENT').toString();
 
-    print('📞 Processing incoming call from $callerName ($callerRole)');
+    if (callId.isEmpty) return;
+    _pruneSuppressedIncomingCallIds();
 
-    // Emit to stream for any listeners
-    _incomingCallController.add(callData);
+    if (_activeCallId == callId || _isIncomingCallSuppressed(callId)) {
+      debugPrint('⏭️ Suppressing duplicate incoming call popup for callId: $callId');
+      return;
+    }
+
+    if (_isIncomingDialogVisible) {
+      if (_currentIncomingCallId == callId) {
+        debugPrint('⏭️ Incoming popup already visible for callId: $callId');
+        return;
+      }
+      debugPrint('⏭️ Ignoring incoming call while another incoming popup is visible');
+      return;
+    }
+
+    debugPrint('📞 Processing incoming call from $callerName ($callerRole)');
 
     // Show incoming call popup
     _showIncomingCallPopup(
@@ -143,8 +192,12 @@ class CallNotificationService {
   }) {
     if (_context == null) return;
 
+    _currentIncomingCallId = callId;
+    _isIncomingDialogVisible = true;
+
     showDialog(
       context: _context!,
+      useRootNavigator: true,
       barrierDismissible: false,
       builder: (context) => IncomingCallPopup(
         callId: callId,
@@ -157,10 +210,20 @@ class CallNotificationService {
           callerId: callerId,
           callerName: callerName,
           isVideoCall: isVideoCall,
+          dialogContext: context,
         ),
-        onDecline: () => _declineCall(callId: callId, callerId: callerId),
+        onDecline: () => _declineCall(
+          callId: callId,
+          callerId: callerId,
+          dialogContext: context,
+        ),
       ),
-    );
+    ).whenComplete(() {
+      if (_currentIncomingCallId == callId) {
+        _isIncomingDialogVisible = false;
+        _currentIncomingCallId = null;
+      }
+    });
   }
 
   /// Accept incoming call
@@ -169,10 +232,13 @@ class CallNotificationService {
     required String callerId,
     required String callerName,
     required bool isVideoCall,
+    BuildContext? dialogContext,
   }) {
     if (_context == null || _currentUserId == null) return;
 
-    print('✅ Accepting call: $callId');
+    debugPrint('✅ Accepting call: $callId');
+    _activeCallId = callId;
+    _suppressIncomingCallId(callId, duration: const Duration(seconds: 45));
 
     // Notify backend that call was accepted
     if (_channel != null && _isConnected) {
@@ -184,8 +250,7 @@ class CallNotificationService {
       _channel!.sink.add(_encode(msg));
     }
 
-    // Close the incoming call popup
-    Navigator.of(_context!).pop();
+    _dismissIncomingCallPopup(dialogContext: dialogContext);
 
     // Navigate to video call screen
     Navigator.of(_context!).push(
@@ -205,8 +270,13 @@ class CallNotificationService {
   }
 
   /// Decline incoming call
-  static void _declineCall({required String callId, required String callerId}) {
-    print('❌ Declining call: $callId');
+  static void _declineCall({
+    required String callId,
+    required String callerId,
+    BuildContext? dialogContext,
+  }) {
+    debugPrint('❌ Declining call: $callId');
+    _suppressIncomingCallId(callId);
 
     // Notify backend that call was declined
     if (_channel != null && _isConnected) {
@@ -218,10 +288,112 @@ class CallNotificationService {
       _channel!.sink.add(_encode(msg));
     }
 
-    // Close the incoming call popup
-    if (_context != null) {
-      Navigator.of(_context!).pop();
+    _dismissIncomingCallPopup(dialogContext: dialogContext);
+  }
+
+  static void _dismissIncomingCallPopup({BuildContext? dialogContext}) {
+    if (!_isIncomingDialogVisible) return;
+
+    final dialogNavigator = dialogContext != null
+        ? Navigator.maybeOf(dialogContext, rootNavigator: true)
+        : null;
+    if (dialogNavigator != null && dialogNavigator.canPop()) {
+      dialogNavigator.pop();
+    } else if (_context != null) {
+      final navigator = Navigator.maybeOf(_context!, rootNavigator: true);
+      navigator?.maybePop();
     }
+
+    _isIncomingDialogVisible = false;
+    _currentIncomingCallId = null;
+  }
+
+  static void _suppressIncomingCallId(
+    String callId, {
+    Duration duration = const Duration(seconds: 30),
+  }) {
+    if (callId.isEmpty) return;
+    _suppressedIncomingCallIds[callId] = DateTime.now().add(duration);
+  }
+
+  static bool _isIncomingCallSuppressed(String callId) {
+    final expiresAt = _suppressedIncomingCallIds[callId];
+    if (expiresAt == null) return false;
+    if (DateTime.now().isAfter(expiresAt)) {
+      _suppressedIncomingCallIds.remove(callId);
+      return false;
+    }
+    return true;
+  }
+
+  static void _pruneSuppressedIncomingCallIds() {
+    final now = DateTime.now();
+    final expired = <String>[];
+    _suppressedIncomingCallIds.forEach((callId, expiresAt) {
+      if (now.isAfter(expiresAt)) {
+        expired.add(callId);
+      }
+    });
+    for (final callId in expired) {
+      _suppressedIncomingCallIds.remove(callId);
+    }
+  }
+
+  static void _notifyCallDeclined(Map<String, dynamic> data) {
+    final context = _context;
+    if (context == null) return;
+
+    final declinedByName =
+        (data['declinedByName'] ?? data['senderName'] ?? 'The recipient')
+            .toString();
+    final reason = (data['reason'] ?? 'declined').toString();
+    final normalizedReason = reason.trim().isEmpty ? 'declined' : reason;
+
+    _showCallFeedback(
+      '$declinedByName declined the call ($normalizedReason).',
+      backgroundColor: Colors.orange.shade800,
+    );
+  }
+
+  static void _notifyCallAnswered(Map<String, dynamic> data) {
+    final answeredBy =
+        (data['answeredByName'] ?? data['senderName'] ?? 'Recipient').toString();
+    _showCallFeedback(
+      '$answeredBy answered. Connecting now…',
+      backgroundColor: Colors.green.shade700,
+    );
+  }
+
+  static void _notifyCallEnded(Map<String, dynamic> data) {
+    final endedBy =
+        (data['endedByName'] ?? data['senderName'] ?? 'Other participant')
+            .toString();
+    _showCallFeedback(
+      'Call ended by $endedBy.',
+      backgroundColor: Colors.blueGrey.shade700,
+    );
+  }
+
+  static void _showCallFeedback(
+    String message, {
+    Duration duration = const Duration(seconds: 3),
+    Color? backgroundColor,
+  }) {
+    final context = _context;
+    if (context == null) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: duration,
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: backgroundColor,
+        ),
+      );
   }
 
   /// Send outgoing call notification
@@ -232,11 +404,15 @@ class CallNotificationService {
     required bool isVideoCall,
   }) async {
     if (!_isConnected || _channel == null) {
-      print('❌ Cannot send call invitation - not connected');
+      debugPrint('❌ Cannot send call invitation - not connected');
+      _showCallFeedback(
+        'Unable to start call: notifications are not connected.',
+        backgroundColor: Colors.red.shade700,
+      );
       return false;
     }
     try {
-      print('📤 Sending call invitation to $recipientRole: $recipientId');
+      debugPrint('📤 Sending call invitation to $recipientRole: $recipientId');
       final msg = {
         'type': 'send-video-call-invitation',
         'callId': callId,
@@ -249,9 +425,18 @@ class CallNotificationService {
         'timestamp': DateTime.now().toIso8601String(),
       };
       _channel!.sink.add(_encode(msg));
+      _activeCallId = callId;
+      _showCallFeedback(
+        'Calling $recipientRole… waiting for response.',
+        backgroundColor: Colors.blue.shade700,
+      );
       return true;
     } catch (e) {
-      print('❌ Error sending call invitation: $e');
+      debugPrint('❌ Error sending call invitation: $e');
+      _showCallFeedback(
+        'Failed to send call invitation. Please try again.',
+        backgroundColor: Colors.red.shade700,
+      );
       return false;
     }
   }
@@ -270,7 +455,7 @@ class CallNotificationService {
         }
       }
     } catch (e) {
-      print('❌ Error decoding WebSocket message: $e');
+      debugPrint('❌ Error decoding WebSocket message: $e');
     }
     return null;
     // removed extra closing brace here
@@ -285,15 +470,19 @@ class CallNotificationService {
 
   /// Dispose and cleanup
   static void dispose() {
-    print('🧹 Disposing CallNotificationService');
+    debugPrint('🧹 Disposing CallNotificationService');
 
-    _channel?.sink.close(status.goingAway);
+    _channel?.sink.close(status.normalClosure);
     _channel = null;
 
     _isConnected = false;
     _currentUserId = null;
     _currentUserRole = null;
     _context = null;
+    _activeCallId = null;
+    _currentIncomingCallId = null;
+    _isIncomingDialogVisible = false;
+    _suppressedIncomingCallIds.clear();
 
     // Keep stream controller alive for app lifetime.
   }

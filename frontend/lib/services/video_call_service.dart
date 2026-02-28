@@ -21,10 +21,11 @@ import '../services/call_notification_service.dart';
 /// using a platform view. For the capstone demo, we render a web view
 /// pointing to the Chime meeting URL, which works on both mobile and web.
 class VideoCallService {
+  static const Duration _sentimentStaleThreshold = Duration(seconds: 45);
+
   bool _isInitialized = false;
   bool _isInCall = false;
   String? _currentCallId;
-  String? _currentUserId;
   String? _otherPartyId;
   String? _jwtToken;
 
@@ -34,12 +35,16 @@ class VideoCallService {
   // Callbacks
   VoidCallback? _onCallEnded;
   Function(Map<String, dynamic>)? _onSentimentUpdate;
+  Function(Map<String, dynamic>)? _onCallDeclined;
 
   // Sentiment posting timer — sends analysis data every 15 seconds
   Timer? _sentimentTimer;
 
   // Stream for sentiment updates received via WebSocket
   StreamSubscription? _wsSubscription;
+
+  // Aggregated sentiment state used by caregiver dashboard UI
+  final Map<String, dynamic> _aggregatedSentiment = {};
 
   // ================================================================
   // INITIALIZE
@@ -50,18 +55,27 @@ class VideoCallService {
     required String jwtToken,
     VoidCallback? onCallEnded,
     Function(Map<String, dynamic>)? onSentimentUpdate,
+    Function(Map<String, dynamic>)? onCallDeclined,
   }) async {
-    _currentUserId = userId;
     _jwtToken = jwtToken;
     _onCallEnded = onCallEnded;
     _onSentimentUpdate = onSentimentUpdate;
+    _onCallDeclined = onCallDeclined;
     _isInitialized = true;
 
     // Listen for sentiment updates pushed via WebSocket
     _wsSubscription = CallNotificationService.incomingCallStream.listen((data) {
       final type = data['type'] as String?;
       if (type == 'sentiment-update' && _onSentimentUpdate != null) {
-        _onSentimentUpdate!(data);
+        final merged = _mergeSentimentUpdate(data);
+        _onSentimentUpdate!(merged);
+      }
+      if (type == 'call-declined' && _onCallDeclined != null) {
+        final declinedCallId = (data['callId'] ?? '').toString();
+        if (declinedCallId.isNotEmpty &&
+            (_currentCallId == null || declinedCallId == _currentCallId)) {
+          _onCallDeclined!(data);
+        }
       }
       if (type == 'call-ended') {
         _handleRemoteCallEnd();
@@ -87,6 +101,8 @@ class VideoCallService {
     _currentCallId = callId;
     _otherPartyId = otherPartyId;
     _isInCall = true;
+    _aggregatedSentiment.clear();
+    _seedAwaitingSentimentState();
 
     debugPrint('📹 Joining Chime call: $callId');
 
@@ -115,6 +131,8 @@ class VideoCallService {
         attendeeId:      _meetingCredentials!['attendeeId'] as String,
         joinToken:       _meetingCredentials!['joinToken'] as String,
         mediaPlacement:  _meetingCredentials!['mediaPlacement'] as Map<String, dynamic>,
+        mediaRegion:     _meetingCredentials!['mediaRegion'] as String?,
+        externalUserId:  _meetingCredentials!['externalUserId'] as String?,
         isVideoEnabled:  isVideoEnabled,
         isAudioEnabled:  isAudioEnabled,
       );
@@ -152,6 +170,7 @@ class VideoCallService {
     _isInCall = false;
     _currentCallId = null;
     _meetingCredentials = null;
+    _aggregatedSentiment.clear();
     _onCallEnded?.call();
   }
 
@@ -265,7 +284,198 @@ class VideoCallService {
     debugPrint('📴 Remote party ended the call');
     _sentimentTimer?.cancel();
     _isInCall = false;
+    _aggregatedSentiment.clear();
     _onCallEnded?.call();
+  }
+
+  Map<String, dynamic> _mergeSentimentUpdate(Map<String, dynamic> event) {
+    final payload = (event['sentiment'] is Map<String, dynamic>)
+        ? Map<String, dynamic>.from(event['sentiment'] as Map<String, dynamic>)
+        : <String, dynamic>{};
+
+    final now = DateTime.now().toUtc();
+
+    if (payload.isEmpty) {
+      _markStaleChannels(now);
+      _aggregatedSentiment['overall'] = _buildOverallFromChannels();
+      return Map<String, dynamic>.from(_aggregatedSentiment);
+    }
+
+    final channel = (payload['channel'] as String?)?.toLowerCase();
+    final hasPerChannelShape = payload.containsKey('text') ||
+        payload.containsKey('voice') ||
+        payload.containsKey('video') ||
+        payload.containsKey('overall');
+
+    if (hasPerChannelShape) {
+      for (final key in ['text', 'voice', 'video', 'overall']) {
+        final section = payload[key];
+        if (section is Map<String, dynamic>) {
+          _aggregatedSentiment[key] = _normalizeSentimentSection(
+            key,
+            Map<String, dynamic>.from(section),
+            now,
+          );
+        }
+      }
+    } else if (channel == 'text' || channel == 'voice' || channel == 'video') {
+      _aggregatedSentiment[channel!] = _normalizeSentimentSection(
+        channel,
+        payload,
+        now,
+      );
+    }
+
+    _markStaleChannels(now);
+    _aggregatedSentiment['overall'] = _buildOverallFromChannels();
+
+    return Map<String, dynamic>.from(_aggregatedSentiment);
+  }
+
+  Map<String, dynamic> _buildOverallFromChannels() {
+    final channels = ['text', 'voice', 'video'];
+    var scoreSum = 0.0;
+    var count = 0;
+    var hasDegraded = false;
+    var hasAwaiting = false;
+
+    for (final key in channels) {
+      final channelData = _aggregatedSentiment[key];
+      if (channelData is Map<String, dynamic>) {
+        final status = (channelData['status'] as String? ?? 'AWAITING').toUpperCase();
+        if (status == 'DEGRADED') hasDegraded = true;
+        if (status == 'AWAITING') hasAwaiting = true;
+        if (status != 'COMPLETED') {
+          continue;
+        }
+
+        final score = (channelData['score'] as num?)?.toDouble();
+        if (score != null) {
+          scoreSum += score;
+          count += 1;
+        }
+      }
+    }
+
+    if (count == 0) {
+      return {
+        'score': 0.5,
+        'label': 'NEUTRAL',
+        'status': hasDegraded ? 'DEGRADED' : 'AWAITING',
+        'notes': hasDegraded
+            ? 'Sentiment temporarily unavailable; call continues normally.'
+            : 'Awaiting sentiment samples',
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      };
+    }
+
+    final average = scoreSum / count;
+    return {
+      'score': average,
+      'label': _labelFromScore(average),
+      'status': (hasDegraded || hasAwaiting) ? 'DEGRADED' : 'COMPLETED',
+      'notes': (hasDegraded || hasAwaiting)
+          ? 'Computed from available channels (partial data).'
+          : 'Computed from all available channels.',
+      'updatedAt': DateTime.now().toUtc().toIso8601String(),
+    };
+  }
+
+  void _seedAwaitingSentimentState() {
+    final now = DateTime.now().toUtc();
+    for (final channel in ['text', 'voice', 'video']) {
+      _aggregatedSentiment[channel] = {
+        'score': 0.5,
+        'label': 'NEUTRAL',
+        'notes': 'Awaiting $channel sentiment sample.',
+        'status': 'AWAITING',
+        'channel': channel,
+        'updatedAt': now.toIso8601String(),
+        'stale': false,
+        'confidence': 0.0,
+      };
+    }
+    _aggregatedSentiment['overall'] = {
+      'score': 0.5,
+      'label': 'NEUTRAL',
+      'status': 'AWAITING',
+      'notes': 'Awaiting sentiment samples',
+      'updatedAt': now.toIso8601String(),
+    };
+  }
+
+  Map<String, dynamic> _normalizeSentimentSection(
+    String sectionKey,
+    Map<String, dynamic> raw,
+    DateTime now,
+  ) {
+    final normalizedChannel = (raw['channel'] as String? ?? sectionKey).toLowerCase();
+    final rawScore = (raw['score'] as num?)?.toDouble();
+    final clampedScore = rawScore == null ? 0.5 : rawScore.clamp(0.0, 1.0);
+
+    final rawStatus = (raw['status'] as String?)?.toUpperCase();
+    final status = rawStatus ?? (rawScore == null ? 'AWAITING' : 'COMPLETED');
+
+    final notes = (raw['notes'] as String?)?.trim().isNotEmpty == true
+        ? (raw['notes'] as String).trim()
+        : (status == 'AWAITING'
+            ? 'Awaiting $normalizedChannel sentiment sample.'
+            : 'Sentiment sample received.');
+
+    final updatedAt = _parseEventTime(raw['updatedAt']) ??
+        _parseEventTime(raw['timestamp']) ??
+        now;
+
+    final label = (raw['label'] as String?)?.toUpperCase() ?? _labelFromScore(clampedScore);
+
+    return {
+      'score': clampedScore,
+      'label': label,
+      'notes': notes,
+      'status': status,
+      'channel': normalizedChannel,
+      'updatedAt': updatedAt.toIso8601String(),
+      'stale': false,
+      'confidence': (raw['confidence'] as num?)?.toDouble() ?? 1.0,
+    };
+  }
+
+  DateTime? _parseEventTime(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value)?.toUtc();
+    }
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(value, isUtc: true);
+    }
+    return null;
+  }
+
+  void _markStaleChannels(DateTime nowUtc) {
+    for (final key in ['text', 'voice', 'video']) {
+      final channel = _aggregatedSentiment[key];
+      if (channel is! Map<String, dynamic>) continue;
+
+      final status = (channel['status'] as String? ?? 'AWAITING').toUpperCase();
+      final updatedAt = _parseEventTime(channel['updatedAt']);
+
+      if (status == 'COMPLETED' &&
+          updatedAt != null &&
+          nowUtc.difference(updatedAt) > _sentimentStaleThreshold) {
+        channel['status'] = 'DEGRADED';
+        channel['stale'] = true;
+        channel['notes'] = 'Sentiment sample is stale; awaiting refresh.';
+      } else if (status == 'COMPLETED') {
+        channel['stale'] = false;
+      }
+    }
+  }
+
+  String _labelFromScore(double score) {
+    if (score >= 0.65) return 'CALM';
+    if (score >= 0.55) return 'POSITIVE';
+    if (score >= 0.35) return 'NEUTRAL';
+    if (score >= 0.25) return 'ANXIOUS';
+    return 'DISTRESSED';
   }
 
   bool get isInCall => _isInCall;
@@ -275,6 +485,8 @@ class VideoCallService {
   void dispose() {
     _sentimentTimer?.cancel();
     _wsSubscription?.cancel();
+    _aggregatedSentiment.clear();
+    _onCallDeclined = null;
     _isInitialized = false;
     _isInCall = false;
   }
@@ -290,6 +502,8 @@ class ChimeCallSession {
   final String attendeeId;
   final String joinToken;
   final Map<String, dynamic> mediaPlacement;
+  final String? mediaRegion;
+  final String? externalUserId;
   final bool isVideoEnabled;
   final bool isAudioEnabled;
 
@@ -299,6 +513,8 @@ class ChimeCallSession {
     required this.attendeeId,
     required this.joinToken,
     required this.mediaPlacement,
+    this.mediaRegion,
+    this.externalUserId,
     required this.isVideoEnabled,
     required this.isAudioEnabled,
   });

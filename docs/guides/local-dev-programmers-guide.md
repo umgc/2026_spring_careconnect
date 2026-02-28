@@ -123,6 +123,26 @@ flutter pub get
 flutter run -d chrome --dart-define=BACKEND_URL=http://localhost:8081
 ```
 
+For production-aligned web media testing, host a Chime SDK file on the same origin
+and pass it explicitly:
+
+```powershell
+Set-Location {{FRONTEND_DIR}}
+.\prepare-chime-sdk.ps1
+
+flutter run -d chrome `
+  --dart-define=BACKEND_URL=http://localhost:8081 `
+  --dart-define=CHIME_SDK_URL=/amazon-chime-sdk.min.js `
+  --dart-define=CHIME_SDK_ALLOW_EXTERNAL_FALLBACK=false
+```
+
+This keeps media initialization deterministic and avoids runtime CDN dependency.
+
+`frontend/.chime_bundle/` is intentionally excluded from git because it contains
+generated package artifacts and dependencies. The committed workflow uses
+`frontend/prepare-chime-sdk.ps1` (or `frontend/prepare-chime-sdk.sh`) to generate
+`frontend/web/amazon-chime-sdk.min.js` locally when needed.
+
 If UI seems stale, do hard refresh in browser: `Ctrl+Shift+R`.
 
 ---

@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/.chime_bundle/
 
 # Symbolication related
 app.*.symbols

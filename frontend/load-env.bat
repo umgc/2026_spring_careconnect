@@ -26,6 +26,9 @@ for /f "usebackq tokens=1* delims==" %%a in (".env") do (
 
 echo Environment variables loaded successfully!
 
+REM Set default sentiment mode when not provided
+if "%CC_SENTIMENT_MODE%"=="" set "CC_SENTIMENT_MODE=balanced"
+
 REM Verify critical variables are set
 set "missing_vars="
 if "%CC_BASE_URL_WEB%"=="" set "missing_vars=%missing_vars% CC_BASE_URL_WEB"
@@ -42,4 +45,9 @@ if not "%missing_vars%"=="" (
 
 echo Starting CareConnect Backend...
 REM Execute the passed command with loaded environment
-%*
+if /I "%~1"=="flutter" (
+    echo Using sentiment mode: %CC_SENTIMENT_MODE%
+    %* --dart-define=CARECONNECT_SENTIMENT_MODE=%CC_SENTIMENT_MODE%
+) else (
+    %*
+)

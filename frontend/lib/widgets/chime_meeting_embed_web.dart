@@ -28,9 +28,11 @@ Widget buildChimeMeetingEmbed({
   required bool videoEnabled,
   required bool audioEnabled,
   bool enableAutoSentimentCapture = false,
+  int sentimentCaptureIntervalMs = 15000,
   VoidCallback? onEndCallRequested,
   void Function(String transcript)? onTranscriptSample,
   void Function(String audioBase64, String audioFormat)? onAudioSample,
+  void Function(String imageBase64)? onVideoSample,
 }) {
   return _ChimeMeetingEmbedWeb(
     meetingId: meetingId,
@@ -42,9 +44,11 @@ Widget buildChimeMeetingEmbed({
     videoEnabled: videoEnabled,
     audioEnabled: audioEnabled,
     enableAutoSentimentCapture: enableAutoSentimentCapture,
+    sentimentCaptureIntervalMs: sentimentCaptureIntervalMs,
     onEndCallRequested: onEndCallRequested,
     onTranscriptSample: onTranscriptSample,
     onAudioSample: onAudioSample,
+    onVideoSample: onVideoSample,
   );
 }
 
@@ -58,9 +62,11 @@ class _ChimeMeetingEmbedWeb extends StatefulWidget {
   final bool videoEnabled;
   final bool audioEnabled;
   final bool enableAutoSentimentCapture;
+  final int sentimentCaptureIntervalMs;
   final VoidCallback? onEndCallRequested;
   final void Function(String transcript)? onTranscriptSample;
   final void Function(String audioBase64, String audioFormat)? onAudioSample;
+  final void Function(String imageBase64)? onVideoSample;
 
   const _ChimeMeetingEmbedWeb({
     required this.meetingId,
@@ -72,9 +78,11 @@ class _ChimeMeetingEmbedWeb extends StatefulWidget {
     required this.videoEnabled,
     required this.audioEnabled,
     required this.enableAutoSentimentCapture,
+    required this.sentimentCaptureIntervalMs,
     required this.onEndCallRequested,
     required this.onTranscriptSample,
     required this.onAudioSample,
+    required this.onVideoSample,
   });
 
   @override
@@ -104,6 +112,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
       'videoEnabled': widget.videoEnabled,
       'audioEnabled': widget.audioEnabled,
       'enableAutoSentimentCapture': widget.enableAutoSentimentCapture,
+      'sentimentCaptureIntervalMs': widget.sentimentCaptureIntervalMs,
       'sdkUrl': _chimeSdkUrl,
       'allowExternalSdkFallback': _allowExternalSdkFallback,
     };
@@ -141,6 +150,17 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             final audioFormat = (payload['audioFormat'] ?? 'wav').toString().trim();
             if (audioBase64.isNotEmpty) {
               widget.onAudioSample?.call(audioBase64, audioFormat.isEmpty ? 'wav' : audioFormat);
+            }
+          }
+          return;
+        }
+
+        if (data['action'] == 'sentiment-video-sample') {
+          final payload = data['payload'];
+          if (payload is Map) {
+            final imageBase64 = (payload['imageBase64'] ?? '').toString().trim();
+            if (imageBase64.isNotEmpty) {
+              widget.onVideoSample?.call(imageBase64);
             }
           }
           return;
@@ -425,12 +445,17 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         const endBtn = document.getElementById('endBtn');
         const camBtn = document.getElementById('camBtn');
         const shouldAutoSentimentCapture =
-          !!config.enableAutoSentimentCapture && !!config.audioEnabled;
+          !!config.enableAutoSentimentCapture && (!!config.audioEnabled || !!config.videoEnabled);
+        const sentimentCaptureIntervalMs =
+          Number(config.sentimentCaptureIntervalMs) > 0
+            ? Math.max(3000, Number(config.sentimentCaptureIntervalMs))
+            : 15000;
         let isAudioMuted = !config.audioEnabled;
         let isVideoMuted = !config.videoEnabled;
         let availableVideoInputs = [];
         let sentimentAudioRecorder = null;
         let sentimentAudioStream = null;
+        let sentimentVideoTimer = null;
         let speechRecognizer = null;
         let speechRestartTimer = null;
         let lastTranscriptSignature = '';
@@ -536,6 +561,11 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             } catch (_) {}
             sentimentAudioStream = null;
           }
+
+          if (sentimentVideoTimer) {
+            clearInterval(sentimentVideoTimer);
+            sentimentVideoTimer = null;
+          }
         }
 
         function startSpeechRecognitionCapture() {
@@ -599,6 +629,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           if (!shouldAutoSentimentCapture) {
             return;
           }
+          if (!config.audioEnabled) {
+            return;
+          }
           if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             report('warn', 'MediaRecorder API unavailable; voice sentiment auto-capture disabled.');
             return;
@@ -653,8 +686,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
               }
             };
 
-            sentimentAudioRecorder.start(15000);
-            report('info', 'Voice sentiment capture started (15s chunks)');
+            sentimentAudioRecorder.start(sentimentCaptureIntervalMs);
+            report('info', 'Voice sentiment capture started (' + sentimentCaptureIntervalMs + 'ms chunks)');
           } catch (audioCaptureErr) {
             report('warn', 'Unable to start voice sentiment capture: ' + String(audioCaptureErr));
             if (sentimentAudioStream) {
@@ -666,11 +699,68 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           }
         }
 
+        function captureVideoSampleFrame() {
+          try {
+            if (!localVideo || localVideo.readyState < 2 || localVideo.videoWidth === 0 || localVideo.videoHeight === 0) {
+              return;
+            }
+
+            const canvas = document.createElement('canvas');
+            const maxWidth = 640;
+            const scale = Math.min(1, maxWidth / localVideo.videoWidth);
+            const width = Math.max(1, Math.floor(localVideo.videoWidth * scale));
+            const height = Math.max(1, Math.floor(localVideo.videoHeight * scale));
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d', { alpha: false });
+            if (!ctx) {
+              return;
+            }
+
+            ctx.drawImage(localVideo, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.68);
+            const commaIndex = dataUrl.indexOf(',');
+            if (commaIndex <= 0) {
+              return;
+            }
+
+            const imageBase64 = dataUrl.substring(commaIndex + 1);
+            if (!imageBase64 || imageBase64.length < 1024) {
+              return;
+            }
+
+            emitAction('sentiment-video-sample', {
+              imageBase64,
+              imageFormat: 'jpeg',
+              capturedAt: new Date().toISOString(),
+            });
+          } catch (videoFrameErr) {
+            report('warn', 'Unable to capture video sentiment frame: ' + String(videoFrameErr));
+          }
+        }
+
+        function startVideoSentimentCapture() {
+          if (!shouldAutoSentimentCapture || !config.videoEnabled) {
+            return;
+          }
+          if (sentimentVideoTimer) {
+            clearInterval(sentimentVideoTimer);
+          }
+
+          captureVideoSampleFrame();
+          sentimentVideoTimer = setInterval(() => {
+            captureVideoSampleFrame();
+          }, sentimentCaptureIntervalMs);
+          report('info', 'Video sentiment capture started (' + sentimentCaptureIntervalMs + 'ms frames)');
+        }
+
         async function startAutoSentimentCapture() {
           if (!shouldAutoSentimentCapture) {
             return;
           }
           await startAudioSentimentCapture();
+          startVideoSentimentCapture();
           startSpeechRecognitionCapture();
         }
 

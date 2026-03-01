@@ -103,27 +103,8 @@ public class SecurityConfig {
                                 "/ws/**"
                         ).permitAll()
                         .requestMatchers("/", "/index.html", "/favicon.ico", "/static/**").permitAll()
-<<<<<<< HEAD
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/v1/api/**", "/v2/api/**", "/v3/api/**", "/api/v3/calls/**").authenticated()
-=======
-
-                        /* ---------- Require JWT for these APIs ------------------------ */
-                        .requestMatchers("/v1/api/patients/**").authenticated()
-                        .requestMatchers("/v1/api/caregivers/**").authenticated()
-                        .requestMatchers("/v1/api/allergies/**").authenticated()
-                        .requestMatchers("/v1/api/symptoms/**").authenticated()
-                        .requestMatchers("/v1/api/ai/**", "/api/ai/**").authenticated()
-                        .requestMatchers("/v1/api/ai/deepseek/**").authenticated()
-                        .requestMatchers("/v1/api/family-members/**").authenticated()
-                        .requestMatchers("/v1/api/ai-chat/**").authenticated()
-                        .requestMatchers("/v1/api/caregiver-patient-links/**").authenticated()
-                        .requestMatchers("/v1/api/invoices/**").authenticated()
-                        .requestMatchers("/v3/api/**").authenticated()
-                        .requestMatchers("/api/v3/calls/**").authenticated()
-
-                        /* ---------- Everything else: deny (safer default) ------------- */
->>>>>>> 89c736cc (Checkpoint: stabilize calls/sentiment and vendor Chime web SDK)
+                        .requestMatchers("/v1/api/**", "/v2/api/**", "/v3/api/**", "/api/v3/calls/**", "/api/patient/**", "/api/ai/**").authenticated()
                         .anyRequest().denyAll()
                 )
                 .build();

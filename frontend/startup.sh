@@ -13,6 +13,7 @@ done
 
 # Set defaults if not provided in the .env files
 FLUTTER_WEB_PORT=${FLUTTER_WEB_PORT:-50030}
+CC_SENTIMENT_MODE=${CC_SENTIMENT_MODE:-balanced}
 
 echo "-------------------------------------"
 echo "  CareConnect Frontend Startup"
@@ -35,7 +36,8 @@ do
             # We still use --dart-define-from-file for your Stripe keys, etc.
             flutter run -d emulator \
             --dart-define-from-file=.env \
-            --dart-define=BACKEND_URL=$ANDROID_URL
+            --dart-define=BACKEND_URL=$ANDROID_URL \
+            --dart-define=CARECONNECT_SENTIMENT_MODE=$CC_SENTIMENT_MODE
             break
             ;;
         2)
@@ -45,7 +47,7 @@ do
                 echo "Syncing CocoaPods..."
                 (cd ios && pod install)
             fi
-            flutter run -d ios --dart-define-from-file=.env
+            flutter run -d ios --dart-define-from-file=.env --dart-define=CARECONNECT_SENTIMENT_MODE=$CC_SENTIMENT_MODE
             break
             ;;
         3)
@@ -55,7 +57,8 @@ do
             flutter run -d chrome \
             --web-port=$FLUTTER_WEB_PORT \
             --dart-define-from-file=.env \
-            --dart-define=BACKEND_URL=$WEB_URL
+            --dart-define=BACKEND_URL=$WEB_URL \
+            --dart-define=CARECONNECT_SENTIMENT_MODE=$CC_SENTIMENT_MODE
             ;;
         4)
             echo "🧹 Deep Cleaning Project..."

@@ -22,7 +22,7 @@ docker-compose up -d
 
 ### PostgreSQL Database
 - **Host**: localhost
-- **Port**: 5432
+- **Port**: 5433
 - **Database**: careconnect
 - **Username**: postgres
 - **Password**: changeme

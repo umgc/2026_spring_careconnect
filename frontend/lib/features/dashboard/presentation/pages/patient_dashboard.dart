@@ -69,6 +69,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
         await CallNotificationService.initialize(
           userId: patientId.toString(),
           userRole: 'PATIENT',
+          userDisplayName: user?.name,
           context: context,
         );
         _callNotificationInitialized = true;

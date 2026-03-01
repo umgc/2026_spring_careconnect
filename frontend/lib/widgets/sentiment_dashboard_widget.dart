@@ -148,6 +148,73 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     return ((overall['status'] as String?) ?? 'COMPLETED').toUpperCase();
   }
 
+  String? _captureModeLabel() {
+    final raw = (widget.sentimentData['_captureMode'] as String?)?.trim();
+    if (raw == null || raw.isEmpty) return null;
+
+    switch (raw.toUpperCase()) {
+      case 'ADAPTIVE_REALTIME':
+        return 'Adaptive · Realtime';
+      case 'ADAPTIVE_BALANCED':
+        return 'Adaptive · Balanced';
+      case 'REALTIME':
+        return 'Realtime';
+      case 'BALANCED':
+        return 'Balanced';
+      default:
+        return raw;
+    }
+  }
+
+  String _formatTimestampForChannel(String channelKey) {
+    final section = widget.sentimentData[channelKey.toLowerCase()];
+    if (section is! Map<String, dynamic>) return '—';
+
+    final status = ((section['status'] as String?) ?? '').toUpperCase();
+    if (status != 'COMPLETED' && status != 'DEGRADED') return '—';
+
+    final raw = (section['updatedAt'] ?? section['timestamp'])?.toString();
+    if (raw == null || raw.isEmpty) return '—';
+
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return '—';
+
+    final local = parsed.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    final second = local.second.toString().padLeft(2, '0');
+    return '$hour:$minute:$second';
+  }
+
+  Widget _buildCaptureTelemetryRow(bool isDark) {
+    final captureMode = _captureModeLabel() ?? 'Unknown';
+    final textColor = isDark ? Colors.white70 : Colors.black54;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+      child: Row(
+        children: [
+          Text(
+            'Mode: $captureMode',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            'Voice: ${_formatTimestampForChannel('voice')}  Video: ${_formatTimestampForChannel('video')}',
+            style: TextStyle(
+              fontSize: 11,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ================================================================
   // BUILD
   // ================================================================
@@ -167,9 +234,10 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildPanelHeader(isDark),
+          _buildCaptureTelemetryRow(isDark),
           _buildBarGraphRow(isDark),
           _buildOverallScore(isDark),
-          _buildChatInput(isDark),
+          if (widget.onTextSend != null) _buildChatInput(isDark),
         ],
       ),
     );
@@ -182,6 +250,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
   Widget _buildPanelHeader(bool isDark) {
     final hasData = widget.sentimentData.isNotEmpty;
     final overallStatus = _overallStatus();
+    final captureMode = _captureModeLabel();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
       child: Row(
@@ -200,6 +269,26 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
             ),
           ),
           const Spacer(),
+          if (captureMode != null)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: (isDark ? Colors.white10 : Colors.black12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark ? Colors.white24 : Colors.black26,
+                ),
+              ),
+              child: Text(
+                captureMode,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
+              ),
+            ),
           if (hasData)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

@@ -13,9 +13,11 @@ Widget buildChimeMeetingEmbed({
   required bool videoEnabled,
   required bool audioEnabled,
   bool enableAutoSentimentCapture = false,
+  int sentimentCaptureIntervalMs = 15000,
   VoidCallback? onEndCallRequested,
   void Function(String transcript)? onTranscriptSample,
   void Function(String audioBase64, String audioFormat)? onAudioSample,
+  void Function(String imageBase64)? onVideoSample,
 }) {
   return platform.buildChimeMeetingEmbed(
     meetingId: meetingId,
@@ -27,8 +29,10 @@ Widget buildChimeMeetingEmbed({
     videoEnabled: videoEnabled,
     audioEnabled: audioEnabled,
     enableAutoSentimentCapture: enableAutoSentimentCapture,
+    sentimentCaptureIntervalMs: sentimentCaptureIntervalMs,
     onEndCallRequested: onEndCallRequested,
     onTranscriptSample: onTranscriptSample,
     onAudioSample: onAudioSample,
+    onVideoSample: onVideoSample,
   );
 }

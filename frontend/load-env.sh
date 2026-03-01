@@ -21,6 +21,10 @@ set +a  # Stop auto-exporting
 
 echo "Environment variables loaded successfully!"
 
+# Default sentiment mode when not provided
+CC_SENTIMENT_MODE="${CC_SENTIMENT_MODE:-balanced}"
+export CC_SENTIMENT_MODE
+
 # Verify critical variables are set
 required_vars=(
 "CC_BASE_URL_WEB"
@@ -43,7 +47,12 @@ fi
 
 # Start the application if all critical vars are present
 if [ ${#missing_vars[@]} -eq 0 ]; then
-    exec "$@"
+    if [ "$1" = "flutter" ]; then
+        echo "Using sentiment mode: $CC_SENTIMENT_MODE"
+        exec "$@" --dart-define=CARECONNECT_SENTIMENT_MODE="$CC_SENTIMENT_MODE"
+    else
+        exec "$@"
+    fi
 else
     echo "Please set the missing environment variables before starting the application"
     exit 1

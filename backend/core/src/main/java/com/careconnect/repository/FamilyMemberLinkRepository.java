@@ -43,9 +43,11 @@ public interface FamilyMemberLinkRepository extends JpaRepository<FamilyMemberLi
     
     @Query("SELECT COUNT(f) > 0 FROM FamilyMemberLink f " +
            "WHERE f.familyUser.id = :familyMemberUserId " +
-           "AND f.patientUser.id = :patientId " +
-           "AND f.status = 'ACTIVE'")
+           "AND (f.patientId = :patientId OR f.patientUser.id = :patientId) " +
+           "AND f.status = 'ACTIVE' " +
+           "AND (f.expiresAt IS NULL OR f.expiresAt > :now)")
     boolean existsByFamilyMemberUserIdAndPatientId(
         @Param("familyMemberUserId") Long familyMemberUserId, 
-        @Param("patientId") Long patientId);
+        @Param("patientId") Long patientId,
+        @Param("now") LocalDateTime now);
 }

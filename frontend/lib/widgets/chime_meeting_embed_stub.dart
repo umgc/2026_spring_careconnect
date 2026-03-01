@@ -10,9 +10,11 @@ Widget buildChimeMeetingEmbed({
   required bool videoEnabled,
   required bool audioEnabled,
   bool enableAutoSentimentCapture = false,
+  int sentimentCaptureIntervalMs = 15000,
   VoidCallback? onEndCallRequested,
   void Function(String transcript)? onTranscriptSample,
   void Function(String audioBase64, String audioFormat)? onAudioSample,
+  void Function(String imageBase64)? onVideoSample,
 }) {
   return Container(
     color: Colors.black,

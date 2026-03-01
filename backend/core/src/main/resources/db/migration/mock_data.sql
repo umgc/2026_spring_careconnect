@@ -45,8 +45,28 @@ INSERT INTO family_member (user_id, first_name, last_name, email, phone) VALUES
 -- 5. CAREGIVER_PATIENT_LINK - Use created_by not granted_by
 -- ============================================
 
-INSERT INTO caregiver_patient_link (caregiver_user_id, patient_user_id, created_by, created_at) VALUES
-((SELECT id FROM users WHERE email = 'caregiver@careconnect.com'), (SELECT id FROM users WHERE email = 'patient@careconnect.com'), (SELECT id FROM users WHERE email = 'patient@careconnect.com'), '2024-06-15 10:30:00');
+UPDATE caregiver_patient_link
+SET status = 'ACTIVE'
+WHERE status IS NULL;
+
+UPDATE caregiver_patient_link
+SET link_type = 'PERMANENT'
+WHERE link_type IS NULL;
+
+INSERT INTO caregiver_patient_link (caregiver_user_id, patient_user_id, created_by, status, link_type, created_at)
+SELECT
+	(SELECT id FROM users WHERE email = 'caregiver@careconnect.com'),
+	(SELECT id FROM users WHERE email = 'patient@careconnect.com'),
+	(SELECT id FROM users WHERE email = 'patient@careconnect.com'),
+	'ACTIVE',
+	'PERMANENT',
+	'2024-06-15 10:30:00'
+WHERE NOT EXISTS (
+	SELECT 1 FROM caregiver_patient_link
+	WHERE caregiver_user_id = (SELECT id FROM users WHERE email = 'caregiver@careconnect.com')
+	  AND patient_user_id = (SELECT id FROM users WHERE email = 'patient@careconnect.com')
+	  AND status = 'ACTIVE'
+);
 
 -- ============================================
 -- 6. FAMILY_MEMBER_LINK

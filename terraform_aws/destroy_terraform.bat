@@ -6,7 +6,7 @@ REM # Script Configuration
 REM ##########################################################################
 
 REM --- Define the folders in the order they should be DESTROYED (reverse of creation) ---
-SET "FOLDERS_DESTROY_ORDER=4_compute 3_database 2_general 1_s3_tfstate"
+SET "FOLDERS_DESTROY_ORDER=5_ecs_fargate 4_compute 3_database 2_general 1_s3_tfstate"
 
 REM ##########################################################################
 REM # Script Setup

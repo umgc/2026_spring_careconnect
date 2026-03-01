@@ -14,6 +14,7 @@ import '../../../../services/messaging_service.dart';
 import '../../../../services/call_notification_service.dart';
 import '../../../../widgets/messaging_widget.dart';
 import '../../../../widgets/call_notification_status_indicator.dart';
+import '../../../../widgets/hybrid_video_call_widget.dart';
 import 'package:care_connect_app/features/dashboard/patient_dashboard/widgets/notifications_panel_widget.dart';
 
 
@@ -101,6 +102,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
       final success = await CallNotificationService.initialize(
         userId: caregiverId.toString(),
         userRole: userProvider.user?.role.toUpperCase() ?? 'CAREGIVER',
+        userDisplayName: userProvider.user?.name,
         context: context,
       );
 
@@ -602,19 +604,22 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
       // Generate unique call ID
       final callId = 'call_${DateTime.now().millisecondsSinceEpoch}';
 
-      // Send real-time call notification to patient
-      final notificationSent = await CallNotificationService.sendCallInvitation(
-        recipientId: patient.id.toString(),
-        recipientRole: 'PATIENT',
-        callId: callId,
-        isVideoCall: isVideoCall,
+      // Navigate immediately; invitation is sent only after caller joins and is waiting.
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => HybridVideoCallWidget(
+            userId: widget.caregiverId.toString(),
+            callId: callId,
+            recipientId: patient.id.toString(),
+            isInitiator: true,
+            isVideoEnabled: isVideoCall,
+            isAudioEnabled: true,
+            userName: caregiverName ?? 'Caregiver',
+            recipientName: '${patient.firstName} ${patient.lastName}',
+          ),
+        ),
       );
-
-      if (!notificationSent) {
-        print(
-          '⚠️ Failed to send real-time notification, falling back to standard method',
-        );
-      }
 
       // Also use the existing video call service for backward compatibility
       // final callData = await VideoCallService.initiateCall(

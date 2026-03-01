@@ -79,7 +79,14 @@ cd summer2025
             CC_BASE_URL_ANDROID=http://192.168.1.155:8080
             CC_BASE_URL_WEB=http://192.168.1.155:8080
             CC_BASE_URL_OTHER=http://192.168.1.155:8080
+            CC_SENTIMENT_MODE=balanced
           ```
+
+      * `CC_SENTIMENT_MODE` options:
+        - `balanced` (default): lower sentiment API/Bedrock traffic
+        - `realtime`: faster sentiment refresh, higher traffic/cost
+        - `adaptive`: auto-switches between realtime and balanced under runtime pressure
+      * Ops runbook: `docs/guides/SENTIMENT_ADAPTIVE_RUNBOOK.md`
         
       * **IMPORTANT:** Update your code to use the methods from `package:care_connect_app/config/EnvConstant.dart` to get the environment variables you need.
     
@@ -87,6 +94,7 @@ cd summer2025
 
   2.  ### Load the Environment Variables
         Load your .env into your environment by running `load-env.sh` (Windows: `load-env.bat`)
+      - Flutter startup now auto-injects `--dart-define=CARECONNECT_SENTIMENT_MODE=<value>` from `CC_SENTIMENT_MODE`
 3. ### Platform Setup & Run
 
       #### Quick Setup (All Platforms)

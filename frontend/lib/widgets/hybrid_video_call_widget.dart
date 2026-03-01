@@ -6,6 +6,7 @@ import '../services/user_role_storage_service.dart';
 import '../config/theme/app_theme.dart';
 import '../widgets/sentiment_dashboard_widget.dart';
 import '../widgets/chime_meeting_embed.dart';
+import '../widgets/post_call_telemetry_summary_screen.dart';
 
 /// HybridVideoCallWidget — video call screen with live sentiment monitoring.
 ///
@@ -50,6 +51,15 @@ class HybridVideoCallWidget extends StatefulWidget {
 }
 
 class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
+  static const String _sentimentModeRaw = String.fromEnvironment(
+    'CARECONNECT_SENTIMENT_MODE',
+    defaultValue: 'balanced',
+  );
+
+  static const int _realtimeIntervalMs = 6000;
+  static const int _balancedIntervalMs = 15000;
+  static const Duration _adaptiveSwitchCooldown = Duration(seconds: 30);
+
   final VideoCallService _videoCallService = VideoCallService();
 
   ChimeCallSession? _callSession;
@@ -62,17 +72,61 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   String _rejectionSummaryText = 'The recipient declined the call.';
   bool _isRetryingRejectedCall = false;
   bool _isSendingAudioSample = false;
+  bool _isSendingVideoSample = false;
+  bool _isEndingCall = false;
+  bool _didNavigateToSummary = false;
   DateTime? _lastAudioSampleSentAt;
+  DateTime? _lastVideoSampleSentAt;
   DateTime? _lastTranscriptSampleSentAt;
   bool _localAudioEnabled = true;
   bool _localVideoEnabled = true;
+  bool _hasSentInitialInvitation = false;
+  int _adaptiveActiveIntervalMs = _realtimeIntervalMs;
+  int _adaptiveFailureStreak = 0;
+  int _adaptiveSuccessStreak = 0;
+  DateTime? _lastAdaptiveSwitchAt;
 
   // Latest sentiment data — updated via WebSocket push
   Map<String, dynamic> _sentimentData = {};
 
+  String get _configuredSentimentMode => _sentimentModeRaw.trim().toLowerCase();
+
+  bool get _isAdaptiveSentimentMode => _configuredSentimentMode == 'adaptive';
+
+  bool get _isRealtimeSentimentMode => _configuredSentimentMode == 'realtime';
+
+  int get _sentimentCaptureIntervalMs {
+    if (_isAdaptiveSentimentMode) return _adaptiveActiveIntervalMs;
+    return _isRealtimeSentimentMode ? _realtimeIntervalMs : _balancedIntervalMs;
+  }
+
+  String get _activeCaptureModeTag {
+    if (_isAdaptiveSentimentMode) {
+      return _adaptiveActiveIntervalMs <= _realtimeIntervalMs
+          ? 'ADAPTIVE_REALTIME'
+          : 'ADAPTIVE_BALANCED';
+    }
+    return _isRealtimeSentimentMode ? 'REALTIME' : 'BALANCED';
+  }
+
+  Duration get _sampleThrottleWindow {
+    final throttleMs = (_sentimentCaptureIntervalMs - 1000).clamp(3000, 14000);
+    return Duration(milliseconds: throttleMs);
+  }
+
+  int get _embedCaptureIntervalMs {
+    if (_isAdaptiveSentimentMode) {
+      return _realtimeIntervalMs;
+    }
+    return _sentimentCaptureIntervalMs;
+  }
+
   @override
   void initState() {
     super.initState();
+    _adaptiveActiveIntervalMs = (_isAdaptiveSentimentMode || _isRealtimeSentimentMode)
+        ? _realtimeIntervalMs
+        : _balancedIntervalMs;
     _loadCurrentRole();
     _initializeCall();
   }
@@ -97,6 +151,20 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   Future<void> _initializeCall() async {
     try {
+      final role = await UserRoleStorageService.instance.getUserRole();
+      final isCaregiverRole = role?.toUpperCase() == 'CAREGIVER';
+      final isPatientRole = role?.toUpperCase() == 'PATIENT';
+
+      if (mounted) {
+        setState(() {
+          _isCaregiverView = isCaregiverRole;
+          _isPatientView = isPatientRole;
+          if (!isCaregiverRole) {
+            _sentimentPanelExpanded = false;
+          }
+        });
+      }
+
       // Retrieve JWT from secure storage
       // Replace with your actual auth token retrieval
       final jwtToken = await _getJwtToken();
@@ -104,11 +172,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
       await _videoCallService.initialize(
         userId: widget.userId,
         jwtToken: jwtToken,
+        enablePatientSentimentCapture: isPatientRole,
         onCallEnded: () {
           if (_showCallRejectedSummary) return;
-          if (mounted && Navigator.canPop(context)) {
-            Navigator.of(context).pop();
-          }
+          _navigateToPostCallSummary();
         },
         onSentimentUpdate: (data) {
           if (mounted) {
@@ -137,6 +204,32 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         isVideoEnabled: widget.isVideoEnabled,
         isAudioEnabled: widget.isAudioEnabled,
       );
+
+      if (widget.isInitiator && !_hasSentInitialInvitation) {
+        final recipientId = widget.recipientId?.trim();
+        if (recipientId == null || recipientId.isEmpty) {
+          throw Exception('Missing recipient ID for outgoing call.');
+        }
+
+        final currentRole =
+            (await UserRoleStorageService.instance.getUserRole() ?? '')
+                .toUpperCase();
+        final recipientRole = currentRole == 'CAREGIVER' ? 'PATIENT' : 'CAREGIVER';
+
+        final invitationSent = await CallNotificationService.sendCallInvitation(
+          recipientId: recipientId,
+          recipientRole: recipientRole,
+          callId: widget.callId,
+          isVideoCall: widget.isVideoEnabled,
+        );
+
+        if (!invitationSent) {
+          await _videoCallService.endCall();
+          throw Exception('Unable to notify callee after joining the call room.');
+        }
+
+        _hasSentInitialInvitation = true;
+      }
 
       setState(() {
         _callSession = session;
@@ -179,8 +272,70 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
     _lastTranscriptSampleSentAt = now;
     try {
-      await _videoCallService.sendTextForAnalysis(text);
+      await _videoCallService.sendTextForAnalysis(
+        text,
+        captureMode: _activeCaptureModeTag,
+      );
     } catch (_) {}
+  }
+
+  void _maybeSwitchAdaptiveInterval({
+    required bool success,
+    required Duration requestLatency,
+  }) {
+    if (!_isAdaptiveSentimentMode) return;
+
+    final now = DateTime.now();
+    final switchedRecently = _lastAdaptiveSwitchAt != null &&
+        now.difference(_lastAdaptiveSwitchAt!) < _adaptiveSwitchCooldown;
+
+    final isSlowSuccess = success && requestLatency > const Duration(milliseconds: 2500);
+    final effectiveFailure = !success || isSlowSuccess;
+
+    if (effectiveFailure) {
+      _adaptiveFailureStreak += 1;
+      _adaptiveSuccessStreak = 0;
+    } else {
+      _adaptiveSuccessStreak += 1;
+      _adaptiveFailureStreak = 0;
+    }
+
+    if (!switchedRecently &&
+        _adaptiveActiveIntervalMs == _realtimeIntervalMs &&
+        _adaptiveFailureStreak >= 2) {
+      if (mounted) {
+        setState(() {
+          _adaptiveActiveIntervalMs = _balancedIntervalMs;
+          _adaptiveFailureStreak = 0;
+          _adaptiveSuccessStreak = 0;
+          _lastAdaptiveSwitchAt = now;
+        });
+      } else {
+        _adaptiveActiveIntervalMs = _balancedIntervalMs;
+        _adaptiveFailureStreak = 0;
+        _adaptiveSuccessStreak = 0;
+        _lastAdaptiveSwitchAt = now;
+      }
+      return;
+    }
+
+    if (!switchedRecently &&
+        _adaptiveActiveIntervalMs == _balancedIntervalMs &&
+        _adaptiveSuccessStreak >= 6) {
+      if (mounted) {
+        setState(() {
+          _adaptiveActiveIntervalMs = _realtimeIntervalMs;
+          _adaptiveFailureStreak = 0;
+          _adaptiveSuccessStreak = 0;
+          _lastAdaptiveSwitchAt = now;
+        });
+      } else {
+        _adaptiveActiveIntervalMs = _realtimeIntervalMs;
+        _adaptiveFailureStreak = 0;
+        _adaptiveSuccessStreak = 0;
+        _lastAdaptiveSwitchAt = now;
+      }
+    }
   }
 
   Future<void> _handleAudioSample(String audioBase64, String audioFormat) async {
@@ -189,20 +344,62 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
     final now = DateTime.now();
     if (_lastAudioSampleSentAt != null &&
-        now.difference(_lastAudioSampleSentAt!) < const Duration(seconds: 45)) {
+        now.difference(_lastAudioSampleSentAt!) < _sampleThrottleWindow) {
       return;
     }
 
     _isSendingAudioSample = true;
     try {
-      await _videoCallService.sendAudioForAnalysis(
+      final startedAt = DateTime.now();
+      final success = await _videoCallService.sendAudioForAnalysis(
         audioBase64,
         audioFormat: audioFormat,
+        captureMode: _activeCaptureModeTag,
       );
-      _lastAudioSampleSentAt = DateTime.now();
+
+      _maybeSwitchAdaptiveInterval(
+        success: success,
+        requestLatency: DateTime.now().difference(startedAt),
+      );
+
+      if (success) {
+        _lastAudioSampleSentAt = DateTime.now();
+      }
     } catch (_) {
     } finally {
       _isSendingAudioSample = false;
+    }
+  }
+
+  Future<void> _handleVideoSample(String imageBase64) async {
+    if (!_isPatientView || _isSendingVideoSample) return;
+    if (imageBase64.isEmpty) return;
+
+    final now = DateTime.now();
+    if (_lastVideoSampleSentAt != null &&
+        now.difference(_lastVideoSampleSentAt!) < _sampleThrottleWindow) {
+      return;
+    }
+
+    _isSendingVideoSample = true;
+    try {
+      final startedAt = DateTime.now();
+      final success = await _videoCallService.sendVideoFrameForAnalysis(
+        imageBase64,
+        captureMode: _activeCaptureModeTag,
+      );
+
+      _maybeSwitchAdaptiveInterval(
+        success: success,
+        requestLatency: DateTime.now().difference(startedAt),
+      );
+
+      if (success) {
+        _lastVideoSampleSentAt = DateTime.now();
+      }
+    } catch (_) {
+    } finally {
+      _isSendingVideoSample = false;
     }
   }
 
@@ -216,6 +413,38 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     setState(() {
       _localVideoEnabled = !_localVideoEnabled;
     });
+  }
+
+  Future<void> _navigateToPostCallSummary() async {
+    if (!mounted || _didNavigateToSummary) return;
+    _didNavigateToSummary = true;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => PostCallTelemetrySummaryScreen(
+          callId: widget.callId,
+          recipientName: widget.recipientName,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _endCallAndNavigate() async {
+    if (_isEndingCall) return;
+
+    setState(() {
+      _isEndingCall = true;
+    });
+
+    try {
+      await _videoCallService.endCall();
+      await _navigateToPostCallSummary();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isEndingCall = false;
+        });
+      }
+    }
   }
 
   @override
@@ -278,8 +507,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
                 ? SentimentDashboardWidget(
                     sentimentData: _sentimentData,
                     callId: widget.callId,
-                    onTextSend: (text) =>
-                        _videoCallService.sendTextForAnalysis(text),
                   )
                 : const SizedBox.shrink(),
           ),
@@ -419,25 +646,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
       await _videoCallService.endCall();
 
       final newCallId = 'chime_call_${DateTime.now().millisecondsSinceEpoch}';
-      final recipientRole = _isCaregiverView ? 'PATIENT' : 'CAREGIVER';
-
-      final sent = await CallNotificationService.sendCallInvitation(
-        recipientId: recipientId,
-        recipientRole: recipientRole,
-        callId: newCallId,
-        isVideoCall: widget.isVideoEnabled,
-      );
-
-      if (!sent) {
-        if (!mounted) return;
-        setState(() {
-          _isRetryingRejectedCall = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not place retry call. Please try again.')),
-        );
-        return;
-      }
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -496,11 +704,13 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         videoEnabled: _callSession!.isVideoEnabled,
         audioEnabled: _callSession!.isAudioEnabled,
         enableAutoSentimentCapture: _isPatientView,
+        sentimentCaptureIntervalMs: _embedCaptureIntervalMs,
         onEndCallRequested: () async {
-          await _videoCallService.endCall();
+          await _endCallAndNavigate();
         },
         onTranscriptSample: _handleTranscriptSample,
         onAudioSample: _handleAudioSample,
+        onVideoSample: _handleVideoSample,
       );
     }
 
@@ -576,12 +786,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
                     ),
                     child: IconButton(
                       tooltip: 'End call',
-                      onPressed: () async {
-                        await _videoCallService.endCall();
-                        if (mounted && Navigator.canPop(context)) {
-                          Navigator.of(context).pop();
-                        }
-                      },
+                      onPressed: _isEndingCall ? null : _endCallAndNavigate,
                       icon: const Icon(Icons.call_end, color: Colors.white),
                     ),
                   ),

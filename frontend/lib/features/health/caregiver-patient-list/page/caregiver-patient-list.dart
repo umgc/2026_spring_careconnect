@@ -43,6 +43,9 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
   /// Loading state indicator for async operations
   bool _isLoading = false;
 
+  static const String _unknownMoodLabel = 'Unknown';
+  static const String _unknownMoodEmoji = '😐';
+
   /// Initializes the widget state.
   ///
   /// Sets up the search controller listener and loads initial patient data.
@@ -96,7 +99,11 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
       if (response.statusCode == 200) {
         print(response.body);
         final List<dynamic> data = jsonDecode(response.body);
-        final patients = data.map((json) => _patientFromJson(json)).toList();
+        final rows = data.whereType<Map<String, dynamic>>().toList();
+        final moodByUserId = await _loadLatestMoodByPatientUserId(rows);
+        final patients = rows
+            .map((json) => _patientFromJson(json, moodByUserId))
+            .toList();
 
         setState(() {
           _allPatients = patients;
@@ -122,9 +129,16 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
   }
 
   /// Converts API JSON response to Patient model
-  Patient _patientFromJson(Map<String, dynamic> json) {
+  Patient _patientFromJson(
+    Map<String, dynamic> json,
+    Map<int, _MoodSnapshot> moodByUserId,
+  ) {
     final patient = json['patient'] ?? {};
     final link = json['link'] ?? {};
+    final patientUserId = _safeInt(link['patientUserId']);
+    final moodSnapshot = patientUserId == null
+        ? null
+        : moodByUserId[patientUserId];
 
     return Patient(
       id: patient['id']?.toString() ?? '',
@@ -132,12 +146,96 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
       lastName: patient['lastName'] ?? '',
       lastUpdated: DateTime.now(), // TODO: Use actual lastUpdated from API
       statusMessage: link['notes'] ?? 'No status available',
-      nextCheckIn: DateTime.now().add(const Duration(days: 1)), // TODO: Use actual check-in date
-      mood: 'Good', // TODO: Fetch actual mood from patient data
-      moodEmoji: '😊', // TODO: Map mood to emoji
+      nextCheckIn: DateTime.now().add(
+        const Duration(days: 1),
+      ), // TODO: Use actual check-in date
+      mood: moodSnapshot?.label ?? _unknownMoodLabel,
+      moodEmoji: moodSnapshot?.emoji ?? _unknownMoodEmoji,
       isUrgent: false, // TODO: Determine urgency based on patient status
       messageCount: 0, // TODO: Fetch actual unread message count
     );
+  }
+
+  Future<Map<int, _MoodSnapshot>> _loadLatestMoodByPatientUserId(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final userIds = rows
+        .map(
+          (row) => _safeInt(
+            (row['link'] as Map<String, dynamic>?)?['patientUserId'],
+          ),
+        )
+        .whereType<int>()
+        .toSet()
+        .toList();
+
+    if (userIds.isEmpty) {
+      return const {};
+    }
+
+    final results = await Future.wait(
+      userIds.map((userId) async {
+        try {
+          final moods = await ApiService.getMoodHistory(userId);
+          final latest = moods.isNotEmpty && moods.first is Map<String, dynamic>
+              ? moods.first as Map<String, dynamic>
+              : const <String, dynamic>{};
+
+          final score = _safeInt(latest['score']) ?? 0;
+          final label = _firstNonEmpty([
+            latest['label'],
+            _moodLabelFromScore(score),
+          ]);
+
+          return MapEntry(
+            userId,
+            _MoodSnapshot(label: label, emoji: _moodEmojiFromLabel(label)),
+          );
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+
+    final map = <int, _MoodSnapshot>{};
+    for (final entry in results) {
+      if (entry != null) {
+        map[entry.key] = entry.value;
+      }
+    }
+    return map;
+  }
+
+  int? _safeInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  String _firstNonEmpty(List<dynamic> candidates) {
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+    return '';
+  }
+
+  String _moodLabelFromScore(int score) {
+    if (score >= 8) return 'Excellent';
+    if (score >= 6) return 'Good';
+    if (score >= 4) return 'Fair';
+    if (score >= 1) return 'Poor';
+    return _unknownMoodLabel;
+  }
+
+  String _moodEmojiFromLabel(String label) {
+    final l = label.toLowerCase();
+    if (l.contains('excellent') || l.contains('great')) return '😄';
+    if (l.contains('good') || l.contains('happy')) return '🙂';
+    if (l.contains('fair') || l.contains('neutral')) return '😐';
+    if (l.contains('poor') || l.contains('sad')) return '😟';
+    return _unknownMoodEmoji;
   }
 
   /// Handles search text changes and filters the patient list.
@@ -395,7 +493,6 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
     }
   }
 
-
   /// Builds the main UI for the caregiver patient list screen.
   ///
   /// Creates a scaffold with:
@@ -564,14 +661,14 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
                               MaterialPageRoute(
                                 builder: (_) => PatientDetailsPage(
                                   patientId: patient.id,
-                                  isCaregiver: true,   // or patient: patient
+                                  isCaregiver: true, // or patient: patient
                                 ),
                               ),
                             );
                           },
                         );
                       },
-              ),
+                    ),
             ),
           ],
         ),
@@ -626,4 +723,11 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
       ),
     );
   }
+}
+
+class _MoodSnapshot {
+  final String label;
+  final String emoji;
+
+  const _MoodSnapshot({required this.label, required this.emoji});
 }

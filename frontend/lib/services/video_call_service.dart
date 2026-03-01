@@ -25,6 +25,7 @@ class VideoCallService {
 
   bool _isInitialized = false;
   bool _isInCall = false;
+  bool _isPatientSentimentSource = false;
   String? _currentCallId;
   String? _otherPartyId;
   String? _jwtToken;
@@ -53,6 +54,7 @@ class VideoCallService {
   Future<void> initialize({
     required String userId,
     required String jwtToken,
+    required bool enablePatientSentimentCapture,
     VoidCallback? onCallEnded,
     Function(Map<String, dynamic>)? onSentimentUpdate,
     Function(Map<String, dynamic>)? onCallDeclined,
@@ -61,6 +63,7 @@ class VideoCallService {
     _onCallEnded = onCallEnded;
     _onSentimentUpdate = onSentimentUpdate;
     _onCallDeclined = onCallDeclined;
+    _isPatientSentimentSource = enablePatientSentimentCapture;
     _isInitialized = true;
 
     // Listen for sentiment updates pushed via WebSocket
@@ -122,8 +125,9 @@ class VideoCallService {
       _meetingCredentials = jsonDecode(response.body) as Map<String, dynamic>;
       debugPrint('✅ Chime meeting credentials received for call: $callId');
 
-      // Start periodic sentiment analysis
-      _startSentimentTimer();
+      if (_isPatientSentimentSource) {
+        _startSentimentTimer();
+      }
 
       return ChimeCallSession(
         callId:          callId,
@@ -179,22 +183,34 @@ class VideoCallService {
   // Called when a chat message is sent during the call
   // ================================================================
 
-  Future<void> sendTextForAnalysis(String text) async {
-    if (!_isInCall || _currentCallId == null) return;
+  Future<bool> sendTextForAnalysis(String text, {String? captureMode}) async {
+    if (!_isPatientSentimentSource || !_isInCall || _currentCallId == null) {
+      return false;
+    }
+
     try {
-      await http.post(
+      final response = await http.post(
         Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/text'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
         },
         body: jsonEncode({
-          'text':         text,
+          'text': text,
           'otherPartyId': _otherPartyId,
+          'captureMode': captureMode,
         }),
       );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      }
+
+      debugPrint('⚠️ Text sentiment request failed: ${response.statusCode} ${response.body}');
+      return false;
     } catch (e) {
       debugPrint('⚠️ Text sentiment error: $e');
+      return false;
     }
   }
 
@@ -203,26 +219,39 @@ class VideoCallService {
   // Called with a base64 audio chunk every ~15 seconds
   // ================================================================
 
-  Future<void> sendAudioForAnalysis(
+  Future<bool> sendAudioForAnalysis(
     String audioBase64, {
     String audioFormat = 'wav',
+    String? captureMode,
   }) async {
-    if (!_isInCall || _currentCallId == null) return;
+    if (!_isPatientSentimentSource || !_isInCall || _currentCallId == null) {
+      return false;
+    }
+
     try {
-      await http.post(
+      final response = await http.post(
         Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/voice'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
         },
         body: jsonEncode({
-          'audioBase64':  audioBase64,
+          'audioBase64': audioBase64,
           'audioFormat': audioFormat,
           'otherPartyId': _otherPartyId,
+          'captureMode': captureMode,
         }),
       );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        debugPrint('⚠️ Voice sentiment request failed: ${response.statusCode} ${response.body}');
+        return false;
+      }
+
+      return true;
     } catch (e) {
       debugPrint('⚠️ Voice sentiment error: $e');
+      return false;
     }
   }
 
@@ -231,23 +260,35 @@ class VideoCallService {
   // Called with a base64 JPEG frame capture every ~15 seconds
   // ================================================================
 
-  Future<void> sendVideoFrameForAnalysis(String imageBase64) async {
-    if (!_isInCall || _currentCallId == null) return;
+  Future<bool> sendVideoFrameForAnalysis(String imageBase64, {String? captureMode}) async {
+    if (!_isPatientSentimentSource || !_isInCall || _currentCallId == null) {
+      return false;
+    }
+
     try {
-      await http.post(
+      final response = await http.post(
         Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/video'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
         },
         body: jsonEncode({
-          'imageBase64':  imageBase64,
-          'imageFormat':  'jpeg',
+          'imageBase64': imageBase64,
+          'imageFormat': 'jpeg',
           'otherPartyId': _otherPartyId,
+          'captureMode': captureMode,
         }),
       );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      }
+
+      debugPrint('⚠️ Video sentiment request failed: ${response.statusCode} ${response.body}');
+      return false;
     } catch (e) {
       debugPrint('⚠️ Video sentiment error: $e');
+      return false;
     }
   }
 
@@ -266,7 +307,7 @@ class VideoCallService {
   }
 
   Future<void> _postCombinedSentiment() async {
-    if (!_isInCall || _currentCallId == null) return;
+    if (!_isPatientSentimentSource || !_isInCall || _currentCallId == null) return;
     try {
       // Phase 1: text-only combined sentiment
       // Phase 2: will include audioBase64 and imageBase64
@@ -296,6 +337,7 @@ class VideoCallService {
     final payload = (event['sentiment'] is Map<String, dynamic>)
         ? Map<String, dynamic>.from(event['sentiment'] as Map<String, dynamic>)
         : <String, dynamic>{};
+    final captureMode = (event['captureMode'] as String?)?.trim();
 
     final now = DateTime.now().toUtc();
 
@@ -332,6 +374,9 @@ class VideoCallService {
 
     _markStaleChannels(now);
     _aggregatedSentiment['overall'] = _buildOverallFromChannels();
+    if (captureMode != null && captureMode.isNotEmpty) {
+      _aggregatedSentiment['_captureMode'] = captureMode.toUpperCase();
+    }
 
     return Map<String, dynamic>.from(_aggregatedSentiment);
   }
@@ -491,6 +536,7 @@ class VideoCallService {
     _wsSubscription?.cancel();
     _aggregatedSentiment.clear();
     _onCallDeclined = null;
+    _isPatientSentimentSource = false;
     _isInitialized = false;
     _isInCall = false;
   }

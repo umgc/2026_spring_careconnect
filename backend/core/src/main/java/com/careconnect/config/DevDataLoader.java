@@ -71,6 +71,11 @@ public class DevDataLoader implements CommandLineRunner {
                 int medicationCount = getTableCount(stmt, "patient_medication");
                 int symptomCount = getTableCount(stmt, "symptom_entry");
                 int subscriptionCount = getTableCount(stmt, "subscriptions");
+                int activeCaregiverLinkCount = getConditionalCount(
+                    stmt,
+                    "caregiver_patient_link",
+                    "status = 'ACTIVE'"
+                );
                 int activeFamilyLinkCount = getConditionalCount(
                     stmt,
                     "family_member_link",
@@ -81,11 +86,12 @@ public class DevDataLoader implements CommandLineRunner {
                         || medicationCount == 0
                         || symptomCount == 0
                     || subscriptionCount == 0
+                    || activeCaregiverLinkCount == 0
                     || activeFamilyLinkCount == 0;
 
                 if (seedDataIncomplete) {
-                    log.info("Detected incomplete seed data. plan={}, patient_medication={}, symptom_entry={}, subscriptions={}, active_family_links={}. Running mock data repair.",
-                        planCount, medicationCount, symptomCount, subscriptionCount, activeFamilyLinkCount);
+                    log.info("Detected incomplete seed data. plan={}, patient_medication={}, symptom_entry={}, subscriptions={}, active_caregiver_links={}, active_family_links={}. Running mock data repair.",
+                        planCount, medicationCount, symptomCount, subscriptionCount, activeCaregiverLinkCount, activeFamilyLinkCount);
                 }
 
                 return seedDataIncomplete;

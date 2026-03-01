@@ -14,6 +14,7 @@ class CallNotificationService {
   static bool _isConnected = false;
   static String? _currentUserId;
   static String? _currentUserRole;
+  static String? _currentUserDisplayName;
   static BuildContext? _context;
   static String? _activeCallId;
   static String? _currentIncomingCallId;
@@ -35,11 +36,17 @@ class CallNotificationService {
     required String userId,
     required String userRole, // 'CAREGIVER' or 'PATIENT'
     required BuildContext context,
+    String? userDisplayName,
     String? websocketUrl, // Optional: pass WebSocket URL for flexibility
   }) async {
     try {
       _currentUserId = userId;
       _currentUserRole = userRole;
+      _currentUserDisplayName = _normalizeDisplayName(
+        (userDisplayName ?? '').toString(),
+        roleFallback: userRole,
+        genericFallback: 'Participant',
+      );
       _context = context;
 
       debugPrint('🔔 Initializing CallNotificationService for $userRole: $userId');
@@ -149,9 +156,15 @@ class CallNotificationService {
     // Extract call information
     final callId = (callData['callId'] ?? '').toString();
     final callerId = (callData['senderId'] ?? callData['callerId'] ?? '').toString();
-    final callerName = (callData['senderName'] ?? callData['callerName'] ?? 'Unknown Caller').toString();
+    final callerRole =
+      (callData['senderRole'] ?? callData['callerRole'] ?? 'PATIENT').toString();
+    final callerName = _normalizeDisplayName(
+      (callData['senderName'] ?? callData['callerName'] ?? 'Unknown Caller')
+        .toString(),
+      roleFallback: callerRole,
+      genericFallback: 'Unknown Caller',
+    );
     final isVideoCall = callData['isVideoCall'] ?? true;
-    final callerRole = (callData['senderRole'] ?? callData['callerRole'] ?? 'PATIENT').toString();
 
     if (callId.isEmpty) return;
     _pruneSuppressedIncomingCallIds();
@@ -343,9 +356,11 @@ class CallNotificationService {
     final context = _context;
     if (context == null) return;
 
-    final declinedByName =
-        (data['declinedByName'] ?? data['senderName'] ?? 'The recipient')
-            .toString();
+    final declinedByName = _normalizeDisplayName(
+      (data['declinedByName'] ?? data['senderName'] ?? 'The recipient')
+        .toString(),
+      genericFallback: 'The recipient',
+    );
     final reason = (data['reason'] ?? 'declined').toString();
     final normalizedReason = reason.trim().isEmpty ? 'declined' : reason;
 
@@ -356,8 +371,10 @@ class CallNotificationService {
   }
 
   static void _notifyCallAnswered(Map<String, dynamic> data) {
-    final answeredBy =
-        (data['answeredByName'] ?? data['senderName'] ?? 'Recipient').toString();
+    final answeredBy = _normalizeDisplayName(
+      (data['answeredByName'] ?? data['senderName'] ?? 'Recipient').toString(),
+      genericFallback: 'Recipient',
+    );
     _showCallFeedback(
       '$answeredBy answered. Connecting now…',
       backgroundColor: Colors.green.shade700,
@@ -365,9 +382,11 @@ class CallNotificationService {
   }
 
   static void _notifyCallEnded(Map<String, dynamic> data) {
-    final endedBy =
-        (data['endedByName'] ?? data['senderName'] ?? 'Other participant')
-            .toString();
+    final endedBy = _normalizeDisplayName(
+      (data['endedByName'] ?? data['senderName'] ?? 'Other participant')
+          .toString(),
+      genericFallback: 'Other participant',
+    );
     _showCallFeedback(
       'Call ended by $endedBy.',
       backgroundColor: Colors.blueGrey.shade700,
@@ -461,11 +480,41 @@ class CallNotificationService {
     // removed extra closing brace here
   }
 
+  static String _normalizeDisplayName(
+    String raw, {
+    String? roleFallback,
+    String genericFallback = 'Participant',
+  }) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return _roleLabel(roleFallback) ?? genericFallback;
+    }
+
+    if (_looksLikeEmail(trimmed)) {
+      return _roleLabel(roleFallback) ?? genericFallback;
+    }
+
+    return trimmed;
+  }
+
+  static bool _looksLikeEmail(String value) {
+    return value.contains('@') && value.contains('.');
+  }
+
+  static String? _roleLabel(String? role) {
+    final normalized = role?.trim().toUpperCase();
+    if (normalized == 'CAREGIVER') return 'Caregiver';
+    if (normalized == 'PATIENT') return 'Patient';
+    return null;
+  }
+
   /// Get current user name from context or default
   static String _getCurrentUserName() {
-    // You can implement this to get the actual user name
-    // For now, return a placeholder based on role
-    return _currentUserRole == 'CAREGIVER' ? 'Caregiver' : 'Patient';
+    return _normalizeDisplayName(
+      (_currentUserDisplayName ?? '').toString(),
+      roleFallback: _currentUserRole,
+      genericFallback: 'Participant',
+    );
   }
 
   /// Dispose and cleanup
@@ -478,6 +527,7 @@ class CallNotificationService {
     _isConnected = false;
     _currentUserId = null;
     _currentUserRole = null;
+    _currentUserDisplayName = null;
     _context = null;
     _activeCallId = null;
     _currentIncomingCallId = null;

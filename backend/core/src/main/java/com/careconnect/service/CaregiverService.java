@@ -40,6 +40,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.Map;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -419,7 +420,11 @@ public boolean hasAccessToPatient(Long userId, Long patientId) {
             
         case FAMILY_MEMBER:
             // Similar check for family members
-            return familyMemberLinkRepository.existsByFamilyMemberUserIdAndPatientId(userId, patientId);
+            return familyMemberLinkRepository.existsByFamilyMemberUserIdAndPatientId(
+                userId,
+                patientId,
+                LocalDateTime.now()
+            );
             
         case ADMIN:
             return true;

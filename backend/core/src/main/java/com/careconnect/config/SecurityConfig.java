@@ -15,7 +15,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
-
 import org.springframework.context.annotation.Profile;
 
 @Configuration
@@ -25,19 +24,16 @@ public class SecurityConfig {
         @Bean
         @Order(0)
         @Profile("dev")
-        SecurityFilterChain devChain(HttpSecurity http,
-                                JwtTokenProvider jwt,
-                                UserDetailsService uds,
-                                CorsConfigurationSource corsConfigurationSource) throws Exception {
-
-        JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwt, uds);
+        SecurityFilterChain devChain(
+                HttpSecurity http,
+                CorsConfigurationSource corsConfigurationSource
+        ) throws Exception {
 
         return http
                 .securityMatcher("/v1/api/dev/**")
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, e) ->
                                 res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))

@@ -2,6 +2,7 @@ package com.careconnect.controller.dev;
 
 import com.careconnect.model.FeatureTelemetryEvent;
 import com.careconnect.service.FeatureTelemetryService;
+import com.careconnect.service.TelemetryToggleService;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,13 +16,20 @@ import java.util.Map;
 public class DevTelemetryController {
 
     private final FeatureTelemetryService telemetry;
+    private final TelemetryToggleService toggle;
 
-    public DevTelemetryController(FeatureTelemetryService telemetry) {
+    public DevTelemetryController(FeatureTelemetryService telemetry, TelemetryToggleService toggle) {
         this.telemetry = telemetry;
+        this.toggle = toggle;
     }
 
     @PostMapping
-    public ResponseEntity<FeatureTelemetryEvent> emit(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> emit(@RequestBody Map<String, Object> body) {
+        // Telemetry OFF means: do not record anything
+        if (!toggle.isEnabled()) {
+            return ResponseEntity.noContent().build(); // 204
+        }
+
         FeatureTelemetryEvent e = new FeatureTelemetryEvent();
         e.setEventName(asString(body.getOrDefault("eventName", "dev_emit")));
         e.setEventTime(OffsetDateTime.now(java.time.Clock.systemUTC()));
@@ -40,6 +48,16 @@ public class DevTelemetryController {
     @GetMapping("/recent")
     public ResponseEntity<?> recent(@RequestParam(defaultValue = "50") int limit) {
         return ResponseEntity.ok(telemetry.recent(limit));
+    }
+
+    @GetMapping("/enabled")
+    public ResponseEntity<?> enabled() {
+        return ResponseEntity.ok(Map.of("enabled", toggle.isEnabled()));
+    }
+
+    @PutMapping("/enabled")
+    public ResponseEntity<?> setEnabled(@RequestParam boolean enabled) {
+        return ResponseEntity.ok(Map.of("enabled", toggle.setEnabled(enabled)));
     }
 
     private static String asString(Object o) {

@@ -1,5 +1,7 @@
 package com.careconnect.service;
 
+import com.careconnect.model.Caregiver;
+import com.careconnect.repository.CaregiverRepository;
 import com.careconnect.dto.MedicationDTO;
 import com.careconnect.exception.AppException;
 import com.careconnect.model.Medication;
@@ -24,6 +26,7 @@ public class MedicationService {
     private final PatientRepository patientRepository;
     private final NotificationService notificationService;
     private final CaregiverPatientLinkService caregiverPatientLinkService;
+    private final CaregiverRepository caregiverRepository;
 
     // -------------------------------------------------------
     // Basic retrieval methods
@@ -79,7 +82,7 @@ public class MedicationService {
                 .startDate(medicationDTO.startDate())
                 .endDate(medicationDTO.endDate())
                 .notes(medicationDTO.notes())
-                .isActive(medicationDTO.isActive() != null ? medicationDTO.isActive() : false)
+                .isActive(false)
                 .approvalStatus("PENDING")
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
@@ -92,8 +95,29 @@ public class MedicationService {
     /**
      * Wrapper for adding medication by patientId (used by controller)
      */
-    @Transactional
-    public MedicationDTO addMedication(Long patientId, MedicationDTO medicationDTO) {
+        @Transactional
+        public MedicationDTO addMedication(Long patientId, MedicationDTO medicationDTO) {
+
+        // ---- Guardrails so {} returns 400 instead of 500 ----
+        if (medicationDTO == null) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "Request body is required");
+        }
+        if (medicationDTO.medicationName() == null || medicationDTO.medicationName().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "medicationName is required");
+        }
+        if (medicationDTO.dosage() == null || medicationDTO.dosage().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "dosage is required");
+        }
+        if (medicationDTO.frequency() == null || medicationDTO.frequency().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "frequency is required");
+        }
+        if (medicationDTO.route() == null || medicationDTO.route().isBlank()) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "route is required");
+        }
+        if (medicationDTO.medicationType() == null) {
+                throw new AppException(HttpStatus.BAD_REQUEST, "medicationType is required");
+        }
+
         // Ensure patient ID is set correctly before creation
         MedicationDTO dtoWithPatient = MedicationDTO.builder()
                 .patientId(patientId)
@@ -111,7 +135,7 @@ public class MedicationService {
                 .build();
 
         return createMedication(dtoWithPatient);
-    }
+        }
 
     /**
      * Update an existing medication
@@ -197,27 +221,30 @@ public class MedicationService {
     /**
      * Hard delete medication (Caregiver-side) - Actually removes from database
      */
-    @Transactional
-    public void hardDeleteMedication(Long patientId, Long medicationId, Long caregiverId) {
+        @Transactional
+        public void hardDeleteMedication(Long patientId, Long medicationId, Long caregiverId) {
         Medication medication = medicationRepository.findById(medicationId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Medication not found with id: " + medicationId));
 
-        if (!caregiverPatientLinkService.hasActiveLink(caregiverId, patientId)) {
-            throw new AppException(HttpStatus.FORBIDDEN, 
-                "Caregiver does not have active link to patient");   
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Patient not found with id: " + patientId));
+
+        Caregiver caregiver = caregiverRepository.findById(caregiverId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Caregiver not found with id: " + caregiverId));
+
+        Long patientUserId = patient.getUser().getId();
+        Long caregiverUserId = caregiver.getUser().getId();
+
+        if (!caregiverPatientLinkService.hasAccessToPatient(caregiverUserId, patientUserId)) {
+                throw new AppException(HttpStatus.FORBIDDEN, "Caregiver does not have active link to patient");
         }
-        
+
         if (!medication.getPatient().getId().equals(patientId)) {
-            throw new AppException(HttpStatus.FORBIDDEN, "Medication does not belong to patient");
+                throw new AppException(HttpStatus.FORBIDDEN, "Medication does not belong to patient");
         }
 
-        // Optional: Verify caregiver has access to this patient
-        // You can add caregiver-patient relationship validation here if needed
-
-        // Hard delete from database
         medicationRepository.delete(medication);
 
-        // Send notification to patient
         notificationService.sendNotificationToUser(
                 patientId,
                 "Medication Deleted",
@@ -225,7 +252,7 @@ public class MedicationService {
                 "MEDICATION_DELETED",
                 Map.of("medicationId", String.valueOf(medicationId), "caregiverId", String.valueOf(caregiverId))
         );
-    }
+        }
 
     // -------------------------------------------------------
     // Query helpers
@@ -235,21 +262,24 @@ public class MedicationService {
         return medicationRepository.findById(id).map(this::mapToDTO);
     }
 
-    public List<MedicationDTO> getPendingMedications(Long patientId) {
+        public List<MedicationDTO> getPendingMedications(Long patientId) {
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Patient not found with id: " + patientId));
 
-        return medicationRepository.findByPatientAndApprovalStatus(patient, "PENDING")
+        return medicationRepository.findByPatientAndApprovalStatusInOrderByCreatedAtDesc(
+                        patient,
+                        List.of("PENDING", "REMOVAL_PENDING")
+                )
                 .stream()
                 .map(this::mapToDTO)
                 .toList();
-    }
+        }
 
     // -------------------------------------------------------
     // Mapper
     // -------------------------------------------------------
 
-    private MedicationDTO mapToDTO(Medication medication) {
+        private MedicationDTO mapToDTO(Medication medication) {
         return MedicationDTO.builder()
                 .id(medication.getId())
                 .patientId(medication.getPatient().getId())
@@ -264,6 +294,7 @@ public class MedicationService {
                 .endDate(medication.getEndDate())
                 .notes(medication.getNotes())
                 .isActive(medication.getIsActive())
+                .approvalStatus(medication.getApprovalStatus())
                 .build();
-    }
+        }
 }

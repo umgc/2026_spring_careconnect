@@ -9,7 +9,10 @@ Widget buildChimeMeetingEmbed({
   String? externalUserId,
   required bool videoEnabled,
   required bool audioEnabled,
+  bool enableAutoSentimentCapture = false,
   VoidCallback? onEndCallRequested,
+  void Function(String transcript)? onTranscriptSample,
+  void Function(String audioBase64, String audioFormat)? onAudioSample,
 }) {
   return Container(
     color: Colors.black,

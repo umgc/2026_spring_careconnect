@@ -20,7 +20,7 @@ import java.time.Period;
 import java.util.List;
 
 @RestController
-@RequestMapping("/v1/api/family-members")
+@RequestMapping("/v3/api/family-members")
 public class FamilyMemberController {
 
     @Autowired
@@ -35,8 +35,8 @@ public class FamilyMemberController {
     // Helper method to get current user and validate they are a family member
     private User getCurrentFamilyMember() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Long currentUserId = Long.parseLong(authentication.getName());
-        User user = userRepository.findById(currentUserId)
+        String userEmail = authentication.getName();
+        User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "User not authenticated"));
         
         if (user.getRole() != Role.FAMILY_MEMBER) {
@@ -98,5 +98,20 @@ public class FamilyMemberController {
         
         List<VitalSampleDTO> vitals = analyticsService.getVitals(patientId, Period.ofDays(days));
         return ResponseEntity.ok(vitals);
+    }
+
+    @GetMapping("/patients/{patientId}/status")
+    public ResponseEntity<java.util.Map<String, Object>> getPatientStatus(@PathVariable Long patientId) {
+        User familyMember = getCurrentFamilyMember();
+
+        if (!familyMemberService.hasAccessToPatient(familyMember.getId(), patientId)) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Access denied to patient data");
+        }
+
+        return ResponseEntity.ok(java.util.Map.of(
+                "patientId", patientId,
+                "hasAccess", true,
+                "status", "available"
+        ));
     }
 }

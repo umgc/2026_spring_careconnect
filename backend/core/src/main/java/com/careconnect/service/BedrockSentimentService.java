@@ -116,6 +116,10 @@ public class BedrockSentimentService {
      * @param callId      the active call session ID
      */
     public SentimentResult analyzeVoice(String audioBase64, String callId) {
+        return analyzeVoice(audioBase64, callId, "wav");
+    }
+
+    public SentimentResult analyzeVoice(String audioBase64, String callId, String audioFormat) {
         log.debug("Analyzing voice sentiment for callId: {}", callId);
 
         if (!isBedrockAvailable()) {
@@ -142,7 +146,8 @@ public class BedrockSentimentService {
             """;
 
         try {
-            String responseBody = invokeVoxtralModel(prompt, audioBase64);
+            String normalizedFormat = normalizeAudioFormat(audioFormat);
+            String responseBody = invokeVoxtralModel(prompt, audioBase64, normalizedFormat);
             return parseSentimentResponse(responseBody, "VOICE", callId);
         } catch (Exception e) {
             log.error("Voice sentiment analysis failed for callId: {}", callId, e);
@@ -289,7 +294,7 @@ public class BedrockSentimentService {
      * Invokes Mistral Voxtral for audio/voice analysis.
      * Voxtral supports audio input natively.
      */
-    private String invokeVoxtralModel(String prompt, String audioBase64) throws Exception {
+    private String invokeVoxtralModel(String prompt, String audioBase64, String audioFormat) throws Exception {
         Map<String, Object> requestBody = new HashMap<>();
 
         Map<String, Object> userMessage = new HashMap<>();
@@ -297,7 +302,7 @@ public class BedrockSentimentService {
         userMessage.put("content", List.of(
             Map.of("type", "audio", "audio", Map.of(
                 "data",   audioBase64,
-                "format", "wav"
+                "format", audioFormat
             )),
             Map.of("type", "text", "text", prompt)
         ));
@@ -306,6 +311,18 @@ public class BedrockSentimentService {
         requestBody.put("max_tokens", 200);
 
         return invokeModel(voxtralModelId, requestBody);
+    }
+
+    private String normalizeAudioFormat(String audioFormat) {
+        String normalized = audioFormat == null ? "" : audioFormat.trim().toLowerCase();
+        if (normalized.isBlank()) {
+            return "wav";
+        }
+
+        return switch (normalized) {
+            case "wav", "wave", "webm", "ogg", "mp3", "mpeg", "mp4", "aac", "flac" -> normalized;
+            default -> "wav";
+        };
     }
 
     /**

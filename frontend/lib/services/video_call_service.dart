@@ -203,7 +203,10 @@ class VideoCallService {
   // Called with a base64 audio chunk every ~15 seconds
   // ================================================================
 
-  Future<void> sendAudioForAnalysis(String audioBase64) async {
+  Future<void> sendAudioForAnalysis(
+    String audioBase64, {
+    String audioFormat = 'wav',
+  }) async {
     if (!_isInCall || _currentCallId == null) return;
     try {
       await http.post(
@@ -214,6 +217,7 @@ class VideoCallService {
         },
         body: jsonEncode({
           'audioBase64':  audioBase64,
+          'audioFormat': audioFormat,
           'otherPartyId': _otherPartyId,
         }),
       );

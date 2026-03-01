@@ -116,9 +116,10 @@ public class CallController {
         try {
             User currentUser = getCurrentUser();
             String audioBase64 = body.get("audioBase64");
+            String audioFormat = body.getOrDefault("audioFormat", "wav");
             if (audioBase64 == null || audioBase64.isBlank())
                 throw new AppException(HttpStatus.BAD_REQUEST, "audioBase64 field is required");
-            SentimentResult result = sentimentService.analyzeVoice(audioBase64, callId);
+            SentimentResult result = sentimentService.analyzeVoice(audioBase64, callId, audioFormat);
             broadcastSentiment(callId, currentUser.getId().toString(), body.get("otherPartyId"), result);
             return ResponseEntity.ok(result);
         } catch (AppException e) {
@@ -159,10 +160,11 @@ public class CallController {
         try {
             String text = body.getOrDefault("text", "");
             String audioBase64 = body.getOrDefault("audioBase64", "");
+            String audioFormat = body.getOrDefault("audioFormat", "wav");
             String imageBase64 = body.getOrDefault("imageBase64", "");
             String imageFormat = body.getOrDefault("imageFormat", "jpeg");
             SentimentResult textResult = text.isBlank() ? null : sentimentService.analyzeText(text, callId);
-            SentimentResult voiceResult = audioBase64.isBlank() ? null : sentimentService.analyzeVoice(audioBase64, callId);
+            SentimentResult voiceResult = audioBase64.isBlank() ? null : sentimentService.analyzeVoice(audioBase64, callId, audioFormat);
             SentimentResult videoResult = imageBase64.isBlank() ? null : sentimentService.analyzeVideoFrame(imageBase64, imageFormat, callId);
             return ResponseEntity.ok(sentimentService.buildCombinedSentiment(textResult, voiceResult, videoResult, callId));
         } catch (Exception e) {

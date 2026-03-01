@@ -52,18 +52,29 @@ INSERT INTO caregiver_patient_link (caregiver_user_id, patient_user_id, created_
 -- 6. FAMILY_MEMBER_LINK
 -- ============================================
 
-INSERT INTO family_member_link (family_user_id, patient_user_id, granted_by, created_at) VALUES
-((SELECT id FROM users WHERE email = 'family@careconnect.com'), (SELECT id FROM users WHERE email = 'patient@careconnect.com'), (SELECT id FROM users WHERE email = 'patient@careconnect.com'), '2024-07-10 16:30:00');
+INSERT INTO family_member_link (family_user_id, patient_user_id, granted_by, status, created_at)
+SELECT
+	(SELECT id FROM users WHERE email = 'family@careconnect.com'),
+	(SELECT id FROM users WHERE email = 'patient@careconnect.com'),
+	(SELECT id FROM users WHERE email = 'patient@careconnect.com'),
+	'ACTIVE',
+	'2024-07-10 16:30:00'
+WHERE NOT EXISTS (
+	SELECT 1 FROM family_member_link
+	WHERE family_user_id = (SELECT id FROM users WHERE email = 'family@careconnect.com')
+	  AND patient_user_id = (SELECT id FROM users WHERE email = 'patient@careconnect.com')
+	  AND status = 'ACTIVE'
+);
 
 -- ============================================
 -- 7. PATIENT_MEDICATION - Remove updated_at column
 -- ============================================
 
-INSERT INTO patient_medication (patient_id, medication_name, dosage, frequency, route, medication_type, prescribed_by, prescribed_date, start_date, end_date, notes, is_active, created_at) VALUES
-((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), 'Metformin', '500mg', 'Twice daily', 'Oral', 'PRESCRIPTION', 'Dr. Sarah Mitchell', '2024-06-20', '2024-06-20', NULL, 'Take with meals to reduce stomach upset', true, '2024-06-20 10:00:00'),
-((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), 'Lisinopril', '10mg', 'Once daily', 'Oral', 'PRESCRIPTION', 'Dr. Sarah Mitchell', '2024-06-20', '2024-06-20', NULL, 'For blood pressure control', true, '2024-06-20 10:00:00'),
-((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), 'Atorvastatin', '20mg', 'Once daily at bedtime', 'Oral', 'PRESCRIPTION', 'Dr. Sarah Mitchell', '2024-07-15', '2024-07-15', NULL, 'For cholesterol management', true, '2024-07-15 14:00:00'),
-((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), 'Aspirin', '81mg', 'Once daily', 'Oral', 'SUPPLEMENT', 'Dr. Sarah Mitchell', '2024-06-20', '2024-06-20', NULL, 'Low-dose for cardiovascular protection', true, '2024-06-20 10:00:00');
+INSERT INTO patient_medication (patient_id, medication_name, dosage, frequency, route, medication_type, prescribed_by, prescribed_date, start_date, end_date, notes, is_active, approval_status, created_at) VALUES
+((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), 'Metformin', '500mg', 'Twice daily', 'Oral', 'PRESCRIPTION', 'Dr. Sarah Mitchell', '2024-06-20', '2024-06-20', NULL, 'Take with meals to reduce stomach upset', true, 'PENDING', '2024-06-20 10:00:00'),
+((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), 'Lisinopril', '10mg', 'Once daily', 'Oral', 'PRESCRIPTION', 'Dr. Sarah Mitchell', '2024-06-20', '2024-06-20', NULL, 'For blood pressure control', true, 'PENDING', '2024-06-20 10:00:00'),
+((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), 'Atorvastatin', '20mg', 'Once daily at bedtime', 'Oral', 'PRESCRIPTION', 'Dr. Sarah Mitchell', '2024-07-15', '2024-07-15', NULL, 'For cholesterol management', true, 'PENDING', '2024-07-15 14:00:00'),
+((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), 'Aspirin', '81mg', 'Once daily', 'Oral', 'SUPPLEMENT', 'Dr. Sarah Mitchell', '2024-06-20', '2024-06-20', NULL, 'Low-dose for cardiovascular protection', true, 'PENDING', '2024-06-20 10:00:00');
 
 -- ============================================
 -- 8. PATIENT_ALLERGY - Remove updated_at column
@@ -88,10 +99,10 @@ INSERT INTO mood_pain_log (patient_id, mood_value, pain_value, note, timestamp, 
 -- 10. SYMPTOM_ENTRY - Remove updated_at column
 -- ============================================
 
-INSERT INTO symptom_entry (patient_user_id, caregiver_user_id, symptom_key, symptom_value, severity, taken_at, completed, created_at) VALUES
-((SELECT id FROM users WHERE email = 'patient@careconnect.com'), (SELECT id FROM users WHERE email = 'caregiver@careconnect.com'), 'FATIGUE', 'Mild tiredness', 2, '2025-10-05 14:00:00', true, '2025-10-05 14:00:00'),
-((SELECT id FROM users WHERE email = 'patient@careconnect.com'), (SELECT id FROM users WHERE email = 'caregiver@careconnect.com'), 'JOINT_PAIN', 'Knee stiffness', 3, '2025-10-05 08:30:00', true, '2025-10-05 08:30:00'),
-((SELECT id FROM users WHERE email = 'patient@careconnect.com'), (SELECT id FROM users WHERE email = 'caregiver@careconnect.com'), 'DIZZINESS', 'Brief lightheadedness when standing', 1, '2025-10-03 16:00:00', true, '2025-10-03 16:00:00');
+INSERT INTO symptom_entry (patient_id, caregiver_id, symptom_key, symptom_value, severity, notes, taken_at, completed, created_at, updated_at) VALUES
+((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), (SELECT c.id FROM caregiver c JOIN users u ON c.user_id = u.id WHERE u.email = 'caregiver@careconnect.com'), 'FATIGUE', 'Mild tiredness', 2, NULL, '2025-10-05 14:00:00', true, '2025-10-05 14:00:00', '2025-10-05 14:00:00'),
+((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), (SELECT c.id FROM caregiver c JOIN users u ON c.user_id = u.id WHERE u.email = 'caregiver@careconnect.com'), 'JOINT_PAIN', 'Knee stiffness', 3, NULL, '2025-10-05 08:30:00', true, '2025-10-05 08:30:00', '2025-10-05 08:30:00'),
+((SELECT p.id FROM patient p JOIN users u ON p.user_id = u.id WHERE u.email = 'patient@careconnect.com'), (SELECT c.id FROM caregiver c JOIN users u ON c.user_id = u.id WHERE u.email = 'caregiver@careconnect.com'), 'DIZZINESS', 'Brief lightheadedness when standing', 1, NULL, '2025-10-03 16:00:00', true, '2025-10-03 16:00:00', '2025-10-03 16:00:00');
 
 -- ============================================
 -- 11. WEARABLE_METRIC - Fixed MetricType enum values, remove updated_at
@@ -123,14 +134,31 @@ INSERT INTO tasks (patient_id, name, description, date, time_of_day, is_complete
 -- Note: vital_sample table not found in current schema, skipping vitals data
 
 -- ============================================
--- 14. PLAN - Already exists in database, skipping
+-- 14. PLAN - Ensure development plans exist
 -- ============================================
 
--- Note: Plan data already exists from migrations, skipping duplicates
+INSERT INTO plan (code, name, price_cents, billing_period, is_active)
+SELECT 'STANDARD', 'Standard Plan', 2000, 'MONTH', TRUE
+WHERE NOT EXISTS (SELECT 1 FROM plan WHERE code = 'STANDARD');
+
+INSERT INTO plan (code, name, price_cents, billing_period, is_active)
+SELECT 'PREMIUM', 'Premium Plan', 3000, 'MONTH', TRUE
+WHERE NOT EXISTS (SELECT 1 FROM plan WHERE code = 'PREMIUM');
 
 -- ============================================
--- 15. SUBSCRIPTIONS - Fixed to use single plan
+-- 15. SUBSCRIPTIONS - Match current schema (`subscriptions`)
 -- ============================================
 
-INSERT INTO subscription (user_id, plan_id, status, started_at, current_period_end) VALUES
-((SELECT id FROM users WHERE email = 'patient@careconnect.com'), (SELECT id FROM plan WHERE code = 'PREMIUM' LIMIT 1), 'ACTIVE', '2024-06-15 10:00:00', '2025-11-15 10:00:00');
+INSERT INTO subscriptions (user_id, plan_id, status, started_at, current_period_end, stripe_subscription_id, stripe_customer_id, price_id)
+SELECT
+	(SELECT id FROM users WHERE email = 'patient@careconnect.com'),
+	(SELECT id FROM plan WHERE code = 'PREMIUM' LIMIT 1),
+	'ACTIVE',
+	'2024-06-15 10:00:00',
+	'2025-11-15 10:00:00',
+	'sub_mock_patient_001',
+	'cus_mock_patient_001',
+	'price_mock_premium'
+WHERE NOT EXISTS (
+	SELECT 1 FROM subscriptions WHERE stripe_subscription_id = 'sub_mock_patient_001'
+);

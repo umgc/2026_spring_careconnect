@@ -57,9 +57,15 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   String? _error;
   bool _sentimentPanelExpanded = true;
   bool _isCaregiverView = false;
+  bool _isPatientView = false;
   bool _showCallRejectedSummary = false;
   String _rejectionSummaryText = 'The recipient declined the call.';
   bool _isRetryingRejectedCall = false;
+  bool _isSendingAudioSample = false;
+  DateTime? _lastAudioSampleSentAt;
+  DateTime? _lastTranscriptSampleSentAt;
+  bool _localAudioEnabled = true;
+  bool _localVideoEnabled = true;
 
   // Latest sentiment data — updated via WebSocket push
   Map<String, dynamic> _sentimentData = {};
@@ -75,9 +81,11 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     try {
       final role = await UserRoleStorageService.instance.getUserRole();
       final isCaregiver = role?.toUpperCase() == 'CAREGIVER';
+      final isPatient = role?.toUpperCase() == 'PATIENT';
       if (!mounted) return;
       setState(() {
         _isCaregiverView = isCaregiver;
+        _isPatientView = isPatient;
         if (!isCaregiver) {
           _sentimentPanelExpanded = false;
         }
@@ -133,6 +141,8 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
       setState(() {
         _callSession = session;
         _isLoading = false;
+        _localAudioEnabled = session.isAudioEnabled;
+        _localVideoEnabled = session.isVideoEnabled;
       });
     } catch (e) {
       setState(() {
@@ -154,6 +164,58 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   void dispose() {
     _videoCallService.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleTranscriptSample(String transcript) async {
+    if (!_isPatientView) return;
+    final text = transcript.trim();
+    if (text.length < 8) return;
+
+    final now = DateTime.now();
+    if (_lastTranscriptSampleSentAt != null &&
+        now.difference(_lastTranscriptSampleSentAt!) < const Duration(seconds: 8)) {
+      return;
+    }
+
+    _lastTranscriptSampleSentAt = now;
+    try {
+      await _videoCallService.sendTextForAnalysis(text);
+    } catch (_) {}
+  }
+
+  Future<void> _handleAudioSample(String audioBase64, String audioFormat) async {
+    if (!_isPatientView || _isSendingAudioSample) return;
+    if (audioBase64.isEmpty) return;
+
+    final now = DateTime.now();
+    if (_lastAudioSampleSentAt != null &&
+        now.difference(_lastAudioSampleSentAt!) < const Duration(seconds: 45)) {
+      return;
+    }
+
+    _isSendingAudioSample = true;
+    try {
+      await _videoCallService.sendAudioForAnalysis(
+        audioBase64,
+        audioFormat: audioFormat,
+      );
+      _lastAudioSampleSentAt = DateTime.now();
+    } catch (_) {
+    } finally {
+      _isSendingAudioSample = false;
+    }
+  }
+
+  void _toggleLocalAudio() {
+    setState(() {
+      _localAudioEnabled = !_localAudioEnabled;
+    });
+  }
+
+  void _toggleLocalVideo() {
+    setState(() {
+      _localVideoEnabled = !_localVideoEnabled;
+    });
   }
 
   @override
@@ -433,9 +495,12 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         externalUserId: _callSession!.externalUserId,
         videoEnabled: _callSession!.isVideoEnabled,
         audioEnabled: _callSession!.isAudioEnabled,
+        enableAutoSentimentCapture: _isPatientView,
         onEndCallRequested: () async {
           await _videoCallService.endCall();
         },
+        onTranscriptSample: _handleTranscriptSample,
+        onAudioSample: _handleAudioSample,
       );
     }
 
@@ -469,6 +534,59 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
                 // Duration counter
                 _CallDurationTimer(startTime: DateTime.now()),
               ],
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 16,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: _localAudioEnabled ? 'Mute microphone' : 'Unmute microphone',
+                    onPressed: _toggleLocalAudio,
+                    icon: Icon(
+                      _localAudioEnabled ? Icons.mic : Icons.mic_off,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: _localVideoEnabled ? 'Turn camera off' : 'Turn camera on',
+                    onPressed: _toggleLocalVideo,
+                    icon: Icon(
+                      _localVideoEnabled ? Icons.videocam : Icons.videocam_off,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      tooltip: 'End call',
+                      onPressed: () async {
+                        await _videoCallService.endCall();
+                        if (mounted && Navigator.canPop(context)) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      icon: const Icon(Icons.call_end, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

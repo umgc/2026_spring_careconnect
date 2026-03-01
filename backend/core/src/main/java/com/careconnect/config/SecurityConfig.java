@@ -119,6 +119,7 @@ public class SecurityConfig {
                         .requestMatchers("/v1/api/ai-chat/**").authenticated()
                         .requestMatchers("/v1/api/caregiver-patient-links/**").authenticated()
                         .requestMatchers("/v1/api/invoices/**").authenticated()
+                        .requestMatchers("/v3/api/**").authenticated()
                         .requestMatchers("/api/v3/calls/**").authenticated()
 
                         /* ---------- Everything else: deny (safer default) ------------- */

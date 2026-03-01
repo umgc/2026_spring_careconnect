@@ -37,8 +37,6 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .httpBasic(basic -> basic.authenticationEntryPoint(
-                        (req, res, e) -> res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Basic Authentication Required")))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, e) ->
@@ -48,7 +46,8 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .anyRequest().permitAll()
+                        .requestMatchers("/v1/api/dev/telemetry/**").permitAll()
+                        .anyRequest().denyAll()
                 )
                 .build();
         }
@@ -87,8 +86,6 @@ public class SecurityConfig {
                                 "/configuration/ui",
                                 "/configuration/security"
                         ).permitAll()
-
-                        .requestMatchers("/actuator/**").permitAll()
 
                         .requestMatchers(
                                 "/v1/api/auth/**",

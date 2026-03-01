@@ -17,6 +17,6 @@ public record MedicationDTO(
         String startDate,
         String endDate,
         String notes,
-        Boolean isActive,
-        String approvalStatus
+        Boolean isActive
+        // TODO - add lastTaken time field
 ) {}

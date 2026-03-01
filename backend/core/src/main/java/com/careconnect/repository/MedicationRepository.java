@@ -40,6 +40,12 @@ public interface MedicationRepository extends JpaRepository<Medication, Long> {
             Patient patient, Medication.MedicationType medicationType);
 
     /**
+     * Find all pending medications (approval_status = 'PENDING')
+     */
+    @Query("SELECT m FROM Medication m WHERE m.patient = :patient AND m.approvalStatus = 'PENDING'")
+    List<Medication> findPendingByPatient(@Param("patient") Patient patient);
+
+    /**
      * Find all medications for a patient with a specific approval status
      */
     List<Medication> findByPatientAndApprovalStatus(Patient patient, String approvalStatus);
@@ -47,11 +53,8 @@ public interface MedicationRepository extends JpaRepository<Medication, Long> {
     /**
      * Find medications waiting for approval (PENDING or REMOVAL_PENDING)
      */
-
-    List<Medication> findByPatientAndApprovalStatusInOrderByCreatedAtDesc(
-        Patient patient,
-        List<String> statuses);
-
+    @Query("SELECT m FROM Medication m WHERE m.patient = :patient AND (m.approvalStatus = 'PENDING' OR m.approvalStatus = 'REMOVAL_PENDING') ORDER BY m.createdAt DESC")
+    List<Medication> findPendingOrRemovalPendingByPatient(@Param("patient") Patient patient);
 }
 
 

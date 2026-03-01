@@ -92,29 +92,30 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadTelemetrySettings() async {
     final optedOut = await TelemetrySettings.isOptedOut();
+    var backendEnabled = await Telemetry.getBackendEnabled();
+
+    if (optedOut && backendEnabled) {
+      backendEnabled = await Telemetry.setBackendEnabled(false);
+    }
+
     if (!mounted) return;
 
     setState(() {
-      _telemetryEnabled = !optedOut; // ON unless opted out
+      _telemetryEnabled = !optedOut && backendEnabled;
       _loadingTelemetry = false;
     });
 
-    // Only after we know the opt-out state:
     await _maybeShowTelemetryDefaultOnDialog();
 
-    // Optional: screen_view, now that state is known and dialog handled.
-    // This keeps it non-noisy and honors opt-out.
     if (!mounted) return;
     await Telemetry.event('screen_view', {'screen': 'settings'});
-
-    await Telemetry.event('feature.medications.view_all', {
-      'source': 'settings_sanity',
-    });
   }
 
   Future<void> _maybeShowTelemetryDefaultOnDialog() async {
     if (!mounted) return;
     if (_telemetryDialogShownThisSession) return;
+
+    if (!_telemetryEnabled) return;
 
     final seen = await TelemetrySettings.hasSeenDialog();
     if (!mounted) return;
@@ -150,11 +151,18 @@ class _SettingsPageState extends State<SettingsPage> {
 
     await TelemetrySettings.setHasSeenDialog(true);
 
-    // If user opted out in the dialog:
     if (result == false) {
       await TelemetrySettings.setOptedOut(true);
+      await Telemetry.setBackendEnabled(false);
+
       if (!mounted) return;
       setState(() => _telemetryEnabled = false);
+    } else if (result == true) {
+      await TelemetrySettings.setOptedOut(false);
+      final backendValue = await Telemetry.setBackendEnabled(true);
+
+      if (!mounted) return;
+      setState(() => _telemetryEnabled = backendValue);
     }
   }
 
@@ -686,11 +694,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 onChanged: (enabled) async {
                   if (_loadingTelemetry) return;
 
-                  // Capture context-dependent objects BEFORE async gaps
                   final messenger = ScaffoldMessenger.of(context);
                   final errorColor = Theme.of(context).colorScheme.error;
 
-                  // Confirm before changing state
                   final allowed = enabled
                       ? await _confirmOptIn()
                       : await _confirmOptOut();
@@ -700,15 +706,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
                   try {
                     await TelemetrySettings.setOptedOut(!enabled);
+                    final backendValue = await Telemetry.setBackendEnabled(
+                      enabled,
+                    );
 
                     if (!mounted) return;
                     setState(() {
-                      _telemetryEnabled = enabled;
+                      _telemetryEnabled = enabled && backendValue;
                       _loadingTelemetry = false;
                     });
 
-                    // Only log the toggle event if telemetry is enabled AFTER change.
-                    if (enabled) {
+                    if (_telemetryEnabled) {
                       await Telemetry.event('privacy_telemetry_toggle', {
                         'enabled': enabled,
                       });

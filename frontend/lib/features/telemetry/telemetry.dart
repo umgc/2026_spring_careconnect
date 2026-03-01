@@ -1,49 +1,65 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import 'telemetry_settings.dart';
 import 'telemetry_guardrails.dart';
-/// Created 2/19/2026: Team B
-/// The [Telemetry] class acts as a secure gateway between the application 
-/// and external analytics collectors. It ensures user privacy and data 
-/// integrity by enforcing three distinct layers of validation:
 
 class Telemetry {
+  // NOTE:
+  // - Flutter Web in Chrome: localhost works because browser is on your Mac.
+  // - Android emulator: use http://10.0.2.2:8080 instead of localhost.
+  // - Physical phone: use your Mac LAN IP (ex: http://192.168.1.50:8080).
+  static const String _devEndpoint = 'http://localhost:8080/api/dev/telemetry';
+
   static Future<bool> _enabled() async {
     final optedOut = await TelemetrySettings.isOptedOut();
     return !optedOut;
   }
-  /// Records an analytical event with associated properties.
-  ///
-  /// This method is asynchronous and fail-safe. If the event is blocked by 
-  /// privacy settings or fails the [TelemetryGuardrails] validation, it 
-  /// will be silently dropped (though it will log to the console in debug mode).
-  ///
-  /// * [name]: The identifier for the event (must be whitelisted).
-  /// * [props]: A map of metadata associated with the event.
-  ///
+
   static Future<void> event(String name, Map<String, Object?> props) async {
     final enabled = await _enabled();
-
     if (!enabled) {
-      if (kDebugMode) {
-        debugPrint('[telemetry] blocked (opted out): $name');
-      }
+      if (kDebugMode) debugPrint('[telemetry] blocked (opted out): $name');
       return;
     }
 
     final sanitized = TelemetryGuardrails.sanitize(name, props);
     if (sanitized == null) {
-      if (kDebugMode) {
-        debugPrint('[telemetry] dropped (guardrails): $name');
-      }
+      if (kDebugMode) debugPrint('[telemetry] dropped (guardrails): $name');
       return;
     }
 
-    // No exporter yet.
-    if (kDebugMode) {
-      debugPrint('[telemetry] would send: $name props=$sanitized');
-    }
+    final payload = {
+      'eventName': name,
+      'details': sanitized,
+      'deviceInfo': {
+        // Correctly label web vs mobile
+        'uiSurface': kIsWeb ? 'web' : 'mobile',
 
-    // Later: send to OTel exporter / backend endpoint.
+        // For web, defaultTargetPlatform often reads as macOS/windows/etc,
+        // but we also include explicit isWeb so the backend can segment cleanly.
+        'platform': defaultTargetPlatform.name,
+        'isWeb': kIsWeb,
+
+        // Helpful for dev filtering
+        'debug': kDebugMode,
+      },
+    };
+
+    try {
+      final resp = await http.post(
+        Uri.parse(_devEndpoint),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (kDebugMode) {
+        debugPrint('[telemetry] sent: $name status=${resp.statusCode}');
+        if (resp.statusCode >= 400) debugPrint('[telemetry] body=${resp.body}');
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[telemetry] send failed: $name error=$e');
+    }
   }
-}// end class Telemetry
+}

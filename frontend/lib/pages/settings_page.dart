@@ -106,6 +106,10 @@ class _SettingsPageState extends State<SettingsPage> {
     // This keeps it non-noisy and honors opt-out.
     if (!mounted) return;
     await Telemetry.event('screen_view', {'screen': 'settings'});
+
+    await Telemetry.event('feature.medications.view_all', {
+      'source': 'settings_sanity',
+    });
   }
 
   Future<void> _maybeShowTelemetryDefaultOnDialog() async {

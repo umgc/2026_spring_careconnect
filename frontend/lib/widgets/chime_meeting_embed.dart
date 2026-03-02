@@ -36,3 +36,21 @@ Widget buildChimeMeetingEmbed({
     onVideoSample: onVideoSample,
   );
 }
+
+Future<bool> requestChimeAudioToggle({
+  required bool muted,
+  String? meetingId,
+}) {
+  return platform.requestChimeAudioToggle(muted: muted, meetingId: meetingId);
+}
+
+Future<bool> requestChimeVideoToggle({
+  required bool muted,
+  String? meetingId,
+}) {
+  return platform.requestChimeVideoToggle(muted: muted, meetingId: meetingId);
+}
+
+Future<bool> requestChimeCameraSwitch({String? meetingId}) {
+  return platform.requestChimeCameraSwitch(meetingId: meetingId);
+}

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -114,6 +115,15 @@ public class CallTelemetryService {
 
     public List<CallTelemetryEvent> getTelemetryForUser(Long userId) {
         return callTelemetryEventRepository.findTop500ByActorUserIdOrTargetUserIdOrderByOccurredAtDesc(userId, userId);
+    }
+
+    @Transactional
+    public long deleteTelemetryForCall(String callId) {
+        String normalizedCallId = trim(callId);
+        if (normalizedCallId == null) {
+            return 0;
+        }
+        return callTelemetryEventRepository.deleteByCallId(normalizedCallId);
     }
 
     private Map<String, Object> sanitizePayload(Map<String, Object> payload) {

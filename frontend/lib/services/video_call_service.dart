@@ -178,6 +178,97 @@ class VideoCallService {
     _onCallEnded?.call();
   }
 
+  Future<Map<String, dynamic>> startRecording({
+    required int patientUserId,
+    required bool consentConfirmed,
+    String? consentNote,
+  }) async {
+    if (!_isInCall || _currentCallId == null) {
+      throw Exception('Cannot start recording when call is not active');
+    }
+
+    final response = await http.post(
+      Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/recording/start'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_jwtToken',
+      },
+      body: jsonEncode({
+        'patientUserId': patientUserId,
+        'consentConfirmed': consentConfirmed,
+        'consentNote': consentNote,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String message = 'Failed to start recording (${response.statusCode})';
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map) {
+          final backendMessage =
+              (decoded['message'] ?? decoded['error'] ?? '').toString().trim();
+          if (backendMessage.isNotEmpty) {
+            message = backendMessage;
+          }
+        }
+      } catch (_) {
+        // Keep fallback message.
+      }
+      throw Exception(message);
+    }
+
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<Map<String, dynamic>> stopRecording({
+    required int patientUserId,
+    String? reason,
+  }) async {
+    if (!_isInCall || _currentCallId == null) {
+      throw Exception('Cannot stop recording when call is not active');
+    }
+
+    final response = await http.post(
+      Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/recording/stop'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_jwtToken',
+      },
+      body: jsonEncode({
+        'patientUserId': patientUserId,
+        'reason': reason,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to stop recording: ${response.statusCode} ${response.body}');
+    }
+
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
+  Future<Map<String, dynamic>> getRecordingStatus({
+    required int patientUserId,
+  }) async {
+    if (!_isInCall || _currentCallId == null) {
+      return const {'recordingActive': false, 'status': 'NOT_RECORDING'};
+    }
+
+    final response = await http.get(
+      Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/recording/status?patientUserId=$patientUserId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_jwtToken',
+      },
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to get recording status: ${response.statusCode} ${response.body}');
+    }
+
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
   // ================================================================
   // SENTIMENT — TEXT
   // Called when a chat message is sent during the call

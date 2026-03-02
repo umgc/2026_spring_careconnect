@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:go_router/go_router.dart';
@@ -17,7 +18,6 @@ import '../widgets/communication_history_card.dart';
 
 // Mood tab
 import '../widgets/mood_history_card.dart';
-import '../../../../../widgets/post_call_telemetry_summary_screen.dart';
 
 // Health tab
 import '../widgets/current_medications_card.dart';
@@ -90,6 +90,7 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
   List<sympt.SymptomEntry> _symptomEntries = [];
   List<VirtualCheckIn> _virtualCheckIns = [];
   List<Map<String, dynamic>> _callHistoryEvents = [];
+  bool _isDeletingCallHistory = false;
 
   int _currentPain = 0;
   String _painLocation = 'Not provided';
@@ -169,10 +170,11 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
 
     final callId = 'chime_call_${DateTime.now().millisecondsSinceEpoch}';
 
-    context.push(
+    await context.push(
       '/video-call-chime'
       '?userId=$currentUserId'
       '&recipientId=$targetUserId'
+      '&userRole=${Uri.encodeComponent(role)}'
       '&userName=${Uri.encodeComponent(user.name ?? role)}'
       '&recipientName=${Uri.encodeComponent(recipientName)}'
       '&initiator=true'
@@ -180,6 +182,9 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
       '&audio=true'
       '&callId=$callId',
     );
+
+    if (!mounted) return;
+    await _loadPatientData();
   }
 
   @override
@@ -612,8 +617,10 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
     }).toList();
 
     filtered.sort((a, b) {
-      final bTime = _parseDate(b['occurredAt']) ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final aTime = _parseDate(a['occurredAt']) ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime =
+          _parseDate(b['occurredAt']) ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final aTime =
+          _parseDate(a['occurredAt']) ?? DateTime.fromMillisecondsSinceEpoch(0);
       return bTime.compareTo(aTime);
     });
 
@@ -708,6 +715,88 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+
+  bool get _canDeleteCallHistoryInThisBuild => !kReleaseMode;
+
+  Future<void> _deleteCallHistoryForPatientDevOnly() async {
+    if (!_canDeleteCallHistoryInThisBuild || _isDeletingCallHistory) {
+      return;
+    }
+
+    final callIds = _callHistoryEvents
+        .map((event) => (event['callId'] ?? '').toString().trim())
+        .where((callId) => callId.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (callIds.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No call history available to delete.')),
+      );
+      return;
+    }
+
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Delete Call History (Dev Only)'),
+            content: Text(
+              'Delete telemetry history for ${callIds.length} call(s) for this patient? This is only for local/dev mode.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) {
+      return;
+    }
+
+    setState(() {
+      _isDeletingCallHistory = true;
+    });
+
+    var deletedEvents = 0;
+    var failedCalls = 0;
+    String? firstFailureMessage;
+
+    try {
+      for (final callId in callIds) {
+        try {
+          deletedEvents += await ApiService.deleteCallTelemetryDev(callId);
+        } catch (e) {
+          failedCalls++;
+          firstFailureMessage ??= e.toString();
+        }
+      }
+
+      if (!mounted) return;
+      await _loadPatientData();
+
+      if (!mounted) return;
+      final message = failedCalls == 0
+          ? 'Deleted $deletedEvents telemetry event(s) in dev mode.'
+          : 'Deleted $deletedEvents event(s); failed to delete $failedCalls call(s). ${firstFailureMessage ?? ''}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeletingCallHistory = false;
+        });
+      }
+    }
   }
 
   /// Fetch medications from the backend API
@@ -902,18 +991,26 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
                               relationship: _emergencyRelationship,
                               phone: _emergencyPhone,
                             ),
-                            CommunicationHistoryCard(
-                              events: _callHistoryEvents,
-                              onCallTap: (callId) {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => PostCallTelemetrySummaryScreen(
-                                      callId: callId,
-                                      recipientName: _patientName,
+                            if (_canDeleteCallHistoryInThisBuild)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: OutlinedButton.icon(
+                                    onPressed: _isDeletingCallHistory
+                                        ? null
+                                        : _deleteCallHistoryForPatientDevOnly,
+                                    icon: const Icon(Icons.delete_outline),
+                                    label: Text(
+                                      _isDeletingCallHistory
+                                          ? 'Deleting call history...'
+                                          : 'Delete Call History (Dev)',
                                     ),
                                   ),
-                                );
-                              },
+                                ),
+                              ),
+                            CommunicationHistoryCard(
+                              events: _callHistoryEvents,
                             ),
                           ],
                         ),

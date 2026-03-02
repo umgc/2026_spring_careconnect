@@ -20,9 +20,27 @@ Widget buildChimeMeetingEmbed({
     color: Colors.black,
     alignment: Alignment.center,
     child: const Text(
-      'Real media rendering is currently available in web builds.',
+      'Real media rendering is currently available in web builds. Participant connection status is unavailable in this environment.',
       style: TextStyle(color: Colors.white70),
       textAlign: TextAlign.center,
     ),
   );
+}
+
+Future<bool> requestChimeAudioToggle({
+  required bool muted,
+  String? meetingId,
+}) async {
+  return false;
+}
+
+Future<bool> requestChimeVideoToggle({
+  required bool muted,
+  String? meetingId,
+}) async {
+  return false;
+}
+
+Future<bool> requestChimeCameraSwitch({String? meetingId}) async {
+  return false;
 }

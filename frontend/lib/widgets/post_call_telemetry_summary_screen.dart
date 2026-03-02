@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_service.dart';
 
@@ -23,7 +24,10 @@ class PostCallTelemetrySummaryScreen extends StatefulWidget {
 class _PostCallTelemetrySummaryScreenState
     extends State<PostCallTelemetrySummaryScreen> {
   bool _loading = true;
+  bool _loadingRecordingExtract = false;
   List<Map<String, dynamic>> _callTelemetry = const [];
+  Map<String, dynamic>? _recordingExtractInfo;
+  String? _recordingExtractError;
   _TimelineChannel _selectedChannel = _TimelineChannel.all;
 
   @override
@@ -43,12 +47,82 @@ class _PostCallTelemetrySummaryScreenState
     });
 
     final callEvents = await ApiService.getCallTelemetry(widget.callId);
+    final sorted = _sortByOccurredAtAsc(callEvents);
+
+    Map<String, dynamic>? extractInfo;
+    String? extractError;
+    final patientUserId = _resolveRecordingPatientUserId(sorted);
+    if (patientUserId != null) {
+      setState(() {
+        _loadingRecordingExtract = true;
+      });
+      extractInfo = await ApiService.getCallRecordingExtractInfo(
+        callId: widget.callId,
+        patientUserId: patientUserId,
+      );
+      if (extractInfo == null) {
+        extractError = 'Unable to load recording extraction details.';
+      }
+    }
 
     if (!mounted) return;
     setState(() {
-      _callTelemetry = _sortByOccurredAtAsc(callEvents);
+      _callTelemetry = sorted;
+      _recordingExtractInfo = extractInfo;
+      _recordingExtractError = extractError;
+      _loadingRecordingExtract = false;
       _loading = false;
     });
+  }
+
+  int? _resolveRecordingPatientUserId(List<Map<String, dynamic>> events) {
+    for (final event in events.reversed) {
+      final eventType = (event['eventType'] as String?)?.toUpperCase() ?? '';
+      if (eventType != 'CALL_RECORDING_START' &&
+          eventType != 'CALL_RECORDING_STOP') {
+        continue;
+      }
+
+      final targetUserId = event['targetUserId'];
+      if (targetUserId is int) {
+        return targetUserId;
+      }
+      final parsed = int.tryParse(targetUserId?.toString() ?? '');
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openRecordingExtractUrl() async {
+    final info = _recordingExtractInfo;
+    if (info == null) return;
+
+    final rawUrl = (info['downloadUrl'] ?? '').toString().trim();
+    if (rawUrl.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recording URL is not available yet.')),
+      );
+      return;
+    }
+
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recording URL is invalid.')),
+      );
+      return;
+    }
+
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open recording download URL.')),
+      );
+    }
   }
 
   List<Map<String, dynamic>> _sortByOccurredAtAsc(
@@ -370,6 +444,8 @@ class _PostCallTelemetrySummaryScreenState
                     latestStatus: _latestStatus,
                     callDuration: _callDurationText,
                   ),
+                  const SizedBox(height: 12),
+                  _buildRecordingExtractionCard(),
                   const SizedBox(height: 16),
                   Text(
                     'Sentiment Timeline',
@@ -380,6 +456,56 @@ class _PostCallTelemetrySummaryScreenState
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildRecordingExtractionCard() {
+    final info = _recordingExtractInfo;
+    final isAvailable = info?['recordingAvailable'] == true;
+    final status = (info?['status'] ?? '--').toString();
+    final message =
+        (info?['message'] ?? _recordingExtractError ?? 'No recording details available.')
+            .toString();
+    final fileName = (info?['fileName'] ?? '').toString();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Call Recording',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            Text('Status: $status'),
+            const SizedBox(height: 4),
+            if (_loadingRecordingExtract)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            else
+              Text(message),
+            if (fileName.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('File: $fileName'),
+            ],
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: (!_loadingRecordingExtract && isAvailable)
+                    ? _openRecordingExtractUrl
+                    : null,
+                icon: const Icon(Icons.download),
+                label: const Text('Extract Recording'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

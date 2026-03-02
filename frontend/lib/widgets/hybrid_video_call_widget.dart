@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/video_call_service.dart';
 import '../services/auth_token_manager.dart';
@@ -6,7 +8,7 @@ import '../services/user_role_storage_service.dart';
 import '../config/theme/app_theme.dart';
 import '../widgets/sentiment_dashboard_widget.dart';
 import '../widgets/chime_meeting_embed.dart';
-import '../widgets/post_call_telemetry_summary_screen.dart';
+import '../features/health/caregiver-patient-list/page/patient_details_page.dart';
 
 /// HybridVideoCallWidget — video call screen with live sentiment monitoring.
 ///
@@ -20,6 +22,7 @@ class HybridVideoCallWidget extends StatefulWidget {
   final String userId;
   final String callId;
   final String? recipientId;
+  final String? userRole;
   final bool isVideoEnabled;
   final bool isAudioEnabled;
   final bool isInitiator;
@@ -29,12 +32,16 @@ class HybridVideoCallWidget extends StatefulWidget {
   final String? recipientEmail;
   final String? recipientPhone;
   final String? recipientName;
+  final String? returnPatientDetailsId;
+  final bool forcePatientDetailsOnExit;
+  final bool returnAsCaregiver;
 
   const HybridVideoCallWidget({
     super.key,
     required this.userId,
     required this.callId,
     this.recipientId,
+    this.userRole,
     this.isVideoEnabled = true,
     this.isAudioEnabled = true,
     this.isInitiator = false,
@@ -44,6 +51,9 @@ class HybridVideoCallWidget extends StatefulWidget {
     this.recipientEmail,
     this.recipientPhone,
     this.recipientName,
+    this.returnPatientDetailsId,
+    this.forcePatientDetailsOnExit = false,
+    this.returnAsCaregiver = false,
   });
 
   @override
@@ -74,10 +84,16 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   bool _isSendingAudioSample = false;
   bool _isSendingVideoSample = false;
   bool _isEndingCall = false;
-  bool _didNavigateToSummary = false;
+  bool _isRecording = false;
+  bool _isRecordingBusy = false;
+  bool _isRecordingEnabledInEnvironment = true;
+  String? _recordingUnavailableHint;
+  bool _isConsentDialogOpen = false;
+  bool _isExitingCall = false;
   DateTime? _lastAudioSampleSentAt;
   DateTime? _lastVideoSampleSentAt;
   DateTime? _lastTranscriptSampleSentAt;
+  Timer? _recordingStatusTimer;
   bool _localAudioEnabled = true;
   bool _localVideoEnabled = true;
   bool _hasSentInitialInvitation = false;
@@ -124,7 +140,8 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   @override
   void initState() {
     super.initState();
-    _adaptiveActiveIntervalMs = (_isAdaptiveSentimentMode || _isRealtimeSentimentMode)
+    _adaptiveActiveIntervalMs =
+        (_isAdaptiveSentimentMode || _isRealtimeSentimentMode)
         ? _realtimeIntervalMs
         : _balancedIntervalMs;
     _loadCurrentRole();
@@ -133,7 +150,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   Future<void> _loadCurrentRole() async {
     try {
-      final role = await UserRoleStorageService.instance.getUserRole();
+      final role = await _resolveCurrentRole();
       final isCaregiver = role?.toUpperCase() == 'CAREGIVER';
       final isPatient = role?.toUpperCase() == 'PATIENT';
       if (!mounted) return;
@@ -144,6 +161,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
           _sentimentPanelExpanded = false;
         }
       });
+      _startRecordingStatusPolling();
     } catch (_) {
       // Keep safe default (no analytics panel) if role cannot be loaded.
     }
@@ -151,7 +169,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   Future<void> _initializeCall() async {
     try {
-      final role = await UserRoleStorageService.instance.getUserRole();
+      final role = await _resolveCurrentRole();
       final isCaregiverRole = role?.toUpperCase() == 'CAREGIVER';
       final isPatientRole = role?.toUpperCase() == 'PATIENT';
 
@@ -175,7 +193,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         enablePatientSentimentCapture: isPatientRole,
         onCallEnded: () {
           if (_showCallRejectedSummary) return;
-          _navigateToPostCallSummary();
+          _exitCallScreen();
         },
         onSentimentUpdate: (data) {
           if (mounted) {
@@ -193,14 +211,15 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
           setState(() {
             _showCallRejectedSummary = true;
             _isLoading = false;
-            _rejectionSummaryText = '$declinedBy declined the call$reasonSuffix.';
+            _rejectionSummaryText =
+                '$declinedBy declined the call$reasonSuffix.';
           });
         },
       );
 
       final session = await _videoCallService.joinCall(
-        callId:         widget.callId,
-        otherPartyId:   widget.recipientId ?? '',
+        callId: widget.callId,
+        otherPartyId: widget.recipientId ?? '',
         isVideoEnabled: widget.isVideoEnabled,
         isAudioEnabled: widget.isAudioEnabled,
       );
@@ -211,10 +230,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
           throw Exception('Missing recipient ID for outgoing call.');
         }
 
-        final currentRole =
-            (await UserRoleStorageService.instance.getUserRole() ?? '')
-                .toUpperCase();
-        final recipientRole = currentRole == 'CAREGIVER' ? 'PATIENT' : 'CAREGIVER';
+        final currentRole = (role ?? '').toUpperCase();
+        final recipientRole = currentRole == 'CAREGIVER'
+            ? 'PATIENT'
+            : 'CAREGIVER';
 
         final invitationSent = await CallNotificationService.sendCallInvitation(
           recipientId: recipientId,
@@ -225,7 +244,9 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
         if (!invitationSent) {
           await _videoCallService.endCall();
-          throw Exception('Unable to notify callee after joining the call room.');
+          throw Exception(
+            'Unable to notify callee after joining the call room.',
+          );
         }
 
         _hasSentInitialInvitation = true;
@@ -237,6 +258,9 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         _localAudioEnabled = session.isAudioEnabled;
         _localVideoEnabled = session.isVideoEnabled;
       });
+
+      await _syncRecordingStatus();
+      _startRecordingStatusPolling();
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -255,8 +279,29 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   @override
   void dispose() {
+    _recordingStatusTimer?.cancel();
     _videoCallService.dispose();
     super.dispose();
+  }
+
+  Future<String?> _resolveCurrentRole() async {
+    final roleFromWidget = widget.userRole?.trim();
+    if (roleFromWidget != null && roleFromWidget.isNotEmpty) {
+      return roleFromWidget.toUpperCase();
+    }
+
+    final roleFromStorage = await UserRoleStorageService.instance.getUserRole();
+    if (roleFromStorage != null && roleFromStorage.trim().isNotEmpty) {
+      return roleFromStorage.trim().toUpperCase();
+    }
+
+    final session = await AuthTokenManager.getUserSession();
+    final sessionRole = (session?['role'] as String?)?.trim();
+    if (sessionRole != null && sessionRole.isNotEmpty) {
+      return sessionRole.toUpperCase();
+    }
+
+    return null;
   }
 
   Future<void> _handleTranscriptSample(String transcript) async {
@@ -266,7 +311,8 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
     final now = DateTime.now();
     if (_lastTranscriptSampleSentAt != null &&
-        now.difference(_lastTranscriptSampleSentAt!) < const Duration(seconds: 8)) {
+        now.difference(_lastTranscriptSampleSentAt!) <
+            const Duration(seconds: 8)) {
       return;
     }
 
@@ -286,10 +332,12 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     if (!_isAdaptiveSentimentMode) return;
 
     final now = DateTime.now();
-    final switchedRecently = _lastAdaptiveSwitchAt != null &&
+    final switchedRecently =
+        _lastAdaptiveSwitchAt != null &&
         now.difference(_lastAdaptiveSwitchAt!) < _adaptiveSwitchCooldown;
 
-    final isSlowSuccess = success && requestLatency > const Duration(milliseconds: 2500);
+    final isSlowSuccess =
+        success && requestLatency > const Duration(milliseconds: 2500);
     final effectiveFailure = !success || isSlowSuccess;
 
     if (effectiveFailure) {
@@ -338,7 +386,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     }
   }
 
-  Future<void> _handleAudioSample(String audioBase64, String audioFormat) async {
+  Future<void> _handleAudioSample(
+    String audioBase64,
+    String audioFormat,
+  ) async {
     if (!_isPatientView || _isSendingAudioSample) return;
     if (audioBase64.isEmpty) return;
 
@@ -403,32 +454,267 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     }
   }
 
-  void _toggleLocalAudio() {
+  Future<void> _toggleLocalAudio() async {
+    final nextMuted = _localAudioEnabled;
+    await requestChimeAudioToggle(
+      muted: nextMuted,
+      meetingId: _callSession?.meetingId,
+    );
     setState(() {
       _localAudioEnabled = !_localAudioEnabled;
     });
   }
 
-  void _toggleLocalVideo() {
+  Future<void> _toggleLocalVideo() async {
+    final nextMuted = _localVideoEnabled;
+    await requestChimeVideoToggle(
+      muted: nextMuted,
+      meetingId: _callSession?.meetingId,
+    );
     setState(() {
       _localVideoEnabled = !_localVideoEnabled;
     });
   }
 
-  Future<void> _navigateToPostCallSummary() async {
-    if (!mounted || _didNavigateToSummary) return;
-    _didNavigateToSummary = true;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => PostCallTelemetrySummaryScreen(
-          callId: widget.callId,
-          recipientName: widget.recipientName,
-        ),
-      ),
+  Future<void> _switchCamera() async {
+    final switched = await requestChimeCameraSwitch(
+      meetingId: _callSession?.meetingId,
     );
+    if (!switched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera switch is not available for this session.'),
+        ),
+      );
+    }
   }
 
-  Future<void> _endCallAndNavigate() async {
+  Future<void> _exitCallScreen() async {
+    if (_isExitingCall || !mounted) return;
+    _isExitingCall = true;
+
+    if (_isConsentDialogOpen) {
+      Navigator.of(context, rootNavigator: true).pop();
+      _isConsentDialogOpen = false;
+      await Future<void>.delayed(Duration.zero);
+      if (!mounted) return;
+    }
+
+    final returnPatientId = widget.returnPatientDetailsId?.trim();
+    final shouldForcePatientDetails =
+        widget.forcePatientDetailsOnExit &&
+        returnPatientId != null &&
+        returnPatientId.isNotEmpty;
+
+    if (shouldForcePatientDetails) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => PatientDetailsPage(
+            patientId: returnPatientId,
+            isCaregiver: widget.returnAsCaregiver,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    if (Navigator.canPop(context)) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  int? get _recordingStatusPatientUserId {
+    if (_isCaregiverView) {
+      final recipient = widget.recipientId?.trim();
+      if (recipient == null || recipient.isEmpty) return null;
+      return int.tryParse(recipient);
+    }
+
+    if (_isPatientView) {
+      return int.tryParse(widget.userId.trim());
+    }
+
+    final explicitRole = widget.userRole?.trim().toUpperCase();
+    if (explicitRole == 'CAREGIVER') {
+      final recipient = widget.recipientId?.trim();
+      if (recipient == null || recipient.isEmpty) return null;
+      return int.tryParse(recipient);
+    }
+    if (explicitRole == 'PATIENT') {
+      return int.tryParse(widget.userId.trim());
+    }
+
+    return null;
+  }
+
+  Future<void> _syncRecordingStatus() async {
+    final patientUserId = _recordingStatusPatientUserId;
+    if (patientUserId == null) return;
+
+    try {
+      final status = await _videoCallService.getRecordingStatus(
+        patientUserId: patientUserId,
+      );
+      if (!mounted) return;
+      final recordingEnabled = status['recordingEnabled'] != false;
+      final statusCode = (status['status'] ?? '').toString().toUpperCase();
+      final backendMessage = (status['message'] ?? '').toString().trim();
+      setState(() {
+        _isRecordingEnabledInEnvironment = recordingEnabled;
+        _recordingUnavailableHint = !recordingEnabled
+            ? (backendMessage.isNotEmpty
+                  ? backendMessage
+                  : 'Recording is disabled in this environment.')
+            : null;
+        _isRecording = status['recordingActive'] == true;
+        if (statusCode == 'RECORDING_DISABLED') {
+          _isRecording = false;
+        }
+      });
+    } catch (_) {
+      // Keep previous UI state if status lookup fails.
+    }
+  }
+
+  void _startRecordingStatusPolling() {
+    _recordingStatusTimer?.cancel();
+    if (_recordingStatusPatientUserId == null) {
+      return;
+    }
+
+    _recordingStatusTimer = Timer.periodic(const Duration(seconds: 4), (
+      timer,
+    ) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      await _syncRecordingStatus();
+    });
+  }
+
+  Future<void> _toggleRecording() async {
+    final patientUserId = _recordingStatusPatientUserId;
+    if (patientUserId == null || _isRecordingBusy) {
+      return;
+    }
+
+    if (!_isRecordingEnabledInEnvironment) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _recordingUnavailableHint ??
+                  'Recording is not available in this environment.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _isRecordingBusy = true;
+    });
+
+    try {
+      if (_isRecording) {
+        final response = await _videoCallService.stopRecording(
+          patientUserId: patientUserId,
+          reason: 'Caregiver stopped recording',
+        );
+        final recordingActive = response['recordingActive'] == true;
+        if (!mounted) return;
+        setState(() {
+          _isRecording = recordingActive;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recording stopped.')),
+        );
+      } else {
+        _isConsentDialogOpen = true;
+        final confirmed =
+            await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('Start Recording'),
+                content: const Text(
+                  'Confirm patient consent was obtained before starting recording.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('I Confirm Consent'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+        _isConsentDialogOpen = false;
+
+        if (!confirmed) {
+          return;
+        }
+
+        final response = await _videoCallService.startRecording(
+          patientUserId: patientUserId,
+          consentConfirmed: true,
+          consentNote: 'Caregiver confirmed participant consent in-session',
+        );
+        final recordingActive = response['recordingActive'] == true;
+        if (!mounted) return;
+        setState(() {
+          _isRecording = recordingActive;
+        });
+
+        if (recordingActive) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Recording started.')),
+          );
+        } else {
+          final message =
+              (response['message'] ??
+                      response['status'] ??
+                      'Recording did not start. Verify local recording config.')
+                  .toString();
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
+        }
+      }
+    } catch (e) {
+      _isConsentDialogOpen = false;
+      if (!mounted) return;
+      final raw = e.toString();
+      final lowered = raw.toLowerCase();
+      final message =
+          lowered.contains('recording is disabled')
+          ? 'Recording is not available in this environment.'
+          : lowered.contains('bucket is not configured')
+          ? 'Recording is unavailable: storage is not configured.'
+          : lowered.contains('meeting arn is unavailable')
+          ? 'Recording is unavailable for this call session.'
+          : lowered.contains('failed to start recording')
+          ? 'Recording is currently unavailable. Please try again later.'
+          : raw.replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRecordingBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _endCallAndExit() async {
     if (_isEndingCall) return;
 
     setState(() {
@@ -437,7 +723,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
     try {
       await _videoCallService.endCall();
-      await _navigateToPostCallSummary();
+      await _exitCallScreen();
     } finally {
       if (mounted) {
         setState(() {
@@ -477,8 +763,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     if (_error != null) return _buildError();
     if (_callSession == null) {
       return const Center(
-        child: Text('No active call session',
-            style: TextStyle(color: AppTheme.videoCallText)),
+        child: Text(
+          'No active call session',
+          style: TextStyle(color: AppTheme.videoCallText),
+        ),
       );
     }
     return _buildCallLayout();
@@ -497,6 +785,13 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
           child: _buildChimeView(),
         ),
 
+        _buildCallControlsBar(),
+
+        if (_isCaregiverView && !_isRecordingEnabledInEnvironment)
+          _buildRecordingUnavailableHintBanner(),
+
+        if (_isRecording) _buildRecordingBanner(),
+
         // Sentiment dashboard — collapsible
         if (_isCaregiverView)
           AnimatedContainer(
@@ -511,6 +806,29 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
                 : const SizedBox.shrink(),
           ),
       ],
+    );
+  }
+
+  Widget _buildRecordingBanner() {
+    return Container(
+      width: double.infinity,
+      color: Colors.redAccent,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.fiber_manual_record, color: Colors.white, size: 16),
+          SizedBox(width: 8),
+          Text(
+            'Call is currently being recorded',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -610,7 +928,9 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.refresh),
                         label: Text(
@@ -633,7 +953,9 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     final recipientId = widget.recipientId;
     if (recipientId == null || recipientId.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to retry: missing recipient info.')),
+        const SnackBar(
+          content: Text('Unable to retry: missing recipient info.'),
+        ),
       );
       return;
     }
@@ -654,6 +976,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
             userId: widget.userId,
             callId: newCallId,
             recipientId: widget.recipientId,
+            userRole: widget.userRole,
             isVideoEnabled: widget.isVideoEnabled,
             isAudioEnabled: widget.isAudioEnabled,
             isInitiator: true,
@@ -687,11 +1010,12 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     if (_callSession == null) return const SizedBox.shrink();
 
     final mediaPlacement = _callSession!.mediaPlacement;
-    final hasMediaEndpoints = mediaPlacement.values
-        .whereType<String>()
-        .any((value) => value.trim().isNotEmpty);
-    final isLocalMockSession =
-        _callSession!.joinToken.startsWith('local-join-token-');
+    final hasMediaEndpoints = mediaPlacement.values.whereType<String>().any(
+      (value) => value.trim().isNotEmpty,
+    );
+    final isLocalMockSession = _callSession!.joinToken.startsWith(
+      'local-join-token-',
+    );
 
     if (hasMediaEndpoints && !isLocalMockSession) {
       return buildChimeMeetingEmbed(
@@ -706,7 +1030,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         enableAutoSentimentCapture: _isPatientView,
         sentimentCaptureIntervalMs: _embedCaptureIntervalMs,
         onEndCallRequested: () async {
-          await _endCallAndNavigate();
+          await _endCallAndExit();
         },
         onTranscriptSample: _handleTranscriptSample,
         onAudioSample: _handleAudioSample,
@@ -728,17 +1052,24 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
                 const SizedBox(height: 16),
                 Text(
                   isLocalMockSession
-                      ? 'Connected to local mock meeting'
-                      : 'Connected to meeting',
+                      ? 'Connected to local mock session'
+                      : 'Connected to call session',
                   style: const TextStyle(color: Colors.white70, fontSize: 18),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Participant connection status is not available in this environment.',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Meeting: ${_callSession!.meetingId.substring(0, 8)}...',
                   style: const TextStyle(
-                      color: Colors.white38,
-                      fontSize: 12,
-                      fontFamily: 'monospace'),
+                    color: Colors.white38,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
                 ),
                 const SizedBox(height: 24),
                 // Duration counter
@@ -747,61 +1078,12 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
             ),
           ),
         ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 16,
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.black45,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: _localAudioEnabled ? 'Mute microphone' : 'Unmute microphone',
-                    onPressed: _toggleLocalAudio,
-                    icon: Icon(
-                      _localAudioEnabled ? Icons.mic : Icons.mic_off,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: _localVideoEnabled ? 'Turn camera off' : 'Turn camera on',
-                    onPressed: _toggleLocalVideo,
-                    icon: Icon(
-                      _localVideoEnabled ? Icons.videocam : Icons.videocam_off,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      tooltip: 'End call',
-                      onPressed: _isEndingCall ? null : _endCallAndNavigate,
-                      icon: const Icon(Icons.call_end, color: Colors.white),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
         // Chime badge
         Positioned(
           top: 12,
           right: 12,
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.black54,
               borderRadius: BorderRadius.circular(12),
@@ -811,14 +1093,126 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
               children: [
                 Icon(Icons.videocam, color: Colors.white70, size: 14),
                 SizedBox(width: 4),
-                Text('AWS Chime',
-                    style:
-                        TextStyle(color: Colors.white70, fontSize: 11)),
+                Text(
+                  'AWS Chime',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCallControlsBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: Colors.black45,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          IconButton(
+            tooltip: _localAudioEnabled
+                ? 'Mute microphone'
+                : 'Unmute microphone',
+            onPressed: _toggleLocalAudio,
+            icon: Icon(
+              _localAudioEnabled ? Icons.mic : Icons.mic_off,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: _localVideoEnabled ? 'Turn camera off' : 'Turn camera on',
+            onPressed: _toggleLocalVideo,
+            icon: Icon(
+              _localVideoEnabled ? Icons.videocam : Icons.videocam_off,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Switch camera',
+            onPressed: _switchCamera,
+            icon: const Icon(Icons.cameraswitch, color: Colors.white),
+          ),
+          const SizedBox(width: 8),
+          if (_isCaregiverView) ...[
+            IconButton(
+              tooltip: !_isRecordingEnabledInEnvironment
+                  ? (_recordingUnavailableHint ??
+                        'Recording is not available in this environment.')
+                  : (_isRecording ? 'Stop recording' : 'Start recording'),
+              onPressed: (_isRecordingBusy || !_isRecordingEnabledInEnvironment)
+                  ? null
+                  : _toggleRecording,
+              icon: _isRecording
+                  ? Icon(
+                      Icons.stop_circle,
+                      color: !_isRecordingEnabledInEnvironment
+                          ? Colors.white38
+                          : Colors.redAccent,
+                    )
+                  : Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(
+                          Icons.radio_button_unchecked,
+                          color: !_isRecordingEnabledInEnvironment
+                              ? Colors.white38
+                              : Colors.white,
+                        ),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: !_isRecordingEnabledInEnvironment
+                                ? Colors.white38
+                                : Colors.redAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Container(
+            decoration: const BoxDecoration(
+              color: Colors.redAccent,
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              tooltip: 'End call',
+              onPressed: _isEndingCall ? null : _endCallAndExit,
+              icon: const Icon(Icons.call_end, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecordingUnavailableHintBanner() {
+    return Container(
+      width: double.infinity,
+      color: Colors.orange.shade800,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _recordingUnavailableHint ??
+                  'Recording is not available in this environment.',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -833,14 +1227,18 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         children: [
           const CircularProgressIndicator(color: AppTheme.videoCallText),
           const SizedBox(height: 16),
-          const Text('Connecting to call...',
-              style: TextStyle(color: AppTheme.videoCallText)),
+          const Text(
+            'Connecting to call...',
+            style: TextStyle(color: AppTheme.videoCallText),
+          ),
           if (widget.recipientName != null) ...[
             const SizedBox(height: 8),
             Text(
               'with ${widget.recipientName}',
               style: const TextStyle(
-                  color: AppTheme.videoCallTextSecondary, fontSize: 14),
+                color: AppTheme.videoCallTextSecondary,
+                fontSize: 14,
+              ),
             ),
           ],
         ],
@@ -860,15 +1258,18 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
             Text(
               'Could not connect to call',
               style: const TextStyle(
-                  color: AppTheme.videoCallText,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600),
+                color: AppTheme.videoCallText,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               _error ?? 'Unknown error',
               style: const TextStyle(
-                  color: AppTheme.videoCallTextSecondary, fontSize: 13),
+                color: AppTheme.videoCallTextSecondary,
+                fontSize: 13,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -910,12 +1311,21 @@ class _CallDurationTimerState extends State<_CallDurationTimer> {
       stream: _ticker,
       builder: (context, snapshot) {
         final elapsed = DateTime.now().difference(widget.startTime);
-        final minutes = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
-        final seconds = elapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
+        final minutes = elapsed.inMinutes
+            .remainder(60)
+            .toString()
+            .padLeft(2, '0');
+        final seconds = elapsed.inSeconds
+            .remainder(60)
+            .toString()
+            .padLeft(2, '0');
         return Text(
           '$minutes:$seconds',
           style: const TextStyle(
-              color: Colors.white60, fontSize: 24, fontFamily: 'monospace'),
+            color: Colors.white60,
+            fontSize: 24,
+            fontFamily: 'monospace',
+          ),
         );
       },
     );

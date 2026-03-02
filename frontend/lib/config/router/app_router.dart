@@ -785,6 +785,7 @@ final GoRouter appRouter = GoRouter(
           userId: userId,
           callId: callId,
           recipientId: recipientId,
+          userRole: state.uri.queryParameters['userRole'],
           isVideoEnabled: isVideoEnabled,
           isAudioEnabled: isAudioEnabled,
           isInitiator: isInitiator,

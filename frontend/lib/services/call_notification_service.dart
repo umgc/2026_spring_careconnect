@@ -21,6 +21,8 @@ class CallNotificationService {
   static bool _isIncomingDialogVisible = false;
   static final Map<String, DateTime> _suppressedIncomingCallIds =
       <String, DateTime>{};
+    static final Map<String, Completer<bool>> _pendingOutgoingInvitations =
+      <String, Completer<bool>>{};
 
   // Stream controllers for call events
   static final StreamController<Map<String, dynamic>> _incomingCallController =
@@ -128,6 +130,30 @@ class CallNotificationService {
               _suppressIncomingCallId(declinedCallId);
             }
             _notifyCallDeclined(data);
+          } else if (type == 'call-invitation-sent') {
+            final callId = (data['callId'] ?? '').toString();
+            final pending = _pendingOutgoingInvitations.remove(callId);
+            if (pending != null && !pending.isCompleted) {
+              pending.complete(true);
+            }
+          } else if (type == 'call-invitation-failed') {
+            final callId = (data['callId'] ?? '').toString();
+            final reason = (data['reason'] ?? 'Recipient unavailable')
+                .toString()
+                .trim();
+            final recipientName = (data['recipientName'] ?? '').toString().trim();
+            final recipientRole = (data['recipientRole'] ?? '').toString().trim();
+            final recipientLabel = recipientName.isNotEmpty
+                ? recipientName
+                : (_roleLabel(recipientRole) ?? 'Recipient');
+            final pending = _pendingOutgoingInvitations.remove(callId);
+            if (pending != null && !pending.isCompleted) {
+              pending.complete(false);
+            }
+            _showCallFeedback(
+              '$recipientLabel is unavailable: $reason.',
+              backgroundColor: Colors.orange.shade800,
+            );
           } else if (type == 'sentiment-update') {
             _incomingCallController.add(data);
           }
@@ -272,6 +298,9 @@ class CallNotificationService {
           userId: _currentUserId!,
           callId: callId,
           recipientId: callerId,
+          userRole: _currentUserRole,
+          forcePatientDetailsOnExit: false,
+          returnAsCaregiver: false,
           isInitiator: false, // This user is joining the call
           isVideoEnabled: isVideoCall,
           isAudioEnabled: true,
@@ -445,13 +474,31 @@ class CallNotificationService {
       };
       _channel!.sink.add(_encode(msg));
       _activeCallId = callId;
+
+      final completer = Completer<bool>();
+      _pendingOutgoingInvitations[callId] = completer;
+
       _showCallFeedback(
         'Calling $recipientRole… waiting for response.',
         backgroundColor: Colors.blue.shade700,
       );
-      return true;
+
+      final delivered = await completer.future.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          _pendingOutgoingInvitations.remove(callId);
+          _showCallFeedback(
+            '${_roleLabel(recipientRole) ?? 'Recipient'} did not confirm availability. They may be offline.',
+            backgroundColor: Colors.orange.shade800,
+          );
+          return false;
+        },
+      );
+
+      return delivered;
     } catch (e) {
       debugPrint('❌ Error sending call invitation: $e');
+      _pendingOutgoingInvitations.remove(callId);
       _showCallFeedback(
         'Failed to send call invitation. Please try again.',
         backgroundColor: Colors.red.shade700,
@@ -533,6 +580,12 @@ class CallNotificationService {
     _currentIncomingCallId = null;
     _isIncomingDialogVisible = false;
     _suppressedIncomingCallIds.clear();
+    for (final pending in _pendingOutgoingInvitations.values) {
+      if (!pending.isCompleted) {
+        pending.complete(false);
+      }
+    }
+    _pendingOutgoingInvitations.clear();
 
     // Keep stream controller alive for app lifetime.
   }

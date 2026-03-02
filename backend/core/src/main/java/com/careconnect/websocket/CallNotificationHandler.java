@@ -280,6 +280,7 @@ public class CallNotificationHandler extends TextWebSocketHandler {
                 "type", "call-invitation-sent",
                 "callId", callId,
                 "recipientId", recipientId,
+                "recipientRole", recipient.getRole().name(),
                 "recipientName", getUserDisplayName(recipient),
                 "status", "delivered"
             );
@@ -292,7 +293,9 @@ public class CallNotificationHandler extends TextWebSocketHandler {
                 "type", "call-invitation-failed",
                 "callId", callId,
                 "reason", "Recipient not online",
-                "recipientId", recipientId
+                "recipientId", recipientId,
+                "recipientRole", recipient.getRole().name(),
+                "recipientName", getUserDisplayName(recipient)
             );
             session.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorResponse)));
             

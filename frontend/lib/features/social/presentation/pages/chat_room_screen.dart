@@ -209,6 +209,7 @@ import '../model/message_dto.dart';
                   '/video-call-chime'
                   '?userId=$_currentUserId'
                   '&recipientId=${widget.peerUserId}'
+                  '&userRole=${Uri.encodeComponent(currentUser.role)}'
                   '&userName=${Uri.encodeComponent(currentUser.name ?? 'User')}'
                   '&recipientName=${Uri.encodeComponent(widget.peerName)}'
                   '&initiator=true'

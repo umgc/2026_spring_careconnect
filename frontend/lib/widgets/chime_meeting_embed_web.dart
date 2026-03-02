@@ -18,6 +18,93 @@ const bool _allowExternalSdkFallback = bool.fromEnvironment(
   defaultValue: !kReleaseMode,
 );
 
+final Map<String, html.IFrameElement> _activeMeetingIframes =
+    <String, html.IFrameElement>{};
+
+Future<bool> requestChimeCameraSwitch({String? meetingId}) async {
+  Iterable<html.IFrameElement> targets;
+  if (meetingId != null && meetingId.trim().isNotEmpty) {
+    final frame = _activeMeetingIframes[meetingId.trim()];
+    if (frame == null) return false;
+    targets = [frame];
+  } else {
+    targets = _activeMeetingIframes.values;
+  }
+
+  var posted = false;
+  for (final frame in targets) {
+    final win = frame.contentWindow;
+    if (win == null) continue;
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': 'switch-camera',
+      if (meetingId != null && meetingId.trim().isNotEmpty)
+        'meetingId': meetingId.trim(),
+    }, '*');
+    posted = true;
+  }
+
+  return posted;
+}
+
+Future<bool> requestChimeAudioToggle({
+  required bool muted,
+  String? meetingId,
+}) async {
+  Iterable<html.IFrameElement> targets;
+  if (meetingId != null && meetingId.trim().isNotEmpty) {
+    final frame = _activeMeetingIframes[meetingId.trim()];
+    if (frame == null) return false;
+    targets = [frame];
+  } else {
+    targets = _activeMeetingIframes.values;
+  }
+
+  var posted = false;
+  for (final frame in targets) {
+    final win = frame.contentWindow;
+    if (win == null) continue;
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': 'toggle-audio',
+      'muted': muted,
+      if (meetingId != null && meetingId.trim().isNotEmpty)
+        'meetingId': meetingId.trim(),
+    }, '*');
+    posted = true;
+  }
+  return posted;
+}
+
+Future<bool> requestChimeVideoToggle({
+  required bool muted,
+  String? meetingId,
+}) async {
+  Iterable<html.IFrameElement> targets;
+  if (meetingId != null && meetingId.trim().isNotEmpty) {
+    final frame = _activeMeetingIframes[meetingId.trim()];
+    if (frame == null) return false;
+    targets = [frame];
+  } else {
+    targets = _activeMeetingIframes.values;
+  }
+
+  var posted = false;
+  for (final frame in targets) {
+    final win = frame.contentWindow;
+    if (win == null) continue;
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': 'toggle-video',
+      'muted': muted,
+      if (meetingId != null && meetingId.trim().isNotEmpty)
+        'meetingId': meetingId.trim(),
+    }, '*');
+    posted = true;
+  }
+  return posted;
+}
+
 Widget buildChimeMeetingEmbed({
   required String meetingId,
   required String attendeeId,
@@ -194,6 +281,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         ..style.height = '100%'
         ..setAttribute('allow', 'camera; microphone; autoplay; fullscreen')
         ..srcdoc = _buildMeetingHtml(configJson);
+      _activeMeetingIframes[widget.meetingId] = iframe;
       return iframe;
     });
   }
@@ -293,6 +381,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
   @override
   void dispose() {
     _messageSubscription?.cancel();
+    _activeMeetingIframes.remove(widget.meetingId);
     super.dispose();
   }
 
@@ -318,7 +407,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
       }
       #controls {
         position:absolute; left:50%; transform:translateX(-50%); bottom:16px;
-        display:flex; gap:clamp(12px, 1.8vw, 20px); align-items:center;
+        display:none !important;
+        gap:clamp(12px, 1.8vw, 20px); align-items:center;
         padding:0;
         background:transparent;
         border:none;
@@ -481,6 +571,50 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             );
           } catch (_) {}
         }
+
+        window.addEventListener('message', async (event) => {
+          const data = event && event.data ? event.data : null;
+          if (!data || data.source !== 'careconnect-flutter') {
+            return;
+          }
+
+          if (data.action === 'toggle-audio') {
+            try {
+              await setLocalAudioMuted(!!data.muted);
+            } catch (audioErr) {
+              report('warn', 'Flutter overlay audio toggle failed: ' + String(audioErr));
+            }
+            return;
+          }
+
+          if (data.action === 'toggle-video') {
+            try {
+              await setLocalVideoMuted(!!data.muted);
+            } catch (videoErr) {
+              report('warn', 'Flutter overlay video toggle failed: ' + String(videoErr));
+            }
+            return;
+          }
+
+          if (data.action === 'switch-camera') {
+            try {
+              if (audioVideo && typeof audioVideo.listVideoInputDevices === 'function') {
+                availableVideoInputs = await audioVideo.listVideoInputDevices();
+              }
+              const switched = await switchVideoInput('flutter-overlay');
+              if (switched) {
+                localVideoBound = false;
+                ensureLocalVideoTile();
+                report('info', 'Camera switched by Flutter overlay');
+              } else {
+                report('warn', 'Flutter overlay requested camera switch but no alternative camera was found');
+              }
+              updateControlButtons();
+            } catch (switchErr) {
+              report('warn', 'Flutter overlay camera switch failed: ' + String(switchErr));
+            }
+          }
+        });
 
         function normalizeAudioFormat(mimeType) {
           const lower = String(mimeType || '').toLowerCase();
@@ -913,9 +1047,24 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           let videoPublishRecoveryAttempts = 0;
           let localTileId = null;
           let remoteTileId = null;
+          let remoteParticipantPresent = false;
           availableVideoInputs = [];
           let activeVideoDeviceId = null;
           let localVideoHealthTimer = null;
+
+          function updateParticipantStatus() {
+            if (remoteTileId !== null) {
+              setStatus('Connected with participant');
+              return;
+            }
+
+            if (remoteParticipantPresent) {
+              setStatus('Connected with participant (audio only)');
+              return;
+            }
+
+            setStatus('In call lobby: waiting for the other person to join...');
+          }
 
           function ensureLocalVideoTile() {
             if (!config.videoEnabled || localVideoBound) {
@@ -1154,7 +1303,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           audioVideo.addObserver({
             audioVideoDidStart: () => {
-              setStatus('In call lobby: waiting for the other person to join...');
+              updateParticipantStatus();
               ensureLocalVideoTile();
               report('info', 'audioVideoDidStart');
 
@@ -1205,11 +1354,12 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
                 scheduleLocalVideoHealthCheck();
                 report('info', 'Local video tile bound');
               } else {
+                remoteParticipantPresent = true;
                 if (remoteTileId !== tileState.tileId) {
                   remoteTileId = tileState.tileId;
                   bindAndPlayVideo(tileState.tileId, remoteVideo, 'remote');
                 }
-                setStatus('Connected with participant');
+                updateParticipantStatus();
                 report('info', 'Remote video tile bound');
               }
             },
@@ -1220,10 +1370,32 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
               }
               if (tileId === remoteTileId) {
                 remoteTileId = null;
-                setStatus('In call lobby: waiting for the other person to rejoin...');
+                updateParticipantStatus();
               }
             }
           });
+
+          if (typeof audioVideo.realtimeSubscribeToAttendeeIdPresence === 'function') {
+            audioVideo.realtimeSubscribeToAttendeeIdPresence((attendeeId, present, externalUserId, dropped) => {
+              if (!attendeeId || attendeeId === config.attendeeId) {
+                return;
+              }
+
+              remoteParticipantPresent = !!present;
+              if (!remoteParticipantPresent) {
+                remoteTileId = null;
+              }
+
+              updateParticipantStatus();
+              report(
+                'info',
+                'Presence update: attendee=' + attendeeId +
+                  ', present=' + String(!!present) +
+                  ', dropped=' + String(!!dropped) +
+                  ', externalUserId=' + String(externalUserId || ''),
+              );
+            });
+          }
 
           if (config.audioEnabled) {
             const audioInputs = await audioVideo.listAudioInputDevices();

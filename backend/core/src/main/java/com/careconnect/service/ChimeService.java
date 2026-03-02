@@ -1,32 +1,12 @@
 package com.careconnect.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
-import software.amazon.awssdk.services.s3.model.S3Object;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.chimesdkmediapipelines.ChimeSdkMediaPipelinesClient;
-import software.amazon.awssdk.services.chimesdkmediapipelines.model.CreateMediaCapturePipelineRequest;
-import software.amazon.awssdk.services.chimesdkmediapipelines.model.CreateMediaCapturePipelineResponse;
-import software.amazon.awssdk.services.chimesdkmediapipelines.model.DeleteMediaCapturePipelineRequest;
-import software.amazon.awssdk.services.chimesdkmediapipelines.model.MediaPipelineSinkType;
-import software.amazon.awssdk.services.chimesdkmediapipelines.model.MediaPipelineSourceType;
 import software.amazon.awssdk.services.chimesdkmeetings.ChimeSdkMeetingsClient;
 import software.amazon.awssdk.services.chimesdkmeetings.model.*;
 
-import java.time.LocalDateTime;
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,40 +26,19 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChimeService {
 
     private final ChimeSdkMeetingsClient chimeSdkMeetingsClient;
-    private final ChimeSdkMediaPipelinesClient chimeSdkMediaPipelinesClient;
-    private final S3Client s3Client;
-    private final S3Presigner s3Presigner;
     private final boolean awsEnabled;
-    private final boolean recordingEnabled;
-    private final String recordingBucket;
-    private final String recordingPrefix;
 
     @Autowired
     public ChimeService(
             @Autowired(required = false) ChimeSdkMeetingsClient chimeSdkMeetingsClient,
-            @Autowired(required = false) ChimeSdkMediaPipelinesClient chimeSdkMediaPipelinesClient,
-            @Autowired(required = false) S3Client s3Client,
-            @Autowired(required = false) S3Presigner s3Presigner,
-            @Value("${careconnect.aws.enabled:true}") boolean awsEnabled,
-            @Value("${careconnect.recording.enabled:false}") boolean recordingEnabled,
-            @Value("${careconnect.recording.s3-bucket:}") String recordingBucket,
-            @Value("${careconnect.recording.s3-prefix:call-recordings}") String recordingPrefix) {
+            @Value("${careconnect.aws.enabled:true}") boolean awsEnabled) {
         this.chimeSdkMeetingsClient = chimeSdkMeetingsClient;
-        this.chimeSdkMediaPipelinesClient = chimeSdkMediaPipelinesClient;
-        this.s3Client = s3Client;
-        this.s3Presigner = s3Presigner;
         this.awsEnabled = awsEnabled;
-        this.recordingEnabled = recordingEnabled;
-        this.recordingBucket = recordingBucket == null ? "" : recordingBucket.trim();
-        this.recordingPrefix = recordingPrefix == null || recordingPrefix.isBlank()
-                ? "call-recordings"
-                : recordingPrefix.trim();
     }
 
     // In-memory store of active meetings: callId -> MeetingResponse
     // On ECS single-instance this is sufficient — no distributed cache needed
     private final Map<String, Meeting> activeMeetings = new ConcurrentHashMap<>();
-    private final Map<String, RecordingSession> activeRecordings = new ConcurrentHashMap<>();
 
     // ================================================================
     // CREATE MEETING
@@ -268,245 +227,7 @@ public class ChimeService {
             log.warn("Could not delete Chime meeting {} — may have already expired: {}",
                 meeting.meetingId(), e.getMessage());
         }
-
-        try {
-            stopRecording(callId, null, null, "Meeting ended");
-        } catch (Exception ex) {
-            log.warn("Could not stop recording for call {} during meeting end: {}", callId, ex.getMessage());
-        }
     }
-
-    public Map<String, Object> startRecording(
-            String callId,
-            Long caregiverUserId,
-            Long patientUserId,
-            boolean consentConfirmed,
-            String consentNote
-    ) {
-        if (!recordingEnabled) {
-            throw new RuntimeException("Call recording is disabled");
-        }
-        if (!consentConfirmed) {
-            throw new RuntimeException("Recording requires explicit participant consent");
-        }
-
-        RecordingSession existing = activeRecordings.get(callId);
-        if (existing != null && existing.active) {
-            return existing.toResponse();
-        }
-
-        Meeting meeting = activeMeetings.get(callId);
-        if (meeting == null) {
-            throw new RuntimeException("Cannot start recording: meeting is not active");
-        }
-
-        String normalizedConsentNote = sanitizeConsentNote(consentNote);
-        LocalDateTime startedAt = LocalDateTime.now();
-
-        if (!isAwsRecordingAvailable()) {
-            RecordingSession local = new RecordingSession(
-                    callId,
-                    "local-recording-" + UUID.randomUUID(),
-                    buildRecordingPrefix(callId),
-                    caregiverUserId,
-                    patientUserId,
-                    true,
-                    normalizedConsentNote,
-                    true,
-                    startedAt,
-                    null,
-                    "MOCK_ACTIVE"
-            );
-            activeRecordings.put(callId, local);
-            return local.toResponse();
-        }
-
-        if (recordingBucket.isEmpty()) {
-            throw new RuntimeException("Recording bucket is not configured");
-        }
-
-        try {
-            String sourceArn = meeting.meetingArn();
-            if (sourceArn == null || sourceArn.isBlank()) {
-                throw new RuntimeException("Meeting ARN is unavailable for recording");
-            }
-
-            CreateMediaCapturePipelineRequest request = CreateMediaCapturePipelineRequest.builder()
-                    .clientRequestToken(UUID.randomUUID().toString())
-                    .sourceType(MediaPipelineSourceType.CHIME_SDK_MEETING)
-                    .sourceArn(sourceArn)
-                    .sinkType(MediaPipelineSinkType.S3_BUCKET)
-                    .sinkArn("arn:aws:s3:::" + recordingBucket + "/" + buildRecordingPrefix(callId))
-                    .build();
-
-            CreateMediaCapturePipelineResponse response =
-                    chimeSdkMediaPipelinesClient.createMediaCapturePipeline(request);
-
-            String mediaPipelineId = response.mediaCapturePipeline().mediaPipelineId();
-            RecordingSession session = new RecordingSession(
-                    callId,
-                    mediaPipelineId,
-                    buildRecordingPrefix(callId),
-                    caregiverUserId,
-                    patientUserId,
-                    true,
-                    normalizedConsentNote,
-                    false,
-                    startedAt,
-                    null,
-                    "ACTIVE"
-            );
-
-            activeRecordings.put(callId, session);
-            return session.toResponse();
-        } catch (Exception ex) {
-            throw new RuntimeException("Failed to start recording: " + ex.getMessage());
-        }
-    }
-
-    public Map<String, Object> stopRecording(
-            String callId,
-            Long caregiverUserId,
-            Long patientUserId,
-            String reason
-    ) {
-        RecordingSession session = activeRecordings.get(callId);
-        if (session == null || !session.active) {
-            return Map.of(
-                    "callId", callId,
-                    "recordingActive", false,
-                    "status", "NOT_RECORDING"
-            );
-        }
-
-        if (!session.mock && isAwsRecordingAvailable()) {
-            try {
-                chimeSdkMediaPipelinesClient.deleteMediaCapturePipeline(
-                        DeleteMediaCapturePipelineRequest.builder()
-                                .mediaPipelineId(session.pipelineId)
-                                .build()
-                );
-            } catch (Exception ex) {
-                throw new RuntimeException("Failed to stop recording: " + ex.getMessage());
-            }
-        }
-
-        session.active = false;
-        session.stoppedAt = LocalDateTime.now();
-        session.status = "STOPPED";
-        if (caregiverUserId != null) {
-            session.stoppedByUserId = caregiverUserId;
-        }
-        if (patientUserId != null) {
-            session.patientUserId = patientUserId;
-        }
-        if (reason != null && !reason.isBlank()) {
-            session.stopReason = reason.trim();
-        }
-
-        return session.toResponse();
-    }
-
-    public Map<String, Object> getRecordingStatus(String callId) {
-        if (!recordingEnabled) {
-            return Map.of(
-                    "callId", callId,
-                    "recordingActive", false,
-                    "recordingEnabled", false,
-                    "status", "RECORDING_DISABLED",
-                    "message", "Recording is disabled in this environment"
-            );
-        }
-
-        RecordingSession session = activeRecordings.get(callId);
-        if (session == null) {
-            return Map.of(
-                    "callId", callId,
-                    "recordingActive", false,
-                    "recordingEnabled", true,
-                    "status", "NOT_RECORDING"
-            );
-        }
-        Map<String, Object> response = new HashMap<>(session.toResponse());
-        response.put("recordingEnabled", true);
-        return response;
-    }
-
-        public Map<String, Object> getRecordingExtractInfo(String callId) {
-        RecordingSession session = activeRecordings.get(callId);
-        if (session == null) {
-            return Map.of(
-                "callId", callId,
-                "recordingAvailable", false,
-                "status", "NOT_RECORDING",
-                "message", "No recording metadata found for this call"
-            );
-        }
-
-        if (session.mock) {
-            return Map.of(
-                "callId", callId,
-                "recordingAvailable", false,
-                "status", session.status,
-                "mock", true,
-                "message", "Local mock recording has no media file to extract"
-            );
-        }
-
-        if (recordingBucket.isEmpty() || s3Client == null || s3Presigner == null) {
-            return Map.of(
-                "callId", callId,
-                "recordingAvailable", false,
-                "status", session.status,
-                "message", "Recording storage is not fully configured"
-            );
-        }
-
-        String prefix = session.s3Prefix == null || session.s3Prefix.isBlank()
-            ? buildRecordingPrefix(callId)
-            : session.s3Prefix;
-
-        S3Object latestObject = findLatestRecordingObject(prefix);
-        if (latestObject == null) {
-            return Map.of(
-                "callId", callId,
-                "recordingAvailable", false,
-                "status", session.status,
-                "s3Prefix", prefix,
-                "message", "Recording file is not available yet"
-            );
-        }
-
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-            .bucket(recordingBucket)
-            .key(latestObject.key())
-            .build();
-
-        PresignedGetObjectRequest presigned = s3Presigner.presignGetObject(
-            GetObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofMinutes(20))
-                .getObjectRequest(getObjectRequest)
-                .build()
-        );
-
-        String fileName = latestObject.key();
-        int slashIndex = fileName.lastIndexOf('/');
-        if (slashIndex >= 0 && slashIndex < fileName.length() - 1) {
-            fileName = fileName.substring(slashIndex + 1);
-        }
-
-        return Map.of(
-            "callId", callId,
-            "recordingAvailable", true,
-            "status", session.status,
-            "s3Prefix", prefix,
-            "bucket", recordingBucket,
-            "objectKey", latestObject.key(),
-            "fileName", fileName,
-            "downloadUrl", presigned.url().toString(),
-            "expiresInSeconds", 1200
-        );
-        }
 
     // ================================================================
     // GET MEETING INFO
@@ -553,113 +274,4 @@ public class ChimeService {
         return awsEnabled && chimeSdkMeetingsClient != null;
     }
 
-    private boolean isAwsRecordingAvailable() {
-        return awsEnabled && chimeSdkMediaPipelinesClient != null;
-    }
-
-    private S3Object findLatestRecordingObject(String prefix) {
-        ListObjectsV2Response response = s3Client.listObjectsV2(
-                ListObjectsV2Request.builder()
-                        .bucket(recordingBucket)
-                        .prefix(prefix)
-                        .build()
-        );
-
-        List<S3Object> objects = response.contents();
-        if (objects == null || objects.isEmpty()) {
-            return null;
-        }
-
-        return objects.stream()
-                .filter(object -> object.key() != null && !object.key().endsWith("/"))
-                .max(Comparator.comparing(S3Object::lastModified))
-                .orElse(null);
-    }
-
-    private String buildRecordingPrefix(String callId) {
-        return recordingPrefix + "/" + callId;
-    }
-
-    private String sanitizeConsentNote(String consentNote) {
-        if (consentNote == null) {
-            return null;
-        }
-        String trimmed = consentNote.trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        if (trimmed.length() > 500) {
-            return trimmed.substring(0, 500);
-        }
-        return trimmed;
-    }
-
-    private static final class RecordingSession {
-        private final String callId;
-        private final String pipelineId;
-        private final String s3Prefix;
-        private final Long startedByUserId;
-        private Long stoppedByUserId;
-        private Long patientUserId;
-        private final boolean consentConfirmed;
-        private final String consentNote;
-        private final boolean mock;
-        private final LocalDateTime startedAt;
-        private LocalDateTime stoppedAt;
-        private String stopReason;
-        private boolean active;
-        private String status;
-
-        private RecordingSession(
-                String callId,
-                String pipelineId,
-                String s3Prefix,
-                Long startedByUserId,
-                Long patientUserId,
-                boolean consentConfirmed,
-                String consentNote,
-                boolean mock,
-                LocalDateTime startedAt,
-                LocalDateTime stoppedAt,
-                String status
-        ) {
-            this.callId = callId;
-            this.pipelineId = pipelineId;
-            this.s3Prefix = s3Prefix;
-            this.startedByUserId = startedByUserId;
-            this.patientUserId = patientUserId;
-            this.consentConfirmed = consentConfirmed;
-            this.consentNote = consentNote;
-            this.mock = mock;
-            this.startedAt = startedAt;
-            this.stoppedAt = stoppedAt;
-            this.active = true;
-            this.status = status;
-        }
-
-        private Map<String, Object> toResponse() {
-            Map<String, Object> response = new HashMap<>();
-            response.put("callId", callId);
-            response.put("recordingActive", active);
-            response.put("status", status);
-            response.put("pipelineId", pipelineId);
-            response.put("s3Prefix", s3Prefix);
-            response.put("consentConfirmed", consentConfirmed);
-            response.put("startedByUserId", startedByUserId);
-            response.put("patientUserId", patientUserId);
-            response.put("startedAt", startedAt);
-            response.put("stoppedAt", stoppedAt);
-            response.put("mock", mock);
-            if (stopReason != null) {
-                response.put("stopReason", stopReason);
-            }
-            if (consentNote != null) {
-                response.put("consentNote", consentNote);
-            }
-            if (stoppedByUserId != null) {
-                response.put("stoppedByUserId", stoppedByUserId);
-            }
-            return response;
-        }
-    }
 }

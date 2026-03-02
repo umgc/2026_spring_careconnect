@@ -7,10 +7,8 @@ import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
-import software.amazon.awssdk.services.chimesdkmediapipelines.ChimeSdkMediaPipelinesClient;
 import software.amazon.awssdk.services.chimesdkmeetings.ChimeSdkMeetingsClient;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.ssm.SsmClient;
 import software.amazon.awssdk.services.textract.TextractClient;
 
@@ -39,14 +37,6 @@ public class AwsAccessConfig {
     }
 
     @Bean
-    public S3Presigner s3Presigner() {
-        return S3Presigner.builder()
-                .region(defaultAwsRegion())
-                .credentialsProvider(awsCredentialsProvider())
-                .build();
-    }
-
-    @Bean
     public SsmClient ssmClient(DefaultCredentialsProvider credentialsProvider) {
         return SsmClient.builder()
                 .credentialsProvider(credentialsProvider)
@@ -65,14 +55,6 @@ public class AwsAccessConfig {
     @Bean
     public ChimeSdkMeetingsClient chimeSdkMeetingsClient() {
         return ChimeSdkMeetingsClient.builder()
-                .region(defaultAwsRegion())
-                .credentialsProvider(awsCredentialsProvider())
-                .build();
-    }
-
-    @Bean
-    public ChimeSdkMediaPipelinesClient chimeSdkMediaPipelinesClient() {
-        return ChimeSdkMediaPipelinesClient.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(awsCredentialsProvider())
                 .build();

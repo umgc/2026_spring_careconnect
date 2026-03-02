@@ -84,16 +84,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   bool _isSendingAudioSample = false;
   bool _isSendingVideoSample = false;
   bool _isEndingCall = false;
-  bool _isRecording = false;
-  bool _isRecordingBusy = false;
-  bool _isRecordingEnabledInEnvironment = true;
-  String? _recordingUnavailableHint;
-  bool _isConsentDialogOpen = false;
   bool _isExitingCall = false;
   DateTime? _lastAudioSampleSentAt;
   DateTime? _lastVideoSampleSentAt;
   DateTime? _lastTranscriptSampleSentAt;
-  Timer? _recordingStatusTimer;
   bool _localAudioEnabled = true;
   bool _localVideoEnabled = true;
   bool _hasSentInitialInvitation = false;
@@ -161,7 +155,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
           _sentimentPanelExpanded = false;
         }
       });
-      _startRecordingStatusPolling();
     } catch (_) {
       // Keep safe default (no analytics panel) if role cannot be loaded.
     }
@@ -258,9 +251,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         _localAudioEnabled = session.isAudioEnabled;
         _localVideoEnabled = session.isVideoEnabled;
       });
-
-      await _syncRecordingStatus();
-      _startRecordingStatusPolling();
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -279,7 +269,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   @override
   void dispose() {
-    _recordingStatusTimer?.cancel();
     _videoCallService.dispose();
     super.dispose();
   }
@@ -493,13 +482,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     if (_isExitingCall || !mounted) return;
     _isExitingCall = true;
 
-    if (_isConsentDialogOpen) {
-      Navigator.of(context, rootNavigator: true).pop();
-      _isConsentDialogOpen = false;
-      await Future<void>.delayed(Duration.zero);
-      if (!mounted) return;
-    }
-
     final returnPatientId = widget.returnPatientDetailsId?.trim();
     final shouldForcePatientDetails =
         widget.forcePatientDetailsOnExit &&
@@ -521,196 +503,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     if (!mounted) return;
     if (Navigator.canPop(context)) {
       Navigator.of(context).pop();
-    }
-  }
-
-  int? get _recordingStatusPatientUserId {
-    if (_isCaregiverView) {
-      final recipient = widget.recipientId?.trim();
-      if (recipient == null || recipient.isEmpty) return null;
-      return int.tryParse(recipient);
-    }
-
-    if (_isPatientView) {
-      return int.tryParse(widget.userId.trim());
-    }
-
-    final explicitRole = widget.userRole?.trim().toUpperCase();
-    if (explicitRole == 'CAREGIVER') {
-      final recipient = widget.recipientId?.trim();
-      if (recipient == null || recipient.isEmpty) return null;
-      return int.tryParse(recipient);
-    }
-    if (explicitRole == 'PATIENT') {
-      return int.tryParse(widget.userId.trim());
-    }
-
-    return null;
-  }
-
-  Future<void> _syncRecordingStatus() async {
-    final patientUserId = _recordingStatusPatientUserId;
-    if (patientUserId == null) return;
-
-    try {
-      final status = await _videoCallService.getRecordingStatus(
-        patientUserId: patientUserId,
-      );
-      if (!mounted) return;
-      final recordingEnabled = status['recordingEnabled'] != false;
-      final statusCode = (status['status'] ?? '').toString().toUpperCase();
-      final backendMessage = (status['message'] ?? '').toString().trim();
-      setState(() {
-        _isRecordingEnabledInEnvironment = recordingEnabled;
-        _recordingUnavailableHint = !recordingEnabled
-            ? (backendMessage.isNotEmpty
-                  ? backendMessage
-                  : 'Recording is disabled in this environment.')
-            : null;
-        _isRecording = status['recordingActive'] == true;
-        if (statusCode == 'RECORDING_DISABLED') {
-          _isRecording = false;
-        }
-      });
-    } catch (_) {
-      // Keep previous UI state if status lookup fails.
-    }
-  }
-
-  void _startRecordingStatusPolling() {
-    _recordingStatusTimer?.cancel();
-    if (_recordingStatusPatientUserId == null) {
-      return;
-    }
-
-    _recordingStatusTimer = Timer.periodic(const Duration(seconds: 4), (
-      timer,
-    ) async {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      await _syncRecordingStatus();
-    });
-  }
-
-  Future<void> _toggleRecording() async {
-    final patientUserId = _recordingStatusPatientUserId;
-    if (patientUserId == null || _isRecordingBusy) {
-      return;
-    }
-
-    if (!_isRecordingEnabledInEnvironment) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _recordingUnavailableHint ??
-                  'Recording is not available in this environment.',
-            ),
-          ),
-        );
-      }
-      return;
-    }
-
-    setState(() {
-      _isRecordingBusy = true;
-    });
-
-    try {
-      if (_isRecording) {
-        final response = await _videoCallService.stopRecording(
-          patientUserId: patientUserId,
-          reason: 'Caregiver stopped recording',
-        );
-        final recordingActive = response['recordingActive'] == true;
-        if (!mounted) return;
-        setState(() {
-          _isRecording = recordingActive;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Recording stopped.')),
-        );
-      } else {
-        _isConsentDialogOpen = true;
-        final confirmed =
-            await showDialog<bool>(
-              context: context,
-              builder: (dialogContext) => AlertDialog(
-                title: const Text('Start Recording'),
-                content: const Text(
-                  'Confirm patient consent was obtained before starting recording.',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(true),
-                    child: const Text('I Confirm Consent'),
-                  ),
-                ],
-              ),
-            ) ??
-            false;
-        _isConsentDialogOpen = false;
-
-        if (!confirmed) {
-          return;
-        }
-
-        final response = await _videoCallService.startRecording(
-          patientUserId: patientUserId,
-          consentConfirmed: true,
-          consentNote: 'Caregiver confirmed participant consent in-session',
-        );
-        final recordingActive = response['recordingActive'] == true;
-        if (!mounted) return;
-        setState(() {
-          _isRecording = recordingActive;
-        });
-
-        if (recordingActive) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Recording started.')),
-          );
-        } else {
-          final message =
-              (response['message'] ??
-                      response['status'] ??
-                      'Recording did not start. Verify local recording config.')
-                  .toString();
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(message)));
-        }
-      }
-    } catch (e) {
-      _isConsentDialogOpen = false;
-      if (!mounted) return;
-      final raw = e.toString();
-      final lowered = raw.toLowerCase();
-      final message =
-          lowered.contains('recording is disabled')
-          ? 'Recording is not available in this environment.'
-          : lowered.contains('bucket is not configured')
-          ? 'Recording is unavailable: storage is not configured.'
-          : lowered.contains('meeting arn is unavailable')
-          ? 'Recording is unavailable for this call session.'
-          : lowered.contains('failed to start recording')
-          ? 'Recording is currently unavailable. Please try again later.'
-          : raw.replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRecordingBusy = false;
-        });
-      }
     }
   }
 
@@ -787,11 +579,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
         _buildCallControlsBar(),
 
-        if (_isCaregiverView && !_isRecordingEnabledInEnvironment)
-          _buildRecordingUnavailableHintBanner(),
-
-        if (_isRecording) _buildRecordingBanner(),
-
         // Sentiment dashboard — collapsible
         if (_isCaregiverView)
           AnimatedContainer(
@@ -806,29 +593,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
                 : const SizedBox.shrink(),
           ),
       ],
-    );
-  }
-
-  Widget _buildRecordingBanner() {
-    return Container(
-      width: double.infinity,
-      color: Colors.redAccent,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.fiber_manual_record, color: Colors.white, size: 16),
-          SizedBox(width: 8),
-          Text(
-            'Call is currently being recorded',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1139,46 +903,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
             icon: const Icon(Icons.cameraswitch, color: Colors.white),
           ),
           const SizedBox(width: 8),
-          if (_isCaregiverView) ...[
-            IconButton(
-              tooltip: !_isRecordingEnabledInEnvironment
-                  ? (_recordingUnavailableHint ??
-                        'Recording is not available in this environment.')
-                  : (_isRecording ? 'Stop recording' : 'Start recording'),
-              onPressed: (_isRecordingBusy || !_isRecordingEnabledInEnvironment)
-                  ? null
-                  : _toggleRecording,
-              icon: _isRecording
-                  ? Icon(
-                      Icons.stop_circle,
-                      color: !_isRecordingEnabledInEnvironment
-                          ? Colors.white38
-                          : Colors.redAccent,
-                    )
-                  : Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(
-                          Icons.radio_button_unchecked,
-                          color: !_isRecordingEnabledInEnvironment
-                              ? Colors.white38
-                              : Colors.white,
-                        ),
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: !_isRecordingEnabledInEnvironment
-                                ? Colors.white38
-                                : Colors.redAccent,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-            const SizedBox(width: 8),
-          ],
           Container(
             decoration: const BoxDecoration(
               color: Colors.redAccent,
@@ -1188,27 +912,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
               tooltip: 'End call',
               onPressed: _isEndingCall ? null : _endCallAndExit,
               icon: const Icon(Icons.call_end, color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecordingUnavailableHintBanner() {
-    return Container(
-      width: double.infinity,
-      color: Colors.orange.shade800,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline, color: Colors.white, size: 16),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _recordingUnavailableHint ??
-                  'Recording is not available in this environment.',
-              style: const TextStyle(color: Colors.white, fontSize: 12),
             ),
           ),
         ],

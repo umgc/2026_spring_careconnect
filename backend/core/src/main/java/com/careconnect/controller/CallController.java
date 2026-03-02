@@ -7,7 +7,6 @@ import com.careconnect.service.BedrockSentimentService;
 import com.careconnect.service.BedrockSentimentService.SentimentResult;
 import com.careconnect.service.ChimeService;
 import com.careconnect.service.CallTelemetryService;
-import com.careconnect.service.CaregiverPatientLinkService;
 
 import com.careconnect.websocket.CallNotificationHandler;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,7 +38,6 @@ public class CallController {
     @Autowired private BedrockSentimentService sentimentService;
     @Autowired private CallNotificationHandler callNotificationHandler;
     @Autowired private CallTelemetryService callTelemetryService;
-    @Autowired private CaregiverPatientLinkService caregiverPatientLinkService;
     @Autowired private UserRepository userRepository;
     @Autowired private Environment environment;
 
@@ -55,40 +53,6 @@ public class CallController {
             throw new AppException(HttpStatus.FORBIDDEN,
                     "Only patient-origin audio/video/text can be analyzed for sentiment");
         }
-    }
-
-    private void ensureCaregiverRecordingAccess(User currentUser, Long patientUserId) {
-        if (currentUser.getRole() != com.careconnect.security.Role.CAREGIVER) {
-            throw new AppException(HttpStatus.FORBIDDEN, "Only caregivers can control call recording");
-        }
-        if (patientUserId == null) {
-            throw new AppException(HttpStatus.BAD_REQUEST, "patientUserId is required for recording");
-        }
-        if (!caregiverPatientLinkService.hasAccessToPatient(currentUser.getId(), patientUserId)) {
-            throw new AppException(HttpStatus.FORBIDDEN, "Caregiver does not have access to this patient");
-        }
-    }
-
-    private void ensureRecordingStatusAccess(User currentUser, Long patientUserId) {
-        if (patientUserId == null) {
-            throw new AppException(HttpStatus.BAD_REQUEST, "patientUserId is required for recording status");
-        }
-
-        if (currentUser.getRole() == com.careconnect.security.Role.CAREGIVER) {
-            if (!caregiverPatientLinkService.hasAccessToPatient(currentUser.getId(), patientUserId)) {
-                throw new AppException(HttpStatus.FORBIDDEN, "Caregiver does not have access to this patient");
-            }
-            return;
-        }
-
-        if (currentUser.getRole() == com.careconnect.security.Role.PATIENT) {
-            if (!currentUser.getId().equals(patientUserId)) {
-                throw new AppException(HttpStatus.FORBIDDEN, "Patient can only view their own recording status");
-            }
-            return;
-        }
-
-        throw new AppException(HttpStatus.FORBIDDEN, "Only patient or caregiver can view recording status");
     }
 
     private void ensureDevOrLocalMode() {
@@ -229,122 +193,6 @@ public class CallController {
             throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to end call: " + e.getMessage());
         }
     }
-
-        @PostMapping("/{callId}/recording/start")
-        @Operation(summary = "Start caregiver-controlled compliant call recording")
-        public ResponseEntity<Map<String, Object>> startRecording(
-            @PathVariable String callId,
-            @RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> payload = body == null ? Map.of() : body;
-        User currentUser = getCurrentUser();
-        Long patientUserId = parseLong(payload.get("patientUserId"));
-        boolean consentConfirmed = Boolean.TRUE.equals(payload.get("consentConfirmed"));
-        String consentNote = payload.get("consentNote") == null ? null : String.valueOf(payload.get("consentNote"));
-
-        ensureCaregiverRecordingAccess(currentUser, patientUserId);
-
-        try {
-            Map<String, Object> response = chimeService.startRecording(
-                callId,
-                currentUser.getId(),
-                patientUserId,
-                consentConfirmed,
-                consentNote
-            );
-
-            callTelemetryService.recordCallEvent(
-                callId,
-                "CALL_RECORDING_START",
-                currentUser.getId(),
-                patientUserId,
-                "SUCCESS",
-                Map.of(
-                    "consentConfirmed", consentConfirmed,
-                    "recordingActive", Boolean.TRUE.equals(response.get("recordingActive")),
-                    "pipelineId", String.valueOf(response.getOrDefault("pipelineId", ""))
-                ),
-                null
-            );
-            return ResponseEntity.ok(response);
-        } catch (Exception ex) {
-            callTelemetryService.recordCallEvent(
-                callId,
-                "CALL_RECORDING_START",
-                currentUser.getId(),
-                patientUserId,
-                "ERROR",
-                Map.of("consentConfirmed", consentConfirmed),
-                ex.getMessage()
-            );
-            throw new AppException(HttpStatus.BAD_REQUEST, ex.getMessage());
-        }
-        }
-
-        @PostMapping("/{callId}/recording/stop")
-        @Operation(summary = "Stop caregiver-controlled compliant call recording")
-        public ResponseEntity<Map<String, Object>> stopRecording(
-            @PathVariable String callId,
-            @RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> payload = body == null ? Map.of() : body;
-        User currentUser = getCurrentUser();
-        Long patientUserId = parseLong(payload.get("patientUserId"));
-        String reason = payload.get("reason") == null ? null : String.valueOf(payload.get("reason"));
-
-        ensureCaregiverRecordingAccess(currentUser, patientUserId);
-
-        try {
-            Map<String, Object> response = chimeService.stopRecording(
-                callId,
-                currentUser.getId(),
-                patientUserId,
-                reason
-            );
-            callTelemetryService.recordCallEvent(
-                callId,
-                "CALL_RECORDING_STOP",
-                currentUser.getId(),
-                patientUserId,
-                "SUCCESS",
-                Map.of(
-                    "recordingActive", Boolean.TRUE.equals(response.get("recordingActive")),
-                    "pipelineId", String.valueOf(response.getOrDefault("pipelineId", ""))
-                ),
-                null
-            );
-            return ResponseEntity.ok(response);
-        } catch (Exception ex) {
-            callTelemetryService.recordCallEvent(
-                callId,
-                "CALL_RECORDING_STOP",
-                currentUser.getId(),
-                patientUserId,
-                "ERROR",
-                Map.of(),
-                ex.getMessage()
-            );
-            throw new AppException(HttpStatus.BAD_REQUEST, ex.getMessage());
-        }
-        }
-
-        @GetMapping("/{callId}/recording/status")
-        @Operation(summary = "Get current call recording status")
-        public ResponseEntity<Map<String, Object>> getRecordingStatus(
-            @PathVariable String callId,
-            @RequestParam Long patientUserId) {
-        User currentUser = getCurrentUser();
-        ensureRecordingStatusAccess(currentUser, patientUserId);
-        return ResponseEntity.ok(chimeService.getRecordingStatus(callId));
-        }
-
-        @GetMapping("/{callId}/recording/extract")
-        @Operation(summary = "Get extract/download details for a recorded call")
-        public ResponseEntity<Map<String, Object>> getRecordingExtractInfo(
-            @PathVariable String callId,
-            @RequestParam Long patientUserId) {
-        User currentUser = getCurrentUser();
-        ensureRecordingStatusAccess(currentUser, patientUserId);
-        return ResponseEntity.ok(chimeService.getRecordingExtractInfo(callId));
-        }
 
     @PostMapping("/{callId}/sentiment/text")
     @Operation(summary = "Analyze sentiment from a chat message")
@@ -731,19 +579,6 @@ public class CallController {
         }
     }
 
-    private Long parseLong(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        try {
-            return Long.parseLong(String.valueOf(value).trim());
-        } catch (NumberFormatException ex) {
-            return null;
-        }
-    }
 }
 
 

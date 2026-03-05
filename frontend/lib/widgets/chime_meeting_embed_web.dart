@@ -195,7 +195,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
       'mediaPlacement': widget.mediaPlacement,
       'mediaRegion': widget.mediaRegion ?? 'us-east-1',
       'externalUserId':
-          widget.externalUserId ?? 'careconnect-${widget.attendeeId.substring(0, 8)}',
+          widget.externalUserId ??
+          'careconnect-${widget.attendeeId.substring(0, 8)}',
       'videoEnabled': widget.videoEnabled,
       'audioEnabled': widget.audioEnabled,
       'enableAutoSentimentCapture': widget.enableAutoSentimentCapture,
@@ -233,10 +234,17 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         if (data['action'] == 'sentiment-audio-sample') {
           final payload = data['payload'];
           if (payload is Map) {
-            final audioBase64 = (payload['audioBase64'] ?? '').toString().trim();
-            final audioFormat = (payload['audioFormat'] ?? 'wav').toString().trim();
+            final audioBase64 = (payload['audioBase64'] ?? '')
+                .toString()
+                .trim();
+            final audioFormat = (payload['audioFormat'] ?? 'wav')
+                .toString()
+                .trim();
             if (audioBase64.isNotEmpty) {
-              widget.onAudioSample?.call(audioBase64, audioFormat.isEmpty ? 'wav' : audioFormat);
+              widget.onAudioSample?.call(
+                audioBase64,
+                audioFormat.isEmpty ? 'wav' : audioFormat,
+              );
             }
           }
           return;
@@ -245,7 +253,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         if (data['action'] == 'sentiment-video-sample') {
           final payload = data['payload'];
           if (payload is Map) {
-            final imageBase64 = (payload['imageBase64'] ?? '').toString().trim();
+            final imageBase64 = (payload['imageBase64'] ?? '')
+                .toString()
+                .trim();
             if (imageBase64.isNotEmpty) {
               widget.onVideoSample?.call(imageBase64);
             }
@@ -341,7 +351,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           _guardMessage = guardMessage;
         });
       }
-      debugPrint('[CareConnect][Chime][warn] getUserMedia permission check failed: $e');
+      debugPrint(
+        '[CareConnect][Chime][warn] getUserMedia permission check failed: $e',
+      );
     }
   }
 
@@ -542,6 +554,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             : 15000;
         let isAudioMuted = !config.audioEnabled;
         let isVideoMuted = !config.videoEnabled;
+        let audioVideo = null;
+        let switchVideoInputRef = null;
+        let updateControlButtonsRef = null;
         let availableVideoInputs = [];
         let sentimentAudioRecorder = null;
         let sentimentAudioStream = null;
@@ -580,7 +595,30 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           if (data.action === 'toggle-audio') {
             try {
-              await setLocalAudioMuted(!!data.muted);
+              if (!audioVideo) {
+                report('warn', 'Audio toggle requested before meeting session was ready');
+                return;
+              }
+
+              const muted = !!data.muted;
+              if (muted) {
+                if (typeof audioVideo.realtimeMuteLocalAudio === 'function') {
+                  audioVideo.realtimeMuteLocalAudio();
+                } else if (typeof audioVideo.muteLocalAudio === 'function') {
+                  audioVideo.muteLocalAudio();
+                }
+              } else {
+                if (typeof audioVideo.realtimeUnmuteLocalAudio === 'function') {
+                  audioVideo.realtimeUnmuteLocalAudio();
+                } else if (typeof audioVideo.unmuteLocalAudio === 'function') {
+                  audioVideo.unmuteLocalAudio();
+                }
+              }
+              isAudioMuted = muted;
+              if (typeof updateControlButtonsRef === 'function') {
+                updateControlButtonsRef();
+              }
+              report('info', 'Flutter overlay audio ' + (muted ? 'muted' : 'unmuted'));
             } catch (audioErr) {
               report('warn', 'Flutter overlay audio toggle failed: ' + String(audioErr));
             }
@@ -589,7 +627,29 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           if (data.action === 'toggle-video') {
             try {
-              await setLocalVideoMuted(!!data.muted);
+              if (!audioVideo) {
+                report('warn', 'Video toggle requested before meeting session was ready');
+                return;
+              }
+
+              const muted = !!data.muted;
+              if (muted) {
+                if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                  audioVideo.stopLocalVideoTile();
+                }
+                localVideoBound = false;
+                isVideoMuted = true;
+              } else {
+                if (typeof audioVideo.startLocalVideoTile === 'function') {
+                  audioVideo.startLocalVideoTile();
+                }
+                localVideoBound = false;
+                isVideoMuted = false;
+              }
+              if (typeof updateControlButtonsRef === 'function') {
+                updateControlButtonsRef();
+              }
+              report('info', 'Flutter overlay video ' + (muted ? 'stopped' : 'started'));
             } catch (videoErr) {
               report('warn', 'Flutter overlay video toggle failed: ' + String(videoErr));
             }
@@ -598,10 +658,18 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           if (data.action === 'switch-camera') {
             try {
-              if (audioVideo && typeof audioVideo.listVideoInputDevices === 'function') {
+              if (!audioVideo) {
+                report('warn', 'Camera switch requested before meeting session was ready');
+                return;
+              }
+
+              if (typeof audioVideo.listVideoInputDevices === 'function') {
                 availableVideoInputs = await audioVideo.listVideoInputDevices();
               }
-              const switched = await switchVideoInput('flutter-overlay');
+              const switched =
+                typeof switchVideoInputRef === 'function'
+                  ? await switchVideoInputRef('flutter-overlay')
+                  : false;
               if (switched) {
                 localVideoBound = false;
                 ensureLocalVideoTile();
@@ -609,7 +677,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
               } else {
                 report('warn', 'Flutter overlay requested camera switch but no alternative camera was found');
               }
-              updateControlButtons();
+              if (typeof updateControlButtonsRef === 'function') {
+                updateControlButtonsRef();
+              }
             } catch (switchErr) {
               report('warn', 'Flutter overlay camera switch failed: ' + String(switchErr));
             }
@@ -941,6 +1011,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           }
         }
 
+        updateControlButtonsRef = updateControlButtons;
+
         async function loadChimeSdk() {
           if (window.AmazonChimeSDK || window.ChimeSDK) {
             return window.AmazonChimeSDK || window.ChimeSDK;
@@ -1040,7 +1112,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           const deviceController = new ChimeSDK.DefaultDeviceController(logger);
           const meetingConfig = new ChimeSDK.MeetingSessionConfiguration(meetingResponse, attendeeResponse);
           const meetingSession = new ChimeSDK.DefaultMeetingSession(meetingConfig, logger, deviceController);
-          const audioVideo = meetingSession.audioVideo;
+          audioVideo = meetingSession.audioVideo;
           let localVideoBound = false;
           let localVideoStartAttempts = 0;
           let localVideoRetryTimer = null;
@@ -1067,7 +1139,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           }
 
           function ensureLocalVideoTile() {
-            if (!config.videoEnabled || localVideoBound) {
+            if (!config.videoEnabled || isVideoMuted || localVideoBound) {
               return;
             }
             if (typeof audioVideo.startLocalVideoTile === 'function') {
@@ -1089,7 +1161,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           }
 
           async function recoverVideoPublish() {
-            if (!config.videoEnabled || localVideoBound) {
+            if (!config.videoEnabled || isVideoMuted || localVideoBound) {
               return;
             }
 
@@ -1166,8 +1238,10 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             return false;
           }
 
+          switchVideoInputRef = switchVideoInput;
+
           function scheduleLocalVideoHealthCheck() {
-            if (!config.videoEnabled) return;
+            if (!config.videoEnabled || isVideoMuted) return;
             if (localVideoHealthTimer) {
               clearTimeout(localVideoHealthTimer);
               localVideoHealthTimer = null;
@@ -1225,6 +1299,12 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
                 localVideoBound = false;
                 isVideoMuted = true;
               } else {
+                if (!activeVideoDeviceId && typeof audioVideo.listVideoInputDevices === 'function') {
+                  availableVideoInputs = await audioVideo.listVideoInputDevices();
+                  if (availableVideoInputs.length > 0) {
+                    await selectVideoInput(availableVideoInputs[0].deviceId);
+                  }
+                }
                 if (typeof audioVideo.startLocalVideoTile === 'function') {
                   audioVideo.startLocalVideoTile();
                 }
@@ -1304,14 +1384,26 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           audioVideo.addObserver({
             audioVideoDidStart: () => {
               updateParticipantStatus();
-              ensureLocalVideoTile();
+
+              if (isAudioMuted) {
+                setLocalAudioMuted(true);
+              }
+
+              if (!isVideoMuted) {
+                ensureLocalVideoTile();
+              } else if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                audioVideo.stopLocalVideoTile();
+              }
+
               report('info', 'audioVideoDidStart');
 
-              setTimeout(() => {
-                if (!localVideoBound) {
-                  recoverVideoPublish();
-                }
-              }, 1800);
+              if (!isVideoMuted) {
+                setTimeout(() => {
+                  if (!localVideoBound && !isVideoMuted) {
+                    recoverVideoPublish();
+                  }
+                }, 1800);
+              }
             },
             audioVideoDidStop: (sessionStatus) => {
               setStatus('Disconnected');
@@ -1342,6 +1434,15 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
               );
 
               if (isLocalTile) {
+                if (isVideoMuted) {
+                  if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                    audioVideo.stopLocalVideoTile();
+                  }
+                  localVideoBound = false;
+                  report('info', 'Local tile update ignored because video is muted by user intent');
+                  return;
+                }
+
                 localVideoBound = true;
                 if (localVideoRetryTimer) {
                   clearTimeout(localVideoRetryTimer);
@@ -1456,9 +1557,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           report('info', 'audioVideo.start() invoked');
           await startAutoSentimentCapture();
 
-          if (config.videoEnabled) {
+          if (config.videoEnabled && !isVideoMuted) {
             setTimeout(() => {
-              if (!localVideoBound) {
+              if (!localVideoBound && !isVideoMuted) {
                 ensureLocalVideoTile();
               }
             }, 900);

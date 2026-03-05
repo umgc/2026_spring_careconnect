@@ -24,7 +24,30 @@ public class CallTelemetryService {
             "audioBase64",
             "imageBase64",
             "token",
-            "joinToken"
+        "joinToken",
+        "text",
+        "transcript",
+        "notes",
+        "message",
+        "email",
+        "phone",
+        "address",
+        "name"
+    );
+
+    private static final Set<String> ALLOWED_TELEMETRY_KEYS = Set.of(
+        "callId",
+        "captureMode",
+        "audioFormat",
+        "imageFormat",
+        "meetingActive",
+        "notifiedOtherParty",
+        "status",
+        "type",
+        "textLength",
+        "overallScore",
+        "overallLabel",
+        "timestamp"
     );
 
     private final CallTelemetryEventRepository callTelemetryEventRepository;
@@ -133,17 +156,47 @@ public class CallTelemetryService {
 
         Map<String, Object> sanitized = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : payload.entrySet()) {
-            if (LARGE_OR_SENSITIVE_KEYS.contains(entry.getKey())) {
+            String key = entry.getKey();
+            String normalizedKey = key == null ? "" : key.trim();
+            String lowerKey = normalizedKey.toLowerCase();
+
+            if (lowerKey.isEmpty()) {
+                continue;
+            }
+
+            if (LARGE_OR_SENSITIVE_KEYS.contains(normalizedKey)
+                    || lowerKey.contains("token")
+                    || lowerKey.contains("secret")
+                    || lowerKey.contains("password")
+                    || lowerKey.contains("audio")
+                    || lowerKey.contains("image")
+                    || lowerKey.contains("transcript")
+                    || lowerKey.contains("email")
+                    || lowerKey.contains("phone")
+                    || lowerKey.contains("address")
+                    || lowerKey.contains("name")) {
                 Object value = entry.getValue();
                 if (value == null) {
-                    sanitized.put(entry.getKey(), null);
+                    sanitized.put(normalizedKey, null);
                 } else {
                     int length = value.toString().length();
-                    sanitized.put(entry.getKey(), "[REDACTED:" + length + " chars]");
+                    sanitized.put(normalizedKey, "[REDACTED:" + length + " chars]");
                 }
                 continue;
             }
-            sanitized.put(entry.getKey(), entry.getValue());
+
+            if (!ALLOWED_TELEMETRY_KEYS.contains(normalizedKey)) {
+                sanitized.put(normalizedKey, "[OMITTED]");
+                continue;
+            }
+
+            Object value = entry.getValue();
+            if (value instanceof String textValue && textValue.length() > 180) {
+                sanitized.put(normalizedKey, "[TRUNCATED:" + textValue.length() + " chars]");
+                continue;
+            }
+
+            sanitized.put(normalizedKey, value);
         }
         return sanitized;
     }

@@ -445,10 +445,19 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   Future<void> _toggleLocalAudio() async {
     final nextMuted = _localAudioEnabled;
-    await requestChimeAudioToggle(
+    final toggled = await requestChimeAudioToggle(
       muted: nextMuted,
       meetingId: _callSession?.meetingId,
     );
+    if (!toggled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Microphone toggle is not available for this session.'),
+        ),
+      );
+      return;
+    }
     setState(() {
       _localAudioEnabled = !_localAudioEnabled;
     });
@@ -456,10 +465,19 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   Future<void> _toggleLocalVideo() async {
     final nextMuted = _localVideoEnabled;
-    await requestChimeVideoToggle(
+    final toggled = await requestChimeVideoToggle(
       muted: nextMuted,
       meetingId: _callSession?.meetingId,
     );
+    if (!toggled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera toggle is not available for this session.'),
+        ),
+      );
+      return;
+    }
     setState(() {
       _localVideoEnabled = !_localVideoEnabled;
     });

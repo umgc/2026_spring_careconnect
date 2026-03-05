@@ -57,6 +57,11 @@ String getFitbitClientSecret() {
 String _getUnifiedWebSocketBaseUrl() {
   // Prefer explicit environment variable
   if (_wsOverrideUrl.isNotEmpty) {
+    if (!kDebugMode && !_wsOverrideUrl.startsWith('wss://')) {
+      throw Exception(
+        'WEBSOCKET_SERVER_URL must use wss:// in release builds.',
+      );
+    }
     return _wsOverrideUrl;
   }
 
@@ -64,9 +69,17 @@ String _getUnifiedWebSocketBaseUrl() {
   if (base.startsWith('https://')) {
     return base.replaceFirst('https://', 'wss://');
   } else if (base.startsWith('http://')) {
+    if (!kDebugMode) {
+      throw Exception(
+        'In release builds, BACKEND_URL must use https:// and WebSocket must use wss://.',
+      );
+    }
     return base.replaceFirst('http://', 'ws://');
   }
   // Fallback
+  if (!kDebugMode) {
+    throw Exception('Unable to derive secure WebSocket URL for release build.');
+  }
   return 'ws://localhost:8080';
 }
 
@@ -90,21 +103,27 @@ String getCallNotificationWebSocketUrl() {
 /// This is now controlled by a single --dart-define=BACKEND_URL variable.
 String getBackendBaseUrl() {
   final configured = _backendBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+  String resolved = configured;
 
-  if (configured.isNotEmpty) {
-    return configured;
+  if (resolved.isEmpty) {
+    if (kIsWeb) {
+      resolved = 'http://localhost:8080';
+    } else {
+      switch (defaultTargetPlatform) {
+        case TargetPlatform.android:
+          resolved = 'http://10.0.2.2:8080';
+          break;
+        default:
+          resolved = 'http://localhost:8080';
+      }
+    }
   }
 
-  if (kIsWeb) {
-    return 'http://localhost:8080';
+  if (!kDebugMode && !resolved.startsWith('https://')) {
+    throw Exception('BACKEND_URL must use https:// in release builds.');
   }
 
-  switch (defaultTargetPlatform) {
-    case TargetPlatform.android:
-      return 'http://10.0.2.2:8080';
-    default:
-      return 'http://localhost:8080';
-  }
+  return resolved;
 }
 
 String getBackendToken() {

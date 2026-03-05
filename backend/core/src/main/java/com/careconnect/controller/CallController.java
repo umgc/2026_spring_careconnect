@@ -199,7 +199,7 @@ public class CallController {
     public ResponseEntity<SentimentResult> analyzeTextSentiment(
             @PathVariable String callId,
             @RequestBody Map<String, String> body) {
-        final Map<String, Object> telemetryPayload = new HashMap<>(body);
+        final Map<String, Object> telemetryPayload = sanitizeTelemetryPayload(body);
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
@@ -215,7 +215,10 @@ public class CallController {
                     parseUserId(body.get("otherPartyId")),
                     body.get("captureMode"),
                     result,
-                    Map.of("text", text),
+                        Map.of(
+                            "textLength", text.length(),
+                            "captureMode", body.get("captureMode")
+                        ),
                     "SUCCESS",
                     null
                 );
@@ -274,7 +277,7 @@ public class CallController {
     public ResponseEntity<SentimentResult> analyzeVoiceSentiment(
             @PathVariable String callId,
             @RequestBody Map<String, String> body) {
-        final Map<String, Object> telemetryPayload = new HashMap<>(body);
+        final Map<String, Object> telemetryPayload = sanitizeTelemetryPayload(body);
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
@@ -350,7 +353,7 @@ public class CallController {
     public ResponseEntity<SentimentResult> analyzeVideoSentiment(
             @PathVariable String callId,
             @RequestBody Map<String, String> body) {
-        final Map<String, Object> telemetryPayload = new HashMap<>(body);
+        final Map<String, Object> telemetryPayload = sanitizeTelemetryPayload(body);
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
@@ -426,7 +429,7 @@ public class CallController {
     public ResponseEntity<java.util.Map<String, Object>> getCombinedSentiment(
             @PathVariable String callId,
             @RequestBody Map<String, String> body) {
-        final Map<String, Object> telemetryPayload = new HashMap<>(body);
+        final Map<String, Object> telemetryPayload = sanitizeTelemetryPayload(body);
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
@@ -447,7 +450,7 @@ public class CallController {
                     parseUserId(body.get("otherPartyId")),
                     body.get("captureMode"),
                     null,
-                    combined,
+                        sanitizeCombinedTelemetry(combined),
                     "SUCCESS",
                     null
             );
@@ -577,6 +580,60 @@ public class CallController {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private Map<String, Object> sanitizeTelemetryPayload(Map<String, String> body) {
+        Map<String, Object> sanitized = new HashMap<>();
+        if (body == null || body.isEmpty()) {
+            return sanitized;
+        }
+
+        if (body.containsKey("captureMode")) {
+            sanitized.put("captureMode", body.get("captureMode"));
+        }
+        if (body.containsKey("audioFormat")) {
+            sanitized.put("audioFormat", body.get("audioFormat"));
+        }
+        if (body.containsKey("imageFormat")) {
+            sanitized.put("imageFormat", body.get("imageFormat"));
+        }
+        if (body.containsKey("otherPartyId")) {
+            sanitized.put("status", "TARGET_PRESENT");
+        }
+
+        String text = body.get("text");
+        if (text != null) {
+            sanitized.put("textLength", text.length());
+        }
+
+        return sanitized;
+    }
+
+    private Map<String, Object> sanitizeCombinedTelemetry(Map<String, Object> combined) {
+        if (combined == null || combined.isEmpty()) {
+            return Map.of();
+        }
+
+        Object overallRaw = combined.get("overall");
+        if (!(overallRaw instanceof Map<?, ?> overallMap)) {
+            return Map.of();
+        }
+
+        Map<String, Object> safe = new HashMap<>();
+        Object score = overallMap.get("score");
+        Object label = overallMap.get("label");
+        if (score != null) {
+            safe.put("overallScore", score);
+        }
+        if (label != null) {
+            safe.put("overallLabel", label.toString());
+        }
+        Object timestamp = combined.get("timestamp");
+        if (timestamp != null) {
+            safe.put("timestamp", timestamp);
+        }
+
+        return safe;
     }
 
 }

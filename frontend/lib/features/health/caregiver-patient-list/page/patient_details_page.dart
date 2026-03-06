@@ -1202,12 +1202,17 @@ class _TabsStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final width = MediaQuery.sizeOf(context).width;
+    final narrow = width < 430;
     return Material(
       color: cs.surface,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
         child: TabBar(
-          isScrollable: false,
+          isScrollable: narrow,
+          labelPadding: narrow
+              ? const EdgeInsets.symmetric(horizontal: 10)
+              : const EdgeInsets.symmetric(horizontal: 16),
           labelColor: cs.primary,
           unselectedLabelColor: cs.onSurface.withValues(alpha: .7),
           indicator: UnderlineTabIndicator(

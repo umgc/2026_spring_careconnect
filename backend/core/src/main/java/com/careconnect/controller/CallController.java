@@ -36,6 +36,9 @@ import java.util.Locale;
 public class CallController {
 
     private static final Logger log = LoggerFactory.getLogger(CallController.class);
+    private static final double SILENCE_SPEECH_RATIO_THRESHOLD = 0.04;
+    private static final double SILENCE_MIC_LEVEL_THRESHOLD = 0.02;
+    private static final double SILENCE_VARIABILITY_THRESHOLD = 0.12;
 
     @Autowired private ChimeService chimeService;
     @Autowired private BedrockSentimentService sentimentService;
@@ -285,6 +288,7 @@ public class CallController {
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
+            Long otherPartyUserId = parseUserId(body.get("otherPartyId"));
             Double averageLevel = parseDouble(body.get("averageLevel"));
             Double speechRatio = parseDouble(body.get("speechRatio"));
             Double variability = parseDouble(body.get("variability"));
@@ -295,6 +299,29 @@ public class CallController {
                         "Provide Chime metrics fields: averageLevel, speechRatio, variability"
                 );
             }
+
+                if (isSilenceWindow(averageLevel, speechRatio, variability)) {
+                SentimentResult ignored = SentimentResult.neutral(
+                    "VOICE",
+                    callId,
+                    "Silence window ignored"
+                );
+                log.debug(
+                    "Ignoring silence voice metrics callId={} actorUserId={} avgLevel={} speechRatio={}",
+                    callId,
+                    currentUser.getId(),
+                    averageLevel,
+                    speechRatio
+                );
+                broadcastQuietVoiceStateToCaregivers(
+                    callId,
+                    currentUser.getId().toString(),
+                    body.get("otherPartyId"),
+                    body.get("captureMode")
+                );
+                // Do not record/broadcast scored sentiment for ignored silence windows.
+                return ResponseEntity.status(HttpStatus.ACCEPTED).body(ignored);
+                }
 
             SentimentResult result = sentimentService.analyzeVoiceFromChimeMetrics(
                     callId,
@@ -316,7 +343,7 @@ public class CallController {
                     "SENTIMENT_VOICE",
                     "VOICE",
                     currentUser.getId(),
-                    parseUserId(body.get("otherPartyId")),
+                    otherPartyUserId,
                     body.get("captureMode"),
                     result,
                     telemetryPayload,
@@ -330,6 +357,7 @@ public class CallController {
                     result,
                     body.get("captureMode")
             );
+
             return ResponseEntity.ok(result);
         } catch (AppException e) {
             Long actorId = null;
@@ -371,6 +399,36 @@ public class CallController {
             log.error("Voice sentiment failed for call {}: {}", callId, e.getMessage(), e);
             throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR, "Voice sentiment analysis failed: " + e.getMessage());
         }
+    }
+
+    private boolean isSilenceWindow(Double averageLevel, Double speechRatio, Double variability) {
+        if (averageLevel == null || speechRatio == null || variability == null) {
+            return false;
+        }
+        return speechRatio <= SILENCE_SPEECH_RATIO_THRESHOLD
+                && averageLevel <= SILENCE_MIC_LEVEL_THRESHOLD
+                && variability <= SILENCE_VARIABILITY_THRESHOLD;
+    }
+
+    private void broadcastQuietVoiceStateToCaregivers(
+            String callId,
+            String userId,
+            String otherPartyId,
+            String captureMode) {
+        Map<String, Object> notification = new HashMap<>();
+        notification.put("type", "sentiment-channel-state");
+        notification.put("callId", callId);
+        notification.put("channel", "voice");
+        notification.put("muted", false);
+        notification.put("status", "QUIET");
+        notification.put("notes", "No speech detected in this window.");
+        notification.put("timestamp", System.currentTimeMillis());
+        if (captureMode != null && !captureMode.isBlank()) {
+            notification.put("captureMode", captureMode.trim().toUpperCase(Locale.ROOT));
+        }
+
+        sendSentimentToCaregiverIfEligible(userId, notification);
+        sendSentimentToCaregiverIfEligible(otherPartyId, notification);
     }
 
     @PostMapping("/{callId}/sentiment/video")
@@ -539,6 +597,16 @@ public class CallController {
             throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
         }
         return ResponseEntity.ok(events);
+    }
+
+    @GetMapping("/{callId}/transcription/debug")
+    @Operation(summary = "Get Chime transcription debug state for a call")
+    public ResponseEntity<Map<String, Object>> getTranscriptionDebugStatus(@PathVariable String callId) {
+        User currentUser = getCurrentUser();
+        Map<String, Object> status = new HashMap<>(chimeService.getTranscriptionDebugStatus(callId));
+        status.put("requestedByUserId", currentUser.getId());
+        status.put("requestedByRole", currentUser.getRole().name());
+        return ResponseEntity.ok(status);
     }
 
     @DeleteMapping("/{callId}/telemetry")
@@ -711,7 +779,7 @@ public class CallController {
                 String channel = entry.getKey().trim().toUpperCase(Locale.ROOT);
                 channelResults.put(channel, new SentimentResult(
                         event.getSentimentScore(),
-                        event.getSentimentLabel() == null ? "NEUTRAL" : event.getSentimentLabel(),
+                    event.getSentimentLabel() == null ? "ANXIOUS" : event.getSentimentLabel(),
                         event.getSentimentNotes() == null ? "" : event.getSentimentNotes(),
                         channel,
                         callId,

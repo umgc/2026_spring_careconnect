@@ -117,7 +117,7 @@ class _PostCallTelemetrySummaryScreenState
     if (event == null) return '--';
     final label = (event['sentimentLabel'] as String?)?.trim();
     if (label == null || label.isEmpty) return '--';
-    return label;
+    return _toClinicalLabel(label);
   }
 
   String get _finalOverallNotes {
@@ -132,10 +132,20 @@ class _PostCallTelemetrySummaryScreenState
     for (final event in _callTelemetry.reversed) {
       final label = (event['sentimentLabel'] as String?)?.trim();
       if (label != null && label.isNotEmpty) {
-        return label;
+        return _toClinicalLabel(label);
       }
     }
     return '--';
+  }
+
+  String _toClinicalLabel(String raw) {
+    final normalized = raw.trim().toUpperCase();
+    if (normalized == 'CALM' || normalized == 'ANXIOUS' || normalized == 'DISTRESSED') {
+      return normalized;
+    }
+    if (normalized == 'POSITIVE') return 'CALM';
+    if (normalized == 'NEGATIVE') return 'DISTRESSED';
+    return 'ANXIOUS';
   }
 
   String get _latestStatus {
@@ -358,7 +368,6 @@ class _PostCallTelemetrySummaryScreenState
   _TimelineChannel? _resolveEventChannel(Map<String, dynamic> event) {
     final channelRaw =
         (event['channel'] as String?)?.trim().toUpperCase() ?? '';
-    if (channelRaw == 'TEXT') return _TimelineChannel.text;
     if (channelRaw == 'VOICE' || channelRaw == 'AUDIO') {
       return _TimelineChannel.voice;
     }
@@ -366,7 +375,6 @@ class _PostCallTelemetrySummaryScreenState
 
     final eventType =
         (event['eventType'] as String?)?.trim().toUpperCase() ?? '';
-    if (eventType.contains('TEXT')) return _TimelineChannel.text;
     if (eventType.contains('VOICE') || eventType.contains('AUDIO')) {
       return _TimelineChannel.voice;
     }
@@ -380,14 +388,12 @@ class _PostCallTelemetrySummaryScreenState
     final start = _callStart;
     if (start == null) {
       return {
-        _TimelineChannel.text: const <_ScoreSample>[],
         _TimelineChannel.voice: const <_ScoreSample>[],
         _TimelineChannel.video: const <_ScoreSample>[],
       };
     }
 
     final byChannel = <_TimelineChannel, List<_ScoreSample>>{
-      _TimelineChannel.text: <_ScoreSample>[],
       _TimelineChannel.voice: <_ScoreSample>[],
       _TimelineChannel.video: <_ScoreSample>[],
     };
@@ -507,7 +513,6 @@ class _PostCallTelemetrySummaryScreenState
     }
 
     final channelColors = <_TimelineChannel, Color>{
-      _TimelineChannel.text: const Color(0xFF00BCD4),
       _TimelineChannel.voice: const Color(0xFFFF9800),
       _TimelineChannel.video: const Color(0xFF7E57C2),
     };
@@ -527,7 +532,7 @@ class _PostCallTelemetrySummaryScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Channels shown: Transcript, Voice, Video.',
+                  'Channels shown: Voice, Video.',
                   style: theme.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),
@@ -652,13 +657,10 @@ class _DebugBreakdownCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ts = _fmt(debug['dbgTs']);
     final vs = _fmt(debug['dbgVs']);
     final iscore = _fmt(debug['dbgIs']);
-    final tc = _fmt(debug['dbgTc']);
     final vc = _fmt(debug['dbgVc']);
     final ic = _fmt(debug['dbgIc']);
-    final tw = _fmt(debug['dbgTw']);
     final vw = _fmt(debug['dbgVw']);
     final iw = _fmt(debug['dbgIw']);
 
@@ -673,7 +675,6 @@ class _DebugBreakdownCard extends StatelessWidget {
               style: Theme.of(context).textTheme.titleSmall,
             ),
             const SizedBox(height: 6),
-            Text('Transcript score: $ts  (w=$tw, c=$tc)'),
             Text('Voice score: $vs  (w=$vw, c=$vc)'),
             Text('Video score: $iscore  (w=$iw, c=$ic)'),
           ],
@@ -685,7 +686,6 @@ class _DebugBreakdownCard extends StatelessWidget {
 
 enum _TimelineChannel {
   all('All'),
-  text('Transcript'),
   voice('Voice'),
   video('Video');
 
@@ -733,43 +733,43 @@ class _SentimentTimelinePainter extends CustomPainter {
       return plotRect.bottom - score.clamp(0.0, 1.0) * plotRect.height;
     }
 
-    final positiveTop = yForScore(1.0);
-    final positiveBottom = yForScore(0.6);
-    final neutralTop = yForScore(0.6);
-    final neutralBottom = yForScore(0.4);
-    final negativeTop = yForScore(0.4);
-    final negativeBottom = yForScore(0.0);
+    final calmTop = yForScore(1.0);
+    final calmBottom = yForScore(0.6);
+    final anxiousTop = yForScore(0.6);
+    final anxiousBottom = yForScore(0.35);
+    final distressedTop = yForScore(0.35);
+    final distressedBottom = yForScore(0.0);
 
     canvas.drawRect(
-      Rect.fromLTRB(plotRect.left, positiveTop, plotRect.right, positiveBottom),
+      Rect.fromLTRB(plotRect.left, calmTop, plotRect.right, calmBottom),
       Paint()..color = Colors.green.withValues(alpha: 0.12),
     );
     canvas.drawRect(
-      Rect.fromLTRB(plotRect.left, neutralTop, plotRect.right, neutralBottom),
+      Rect.fromLTRB(plotRect.left, anxiousTop, plotRect.right, anxiousBottom),
       Paint()..color = Colors.amber.withValues(alpha: 0.12),
     );
     canvas.drawRect(
-      Rect.fromLTRB(plotRect.left, negativeTop, plotRect.right, negativeBottom),
+      Rect.fromLTRB(plotRect.left, distressedTop, plotRect.right, distressedBottom),
       Paint()..color = Colors.red.withValues(alpha: 0.12),
     );
 
     _drawBandGuideline(
       canvas,
-      y: (positiveTop + positiveBottom) / 2,
+      y: (calmTop + calmBottom) / 2,
       color: Colors.green,
       leftPad: leftPad,
       rightX: leftPad + plotWidth,
     );
     _drawBandGuideline(
       canvas,
-      y: (neutralTop + neutralBottom) / 2,
+      y: (anxiousTop + anxiousBottom) / 2,
       color: Colors.amber.shade700,
       leftPad: leftPad,
       rightX: leftPad + plotWidth,
     );
     _drawBandGuideline(
       canvas,
-      y: (negativeTop + negativeBottom) / 2,
+      y: (distressedTop + distressedBottom) / 2,
       color: Colors.red,
       leftPad: leftPad,
       rightX: leftPad + plotWidth,
@@ -915,13 +915,9 @@ class _TimelineLegend extends StatelessWidget {
       spacing: 12,
       runSpacing: 8,
       children: [
-        const _LegendChip(label: 'Positive zone', color: Colors.green),
-        const _LegendChip(label: 'Neutral zone', color: Colors.amber),
-        const _LegendChip(label: 'Negative zone', color: Colors.red),
-        _LegendChip(
-          label: 'Transcript',
-          color: channelColors[_TimelineChannel.text] ?? Colors.blueGrey,
-        ),
+        const _LegendChip(label: 'Calm zone', color: Colors.green),
+        const _LegendChip(label: 'Anxious zone', color: Colors.amber),
+        const _LegendChip(label: 'Distressed zone', color: Colors.red),
         _LegendChip(
           label: 'Voice',
           color: channelColors[_TimelineChannel.voice] ?? Colors.blueGrey,

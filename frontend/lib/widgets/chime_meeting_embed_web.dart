@@ -265,13 +265,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         }
 
         if (data['action'] == 'sentiment-transcript') {
-          final payload = data['payload'];
-          if (payload is Map) {
-            final transcript = (payload['text'] ?? '').toString().trim();
-            if (transcript.isNotEmpty) {
-              widget.onTranscriptSample?.call(transcript);
-            }
-          }
+          // Transcript sentiment is intentionally disabled in voice/video-only mode.
           return;
         }
 
@@ -655,6 +649,49 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           try {
             window.parent.postMessage({ source: 'careconnect-chime', level, message: msg }, '*');
           } catch (_) {}
+        }
+
+        function resolveSdkFingerprint(sdk) {
+          try {
+            if (!sdk) {
+              return 'missing-sdk';
+            }
+
+            const candidates = [];
+            try {
+              if (sdk.Versioning && sdk.Versioning.sdkVersion) {
+                candidates.push('Versioning.sdkVersion=' + String(sdk.Versioning.sdkVersion));
+              }
+            } catch (_) {}
+            try {
+              if (sdk.version) {
+                candidates.push('version=' + String(sdk.version));
+              }
+            } catch (_) {}
+            try {
+              if (sdk.sdkVersion) {
+                candidates.push('sdkVersion=' + String(sdk.sdkVersion));
+              }
+            } catch (_) {}
+
+            const keyCount = (() => {
+              try {
+                return Object.keys(sdk).length;
+              } catch (_) {
+                return -1;
+              }
+            })();
+
+            candidates.push(
+              'keys=' + String(keyCount) +
+                ',hasDefaultMeetingSession=' + String(typeof sdk.DefaultMeetingSession === 'function') +
+                ',hasTranscriptEventConverter=' + String(!!sdk.TranscriptEventConverter),
+            );
+
+            return candidates.join('|');
+          } catch (_) {
+            return 'fingerprint-error';
+          }
         }
 
         function extractTranscriptTextFromChimeEvent(transcriptEvent) {
@@ -1521,20 +1558,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         }
 
         async function restartTextSentimentCapture(reason) {
-          if (!shouldAutoSentimentCapture || isAudioMuted || !config.audioEnabled) {
-            return false;
-          }
-
-          const restarted = startChimeTranscriptCapture();
-          if (!restarted) {
-            stopSpeechRecognitionCapture();
-            startSpeechRecognitionCapture();
-          }
-          const active = restarted || !!speechRecognizer;
-          if (active) {
-            emitSentimentChannelState('text', false, reason || 'channel-restart');
-          }
-          return active;
+          emitSentimentChannelState('text', true, reason || 'disabled-by-config');
+          return false;
         }
 
         async function restartVoiceSentimentCapture(reason) {
@@ -1585,11 +1610,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           startChimeVoiceMetricsCapture();
 
           startVideoSentimentCapture();
-
-          const chimeTranscriptStarted = startChimeTranscriptCapture();
-          if (!chimeTranscriptStarted) {
-            startSpeechRecognitionCapture();
-          }
+          emitSentimentChannelState('text', true, 'disabled-by-config');
         }
 
         function iconSvg(name) {
@@ -1646,8 +1667,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           if (config.allowExternalSdkFallback) {
             scriptUrls.push(
-              'https://unpkg.com/amazon-chime-sdk-js@3.20.0/build/amazon-chime-sdk.min.js',
-              'https://cdn.jsdelivr.net/npm/amazon-chime-sdk-js@3.20.0/build/amazon-chime-sdk.min.js'
+              'https://unpkg.com/amazon-chime-sdk-js@3.26.0/build/amazon-chime-sdk.min.js',
+              'https://cdn.jsdelivr.net/npm/amazon-chime-sdk-js@3.26.0/build/amazon-chime-sdk.min.js'
             );
           }
 
@@ -1682,8 +1703,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           const moduleUrls = [
             config.sdkUrl,
-            'https://esm.run/amazon-chime-sdk-js@3.20.0',
-            'https://ga.jspm.io/npm:amazon-chime-sdk-js@3.20.0/build/index.js'
+            'https://esm.run/amazon-chime-sdk-js@3.26.0',
+            'https://ga.jspm.io/npm:amazon-chime-sdk-js@3.26.0/build/index.js'
           ];
 
           for (const moduleUrl of moduleUrls) {
@@ -1706,6 +1727,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         try {
           report('info', 'Initializing Chime media session');
           const ChimeSDK = await loadChimeSdk();
+          report('info', 'Chime SDK fingerprint: ' + resolveSdkFingerprint(ChimeSDK));
           const meetingResponse = {
             Meeting: {
               MeetingId: config.meetingId,

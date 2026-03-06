@@ -98,6 +98,8 @@ dependencies:
   #  flutter_stripe: ^10.2.0
   geolocator: ^14.0.2
   google_maps_flutter: ^2.13.1
+  webview_flutter: ^4.10.0
+  webview_flutter_android: ^4.10.0
   fl_chart: ^1.1.0
 
   # AI Voice Commands 
@@ -209,6 +211,7 @@ flutter:
     - assets/images/CareConnectLogo.png
     - assets/images/CareConnectLogo.svg
     - assets/images/default_avatar.svg
+    - web/amazon-chime-sdk.min.js
  
 # -------------------------------------------------------------------
 # Splash Screen configuration

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import 'chime_meeting_embed_stub.dart'
     if (dart.library.html) 'chime_meeting_embed_web.dart'
+  if (dart.library.io) 'chime_meeting_embed_mobile.dart'
     as platform;
 
 Widget buildChimeMeetingEmbed({

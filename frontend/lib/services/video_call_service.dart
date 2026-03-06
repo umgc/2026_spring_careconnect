@@ -158,17 +158,28 @@ class VideoCallService {
   // ================================================================
 
   Future<void> endCall() async {
-    if (!_isInCall || _currentCallId == null) return;
+    if (!_isInCall || _currentCallId == null) {
+      CallNotificationService.clearActiveCall();
+      return;
+    }
 
-    debugPrint('📴 Ending call: $_currentCallId');
+    final callId = _currentCallId!;
+    debugPrint('📴 Ending call: $callId');
 
     _sentimentTimer?.cancel();
 
+    final otherPartyId = _otherPartyId?.trim();
+    if (otherPartyId != null && otherPartyId.isNotEmpty) {
+      // Mirror backend websocket contract so peer teardown is immediate.
+      await CallNotificationService.sendEndCallSignal(
+        callId: callId,
+        otherPartyId: otherPartyId,
+      );
+    }
+
     try {
       await http.post(
-        Uri.parse(
-          '${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/end',
-        ),
+        Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$callId/end'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
@@ -181,8 +192,10 @@ class VideoCallService {
 
     _isInCall = false;
     _currentCallId = null;
+    _otherPartyId = null;
     _meetingCredentials = null;
     _aggregatedSentiment.clear();
+    CallNotificationService.clearActiveCall(callId);
     _onCallEnded?.call();
   }
 
@@ -256,6 +269,9 @@ class VideoCallService {
       );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint(
+          '✅ Voice sentiment posted: call=$_currentCallId avg=${averageLevel.toStringAsFixed(3)} ratio=${speechRatio.toStringAsFixed(3)} var=${variability.toStringAsFixed(3)}',
+        );
         return true;
       }
 
@@ -349,8 +365,13 @@ class VideoCallService {
     if (!_isInCall) return;
     debugPrint('📴 Remote party ended the call');
     _sentimentTimer?.cancel();
+    final callId = _currentCallId;
     _isInCall = false;
+    _currentCallId = null;
+    _otherPartyId = null;
+    _meetingCredentials = null;
     _aggregatedSentiment.clear();
+    CallNotificationService.clearActiveCall(callId);
     _onCallEnded?.call();
   }
 
@@ -387,6 +408,9 @@ class VideoCallService {
         }
       }
     } else if (channel == 'text' || channel == 'voice' || channel == 'video') {
+      debugPrint(
+        '[CareConnect][Sentiment] update channel=$channel score=${payload['score']} label=${payload['label']} fallback=${payload['fallback']}',
+      );
       _aggregatedSentiment[channel!] = _normalizeSentimentSection(
         channel,
         payload,
@@ -410,6 +434,8 @@ class VideoCallService {
     }
 
     final muted = event['muted'] == true;
+    final incomingStatus = (event['status'] as String?)?.trim().toUpperCase();
+    final isQuiet = incomingStatus == 'QUIET';
     final now = DateTime.now().toUtc();
     final existing = _aggregatedSentiment[channel] is Map<String, dynamic>
         ? Map<String, dynamic>.from(
@@ -418,20 +444,31 @@ class VideoCallService {
         : <String, dynamic>{};
 
     final score = (existing['score'] as num?)?.toDouble() ?? 0.5;
-    final label =
-        (existing['label'] as String?)?.toUpperCase() ?? _labelFromScore(score);
+    final label = _normalizeClinicalLabel(
+      (existing['label'] as String?),
+      score,
+    );
+
+    final resolvedStatus = isQuiet
+        ? 'QUIET'
+        : (muted ? 'MUTED' : 'AWAITING');
+    final resolvedNotes = (event['notes'] as String?)?.trim();
 
     _aggregatedSentiment[channel!] = {
       'score': score,
       'label': label,
-      'notes': muted
-          ? 'Channel Muted'
-          : 'Awaiting ${channel.toLowerCase()} sentiment sample.',
-      'status': muted ? 'MUTED' : 'AWAITING',
+      'notes': resolvedNotes?.isNotEmpty == true
+          ? resolvedNotes
+          : (isQuiet
+              ? 'No speech detected in this window.'
+              : (muted
+                  ? 'Channel Muted'
+                  : 'Awaiting ${channel.toLowerCase()} sentiment sample.')),
+      'status': resolvedStatus,
       'channel': channel,
       'updatedAt': now.toIso8601String(),
       'stale': false,
-      'confidence': muted ? 0.0 : 0.5,
+      'confidence': isQuiet ? 0.0 : (muted ? 0.0 : 0.5),
     };
 
     _markStaleChannels(now);
@@ -446,7 +483,7 @@ class VideoCallService {
   }
 
   Map<String, dynamic> _buildOverallFromChannels() {
-    final channels = ['text', 'voice', 'video'];
+    final channels = ['voice', 'video'];
     var scoreSum = 0.0;
     var count = 0;
     var hasDegraded = false;
@@ -474,7 +511,7 @@ class VideoCallService {
     if (count == 0) {
       return {
         'score': 0.5,
-        'label': 'NEUTRAL',
+        'label': 'ANXIOUS',
         'status': hasDegraded ? 'DEGRADED' : 'AWAITING',
         'notes': hasDegraded
             ? 'Sentiment temporarily unavailable; call continues normally.'
@@ -497,10 +534,10 @@ class VideoCallService {
 
   void _seedAwaitingSentimentState() {
     final now = DateTime.now().toUtc();
-    for (final channel in ['text', 'voice', 'video']) {
+    for (final channel in ['voice', 'video']) {
       _aggregatedSentiment[channel] = {
         'score': 0.5,
-        'label': 'NEUTRAL',
+        'label': 'ANXIOUS',
         'notes': 'Awaiting $channel sentiment sample.',
         'status': 'AWAITING',
         'channel': channel,
@@ -511,7 +548,7 @@ class VideoCallService {
     }
     _aggregatedSentiment['overall'] = {
       'score': 0.5,
-      'label': 'NEUTRAL',
+      'label': 'ANXIOUS',
       'status': 'AWAITING',
       'notes': 'Awaiting sentiment samples',
       'updatedAt': now.toIso8601String(),
@@ -532,9 +569,10 @@ class VideoCallService {
     final rawNotes = (raw['notes'] as String?)?.trim() ?? '';
     final fallback =
         raw['fallback'] == true || _isFallbackSentimentNotes(rawNotes);
+    // If a scored sentiment sample is present, treat it as a completed update
+    // even when it is marked as fallback, so the dashboard can render it.
     final status =
-        rawStatus ??
-        (rawScore == null ? 'AWAITING' : (fallback ? 'DEGRADED' : 'COMPLETED'));
+      rawStatus ?? (rawScore == null ? 'AWAITING' : 'COMPLETED');
 
     final notes = rawNotes.isNotEmpty
         ? rawNotes
@@ -547,9 +585,10 @@ class VideoCallService {
         _parseEventTime(raw['timestamp']) ??
         now;
 
-    final label =
-        (raw['label'] as String?)?.toUpperCase() ??
-        _labelFromScore(clampedScore);
+    final label = _normalizeClinicalLabel(
+      raw['label'] as String?,
+      clampedScore,
+    );
 
     return {
       'score': clampedScore,
@@ -591,7 +630,7 @@ class VideoCallService {
   }
 
   void _markStaleChannels(DateTime nowUtc) {
-    for (final key in ['text', 'voice', 'video']) {
+    for (final key in ['voice', 'video']) {
       final channel = _aggregatedSentiment[key];
       if (channel is! Map<String, dynamic>) continue;
 
@@ -611,11 +650,31 @@ class VideoCallService {
   }
 
   String _labelFromScore(double score) {
-    if (score >= 0.65) return 'CALM';
-    if (score >= 0.55) return 'POSITIVE';
-    if (score >= 0.35) return 'NEUTRAL';
-    if (score >= 0.25) return 'ANXIOUS';
+    if (score >= 0.60) return 'CALM';
+    if (score >= 0.35) return 'ANXIOUS';
     return 'DISTRESSED';
+  }
+
+  String _normalizeClinicalLabel(String? rawLabel, double score) {
+    final expected = _labelFromScore(score);
+    if (rawLabel == null || rawLabel.trim().isEmpty) {
+      return expected;
+    }
+
+    final normalized = rawLabel.trim().toUpperCase();
+    final mapped = switch (normalized) {
+      'CALM' || 'ANXIOUS' || 'DISTRESSED' => normalized,
+      'POSITIVE' => 'CALM',
+      'NEUTRAL' => 'ANXIOUS',
+      'NEGATIVE' => 'DISTRESSED',
+      _ => expected,
+    };
+
+    // Keep label aligned with numeric score to avoid contradictory UI.
+    if (mapped != expected) {
+      return expected;
+    }
+    return mapped;
   }
 
   bool get isInCall => _isInCall;

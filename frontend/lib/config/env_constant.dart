@@ -12,7 +12,7 @@ const String _agoraAppCertificate = String.fromEnvironment(
 
 const String _backendBaseUrl = String.fromEnvironment(
   'BACKEND_URL',
-  defaultValue: 'http://localhost:8080',
+  defaultValue: '',
 );
 
 const String _wsOverrideUrl = String.fromEnvironment('WEBSOCKET_SERVER_URL');

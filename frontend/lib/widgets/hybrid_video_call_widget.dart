@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../services/video_call_service.dart';
 import '../services/auth_token_manager.dart';
 import '../services/call_notification_service.dart';
@@ -71,6 +73,8 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   static const Duration _adaptiveSwitchCooldown = Duration(seconds: 30);
   static const int _restartFailureThreshold = 2;
   static const Duration _restartCooldown = Duration(seconds: 20);
+  static const double _voiceResumeSpeechRatioThreshold = 0.08;
+  static const double _voiceResumeLevelThreshold = 0.05;
 
   final VideoCallService _videoCallService = VideoCallService();
 
@@ -98,11 +102,8 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   DateTime? _lastAdaptiveSwitchAt;
   int _voiceFailureStreak = 0;
   int _videoFailureStreak = 0;
-  int _textFailureStreak = 0;
   DateTime? _lastVoiceRestartAt;
   DateTime? _lastVideoRestartAt;
-  DateTime? _lastTextRestartAt;
-  DateTime? _lastTranscriptAttemptAt;
 
   // Latest sentiment data — updated via WebSocket push
   Map<String, dynamic> _sentimentData = {};
@@ -128,8 +129,35 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   }
 
   Duration get _sampleThrottleWindow {
+    if (!kIsWeb) {
+      // Mobile transcript APIs can be unavailable; keep voice-driven fallback
+      // updates frequent enough for caregiver dashboards.
+      return const Duration(seconds: 5);
+    }
     final throttleMs = (_sentimentCaptureIntervalMs - 1000).clamp(3000, 14000);
     return Duration(milliseconds: throttleMs);
+  }
+
+  String _channelStatus(String channel) {
+    final data = _sentimentData[channel.toLowerCase()];
+    if (data is Map<String, dynamic>) {
+      return ((data['status'] as String?) ?? '').toUpperCase();
+    }
+    if (data is Map) {
+      return ((data['status'] as String?) ?? '').toUpperCase();
+    }
+    return '';
+  }
+
+  bool _shouldPrioritizeVoiceRecovery(double averageLevel, double speechRatio) {
+    final status = _channelStatus('voice');
+    final needsRecovery =
+        status == 'QUIET' || status == 'DEGRADED' || status == 'AWAITING';
+    if (!needsRecovery) {
+      return false;
+    }
+    return speechRatio >= _voiceResumeSpeechRatioThreshold ||
+        averageLevel >= _voiceResumeLevelThreshold;
   }
 
   int get _embedCaptureIntervalMs {
@@ -305,29 +333,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   }
 
   Future<void> _handleTranscriptSample(String transcript) async {
-    if (!_isPatientView) return;
-    final text = transcript.trim();
-    if (text.length < 8) return;
-
-    final now = DateTime.now();
-    if (_lastTranscriptAttemptAt != null &&
-        now.difference(_lastTranscriptAttemptAt!) <
-            const Duration(seconds: 8)) {
-      return;
+    // Transcript-driven sentiment is intentionally disabled for demo reliability.
+    if (transcript.isNotEmpty) {
+      debugPrint('[CareConnect][Sentiment][text] transcript received but ignored (voice/video-only mode)');
     }
-
-    _lastTranscriptAttemptAt = now;
-    try {
-      final success = await _videoCallService.sendTextForAnalysis(
-        text,
-        captureMode: _activeCaptureModeTag,
-      );
-      if (success) {
-        _textFailureStreak = 0;
-      } else {
-        await _handleChannelFailure('text');
-      }
-    } catch (_) {}
   }
 
   Future<void> _handleChannelFailure(String channel) async {
@@ -356,12 +365,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     }
 
     if (channel == 'text') {
-      _textFailureStreak += 1;
-      if (_textFailureStreak >= _restartFailureThreshold &&
-          _shouldRestartChannel(_lastTextRestartAt)) {
-        _textFailureStreak = 0;
-        await _restartSentimentChannel('text');
-      }
+      return;
     }
   }
 
@@ -389,9 +393,6 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     } else if (channel == 'video') {
       _lastVideoRestartAt = now;
       _lastVideoSampleSentAt = null;
-    } else if (channel == 'text') {
-      _lastTextRestartAt = now;
-      _lastTranscriptAttemptAt = null;
     }
   }
 
@@ -463,11 +464,27 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   ) async {
     if (!_isPatientView || _isSendingAudioSample) return;
 
+    final prioritizeRecovery =
+        _shouldPrioritizeVoiceRecovery(averageLevel, speechRatio);
     final now = DateTime.now();
-    if (_lastAudioSampleSentAt != null &&
+    if (!prioritizeRecovery &&
+        _lastAudioSampleSentAt != null &&
         now.difference(_lastAudioSampleSentAt!) < _sampleThrottleWindow) {
+      debugPrint(
+        '[CareConnect][Sentiment][voice] throttled sample avg=$averageLevel ratio=$speechRatio var=$variability',
+      );
       return;
     }
+
+    if (prioritizeRecovery) {
+      debugPrint(
+        '[CareConnect][Sentiment][voice] prioritizing recovery sample avg=$averageLevel ratio=$speechRatio var=$variability',
+      );
+    }
+
+    debugPrint(
+      '[CareConnect][Sentiment][voice] processing sample avg=$averageLevel ratio=$speechRatio var=$variability',
+    );
 
     _isSendingAudioSample = true;
     try {
@@ -551,6 +568,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     setState(() {
       _localAudioEnabled = !_localAudioEnabled;
     });
+
     await _handleSentimentChannelState('voice', nextMuted);
   }
 
@@ -625,11 +643,15 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     if (!mounted) return;
     if (Navigator.canPop(context)) {
       Navigator.of(context).pop();
+      return;
     }
+
+    // Keep deep-link behavior consistent with web when there is no local back stack.
+    context.go('/dashboard');
   }
 
   Future<void> _endCallAndExit() async {
-    if (_isEndingCall) return;
+    if (_isEndingCall || !mounted) return;
 
     setState(() {
       _isEndingCall = true;
@@ -856,24 +878,22 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
       final newCallId = 'chime_call_${DateTime.now().millisecondsSinceEpoch}';
 
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => HybridVideoCallWidget(
-            userId: widget.userId,
-            callId: newCallId,
-            recipientId: widget.recipientId,
-            userRole: widget.userRole,
-            isVideoEnabled: widget.isVideoEnabled,
-            isAudioEnabled: widget.isAudioEnabled,
-            isInitiator: true,
-            userEmail: widget.userEmail,
-            userPhone: widget.userPhone,
-            userName: widget.userName,
-            recipientEmail: widget.recipientEmail,
-            recipientPhone: widget.recipientPhone,
-            recipientName: widget.recipientName,
-          ),
-        ),
+      final role = Uri.encodeComponent((widget.userRole ?? '').toUpperCase());
+      final userName = Uri.encodeComponent(widget.userName ?? '');
+      final recipientName = Uri.encodeComponent(widget.recipientName ?? '');
+      final recipientIdValue = Uri.encodeComponent(widget.recipientId ?? '');
+
+      context.pushReplacement(
+        '/video-call-chime'
+        '?userId=${Uri.encodeComponent(widget.userId)}'
+        '&callId=${Uri.encodeComponent(newCallId)}'
+        '&recipientId=$recipientIdValue'
+        '&userRole=$role'
+        '&userName=$userName'
+        '&recipientName=$recipientName'
+        '&initiator=true'
+        '&video=${widget.isVideoEnabled ? 'true' : 'false'}'
+        '&audio=${widget.isAudioEnabled ? 'true' : 'false'}',
       );
     } catch (_) {
       if (!mounted) return;
@@ -908,9 +928,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
     if (hasMediaEndpoints && !isLocalMockSession) {
       return KeyedSubtree(
-        key: ValueKey(
-          'chime-${_callSession!.meetingId}-$shouldEnableSentimentCapture',
-        ),
+        key: ValueKey('chime-${_callSession!.meetingId}'),
         child: buildChimeMeetingEmbed(
           meetingId: _callSession!.meetingId,
           attendeeId: _callSession!.attendeeId,
@@ -923,9 +941,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
           enableAutoSentimentCapture: shouldEnableSentimentCapture,
           sentimentCaptureIntervalMs: _embedCaptureIntervalMs,
           onEndCallRequested: () async {
+            if (!mounted) return;
             await _endCallAndExit();
           },
-          onTranscriptSample: _handleTranscriptSample,
+          onTranscriptSample: null,
           onVoiceMetricsSample: _handleVoiceMetricsSample,
           onVideoSample: _handleVideoSample,
           onSentimentChannelState: (channel, muted) {

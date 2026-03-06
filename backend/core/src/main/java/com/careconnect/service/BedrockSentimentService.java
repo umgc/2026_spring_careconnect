@@ -209,8 +209,8 @@ public class BedrockSentimentService {
     // ================================================================
 
     /**
-    * Combines text, voice, and video sentiment into an overall score.
-    * Weights: text 20%, voice 40%, video 40%
+    * Combines voice and video sentiment into an overall score.
+    * Weights: voice 50%, video 50%
      */
     public Map<String, Object> buildCombinedSentiment(
             SentimentResult textResult,
@@ -218,16 +218,14 @@ public class BedrockSentimentService {
             SentimentResult videoResult,
             String callId) {
 
-        final double textWeight = 0.20;
-        final double voiceWeight = 0.40;
-        final double videoWeight = 0.40;
+        final double voiceWeight = 0.50;
+        final double videoWeight = 0.50;
 
-        boolean hasTextSample = textResult != null && !textResult.fallback();
         boolean hasVoiceSample = voiceResult != null && !voiceResult.fallback();
         boolean hasVideoSample = videoResult != null && !videoResult.fallback();
 
         if (textResult == null) {
-            textResult = SentimentResult.neutral("TEXT", callId, "No text sample");
+            textResult = SentimentResult.neutral("TEXT", callId, "Transcript channel disabled");
         }
         if (voiceResult == null) {
             voiceResult = SentimentResult.neutral("VOICE", callId, "No voice sample");
@@ -237,20 +235,17 @@ public class BedrockSentimentService {
         }
 
         double activeWeightSum =
-                (hasTextSample ? textWeight : 0.0)
-                + (hasVoiceSample ? voiceWeight : 0.0)
+            (hasVoiceSample ? voiceWeight : 0.0)
                 + (hasVideoSample ? videoWeight : 0.0);
 
-        double effectiveTextWeight = 0.0;
         double effectiveVoiceWeight = 0.0;
         double effectiveVideoWeight = 0.0;
         if (activeWeightSum > 0.0) {
-            effectiveTextWeight = hasTextSample ? (textWeight / activeWeightSum) : 0.0;
             effectiveVoiceWeight = hasVoiceSample ? (voiceWeight / activeWeightSum) : 0.0;
             effectiveVideoWeight = hasVideoSample ? (videoWeight / activeWeightSum) : 0.0;
         }
 
-        double textContribution = textResult.score() * effectiveTextWeight;
+        double textContribution = 0.0;
         double voiceContribution = voiceResult.score() * effectiveVoiceWeight;
         double videoContribution = videoResult.score() * effectiveVideoWeight;
 
@@ -276,7 +271,7 @@ public class BedrockSentimentService {
         result.put("dbgTs", round2(textResult.score()));
         result.put("dbgVs", round2(voiceResult.score()));
         result.put("dbgIs", round2(videoResult.score()));
-        result.put("dbgTw", round3(effectiveTextWeight));
+        result.put("dbgTw", round3(0.0));
         result.put("dbgVw", round3(effectiveVoiceWeight));
         result.put("dbgIw", round3(effectiveVideoWeight));
         result.put("dbgTc", round3(textContribution));
@@ -300,16 +295,14 @@ public class BedrockSentimentService {
             You are a clinical sentiment aggregator for a healthcare call summary.
             Use the channel scores and notes below to compute one final overall sentiment.
 
-            TEXT: score=%s, label=%s, notes=%s
             VOICE: score=%s, label=%s, notes=%s
             VIDEO: score=%s, label=%s, notes=%s
 
             Return ONLY JSON with keys score,label,notes.
             score must be 0.0 to 1.0 and represent the overall patient state.
-            label must be one of POSITIVE, NEUTRAL, NEGATIVE, DISTRESSED, ANXIOUS, CALM.
+            label must be one of CALM, ANXIOUS, DISTRESSED.
             notes must be concise (max 12 words).
             """.formatted(
-                text.score(), text.label(), safeNotes(text.notes()),
                 voice.score(), voice.label(), safeNotes(voice.notes()),
                 video.score(), video.label(), safeNotes(video.notes())
         );
@@ -322,7 +315,7 @@ public class BedrockSentimentService {
             }
             return new SentimentResult(
                     parsed.score(),
-                    normalizeCombinedLabel(parsed.label()),
+                    alignLabelWithScore(normalizeCombinedLabel(parsed.label()), parsed.score()),
                     parsed.notes(),
                     "COMBINED",
                     callId,
@@ -391,13 +384,12 @@ public class BedrockSentimentService {
             SentimentResult voice,
             SentimentResult video,
             String callId) {
-        double textWeight = text.fallback() ? 0.0 : 0.20;
-        double voiceWeight = voice.fallback() ? 0.0 : 0.40;
-        double videoWeight = video.fallback() ? 0.0 : 0.40;
-        double weightSum = textWeight + voiceWeight + videoWeight;
+        double voiceWeight = voice.fallback() ? 0.0 : 0.50;
+        double videoWeight = video.fallback() ? 0.0 : 0.50;
+        double weightSum = voiceWeight + videoWeight;
 
         double score = weightSum > 0.0
-            ? ((text.score() * textWeight) + (voice.score() * voiceWeight) + (video.score() * videoWeight)) / weightSum
+            ? ((voice.score() * voiceWeight) + (video.score() * videoWeight)) / weightSum
             : 0.5;
         score = clamp(score, 0.0, 1.0);
         return new SentimentResult(
@@ -430,9 +422,21 @@ public class BedrockSentimentService {
     private String normalizeCombinedLabel(String label) {
         String normalized = label == null ? "" : label.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
-            case "POSITIVE", "NEUTRAL", "NEGATIVE", "DISTRESSED", "ANXIOUS", "CALM" -> normalized;
-            default -> "NEUTRAL";
+            case "DISTRESSED", "ANXIOUS", "CALM" -> normalized;
+            case "NEGATIVE" -> "DISTRESSED";
+            case "NEUTRAL" -> "ANXIOUS";
+            case "POSITIVE" -> "CALM";
+            default -> "ANXIOUS";
         };
+    }
+
+    private String alignLabelWithScore(String label, double score) {
+        String expected = scoreToLabel(score);
+        if (label == null || label.isBlank()) {
+            return expected;
+        }
+        String normalized = normalizeCombinedLabel(label);
+        return normalized.equals(expected) ? normalized : expected;
     }
 
     private SentimentResult analyzeTranscriptHeuristic(String text, String callId) {
@@ -584,6 +588,7 @@ public class BedrockSentimentService {
         String notes = sentiment.path("notes").asText("");
 
         score = Math.max(0.0, Math.min(1.0, score));
+        label = alignLabelWithScore(normalizeCombinedLabel(label), score);
 
         return new SentimentResult(
                 score,
@@ -790,10 +795,8 @@ public class BedrockSentimentService {
     }
 
     private String scoreToLabel(double score) {
-        if (score >= 0.65) return "POSITIVE";
-        if (score >= 0.53) return "CALM";
-        if (score >= 0.40) return "NEUTRAL";
-        if (score >= 0.25) return "ANXIOUS";
+        if (score >= 0.60) return "CALM";
+        if (score >= 0.35) return "ANXIOUS";
         return "DISTRESSED";
     }
 
@@ -815,7 +818,7 @@ public class BedrockSentimentService {
 
     public record SentimentResult(
             double score,       // 0.0 - 1.0
-            String label,       // POSITIVE / NEUTRAL / NEGATIVE / DISTRESSED / ANXIOUS / CALM
+            String label,       // DISTRESSED / ANXIOUS / CALM
             String notes,       // brief clinical observation
             String channel,     // TEXT / VOICE / VIDEO
             String callId,
@@ -826,7 +829,7 @@ public class BedrockSentimentService {
         public static SentimentResult neutral(String channel, String callId, String reason) {
             return new SentimentResult(
                 0.5,
-                "NEUTRAL",
+                "ANXIOUS",
                 reason,
                 channel,
                 callId,

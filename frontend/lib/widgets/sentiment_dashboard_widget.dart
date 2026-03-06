@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 
 /// SentimentDashboardWidget — live emotional analysis panel during video calls.
 ///
-/// Summary view: three horizontal bar graphs side by side (Text, Voice, Video)
+/// Summary view: horizontal bar graphs for voice and video channels.
 /// Each bar is tappable and navigates to a detailed drill-down view showing
 /// the full history of that channel's scores as a line graph.
 ///
 /// Color coding:
-///   0.0 - 0.3  →  red      (DISTRESSED / NEGATIVE)
-///   0.3 - 0.55 →  amber    (ANXIOUS / NEUTRAL)
-///   0.55 - 1.0 →  green    (CALM / POSITIVE)
+///   0.0 - 0.35 → red   (DISTRESSED)
+///   0.35 - 0.60 → amber (ANXIOUS)
+///   0.60 - 1.0 → green (CALM)
 class SentimentDashboardWidget extends StatefulWidget {
   final Map<String, dynamic> sentimentData;
   final String callId;
@@ -77,7 +77,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
         _SentimentPoint(
           now,
           ((text as Map<String, dynamic>)['score'] as num).toDouble(),
-          ((text)['label'] as String?) ?? 'NEUTRAL',
+          ((text)['label'] as String?) ?? 'ANXIOUS',
         ),
       );
     }
@@ -86,7 +86,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
         _SentimentPoint(
           now,
           ((voice as Map<String, dynamic>)['score'] as num).toDouble(),
-          ((voice)['label'] as String?) ?? 'NEUTRAL',
+          ((voice)['label'] as String?) ?? 'ANXIOUS',
         ),
       );
     }
@@ -95,7 +95,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
         _SentimentPoint(
           now,
           ((video as Map<String, dynamic>)['score'] as num).toDouble(),
-          ((video)['label'] as String?) ?? 'NEUTRAL',
+          ((video)['label'] as String?) ?? 'ANXIOUS',
         ),
       );
     }
@@ -131,8 +131,9 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
 
   String _label(String channel) {
     final data = widget.sentimentData[channel.toLowerCase()];
-    if (data == null) return 'NEUTRAL';
-    return (data['label'] as String?) ?? 'NEUTRAL';
+    if (data == null) return _labelFromScore(0.5);
+    final score = (data['score'] as num?)?.toDouble() ?? 0.5;
+    return _labelFromScore(score);
   }
 
   String _notes(String channel) {
@@ -204,7 +205,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
   double _smoothedOverallScore() {
     var sum = 0.0;
     var count = 0;
-    for (final channel in const ['TEXT', 'VOICE', 'VIDEO']) {
+    for (final channel in const ['VOICE', 'VIDEO']) {
       if (_status(channel) == 'COMPLETED') {
         sum += _smoothedChannelScore(channel);
         count += 1;
@@ -225,8 +226,15 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
 
   String _overallLabel() {
     final overall = widget.sentimentData['overall'];
-    if (overall == null) return 'NEUTRAL';
-    return (overall['label'] as String?) ?? 'NEUTRAL';
+    if (overall == null) return _labelFromScore(0.5);
+    final score = (overall['score'] as num?)?.toDouble() ?? 0.5;
+    return _labelFromScore(score);
+  }
+
+  String _labelFromScore(double score) {
+    if (score >= 0.60) return 'CALM';
+    if (score >= 0.35) return 'ANXIOUS';
+    return 'DISTRESSED';
   }
 
   String _overallStatus() {
@@ -273,35 +281,9 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     return '$hour:$minute:$second';
   }
 
-  Widget _buildCaptureTelemetryRow(bool isDark) {
-    final captureMode = _captureModeLabel() ?? 'Unknown';
-    final textColor = isDark ? Colors.white70 : Colors.black54;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
-      child: Row(
-        children: [
-          Text(
-            'Mode: $captureMode',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
-          ),
-          const Spacer(),
-          Text(
-            'Voice: ${_formatTimestampForChannel('voice')}  Video: ${_formatTimestampForChannel('video')}',
-            style: TextStyle(fontSize: 11, color: textColor),
-          ),
-        ],
-      ),
-    );
-  }
-
   List<String> _mutedChannels() {
     final muted = <String>[];
-    for (final channel in const ['text', 'voice', 'video']) {
+    for (final channel in const ['voice', 'video']) {
       final status = _status(channel);
       if (status == 'MUTED') {
         muted.add(channel);
@@ -369,11 +351,10 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildPanelHeader(isDark),
-          _buildCaptureTelemetryRow(isDark),
           _buildChannelMutedBanner(isDark),
           _buildBarGraphRow(isDark),
           _buildOverallScore(isDark),
-          if (widget.onTextSend != null) _buildChatInput(isDark),
+          const SizedBox.shrink(),
         ],
       ),
     );
@@ -386,7 +367,6 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
   Widget _buildPanelHeader(bool isDark) {
     final hasData = widget.sentimentData.isNotEmpty;
     final overallStatus = _overallStatus();
-    final captureMode = _captureModeLabel();
     final overallDisplayScore = _smoothedOverallScore();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
@@ -408,26 +388,6 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
             ),
           ),
           const Spacer(),
-          if (captureMode != null)
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: (isDark ? Colors.white10 : Colors.black12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isDark ? Colors.white24 : Colors.black26,
-                ),
-              ),
-              child: Text(
-                captureMode,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white70 : Colors.black54,
-                ),
-              ),
-            ),
           if (hasData)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -445,7 +405,9 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
                 ),
               ),
               child: Text(
-                overallStatus == 'COMPLETED' ? _overallLabel() : overallStatus,
+                overallStatus == 'COMPLETED'
+                    ? _labelFromScore(overallDisplayScore)
+                    : overallStatus,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
@@ -478,15 +440,6 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
         children: [
           Expanded(
             child: _buildChannelBar(
-              channel: 'TEXT',
-              icon: Icons.chat_bubble_outline,
-              history: _textHistory,
-              isDark: isDark,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _buildChannelBar(
               channel: 'VOICE',
               icon: Icons.mic_none,
               history: _voiceHistory,
@@ -516,12 +469,14 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     final score = _smoothedChannelScore(channel);
     final status = _status(channel);
     final hasUsableSample = status == 'COMPLETED';
-    final label = hasUsableSample ? _label(channel) : status;
+    final label = hasUsableSample ? _labelFromScore(score) : status;
     final notes = hasUsableSample
         ? _notes(channel)
-        : (status == 'DEGRADED'
-              ? 'Sentiment temporarily unavailable; call continues normally.'
-              : 'Awaiting channel sample.');
+      : (status == 'DEGRADED'
+        ? 'Insights are briefly paused. Your call is still running normally.'
+        : (status == 'QUIET'
+          ? 'No speech detected in this window.'
+          : 'Listening for a stable signal...'));
     final color = _statusColor(status, score);
     final cardBg = isDark ? const Color(0xFF252540) : Colors.white;
 
@@ -782,8 +737,8 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
           icon: icon,
           history: List.from(history),
           callId: widget.callId,
-          currentScore: _score(channel),
-          currentLabel: _label(channel),
+          currentScore: _smoothedChannelScore(channel),
+          currentLabel: _labelFromScore(_smoothedChannelScore(channel)),
           currentNotes: _notes(channel),
         ),
       ),
@@ -795,9 +750,10 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
   // ================================================================
 
   static Color _scoreColor(double score) {
-    if (score >= 0.55) return const Color(0xFF2ECC71); // green — calm/positive
-    if (score >= 0.35)
-      return const Color(0xFFF39C12); // amber — neutral/anxious
+    if (score >= 0.60) return const Color(0xFF2ECC71); // green — calm
+    if (score >= 0.35) {
+      return const Color(0xFFF39C12); // amber — anxious
+    }
     return const Color(0xFFE74C3C); // red — distressed
   }
 
@@ -805,6 +761,8 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     switch (status.toUpperCase()) {
       case 'AWAITING':
         return const Color(0xFF95A5A6);
+      case 'QUIET':
+        return const Color(0xFF5D6D7E);
       case 'DEGRADED':
         return const Color(0xFFF39C12);
       case 'COMPLETED':
@@ -993,9 +951,9 @@ class _SentimentDetailScreen extends StatelessWidget {
 
   Widget _buildLegend(bool isDark) {
     final items = [
-      (_channelColor('POSITIVE_COLOR'), 'Calm / Positive (>55%)'),
-      (const Color(0xFFF39C12), 'Neutral / Anxious (35–55%)'),
-      (const Color(0xFFE74C3C), 'Distressed / Negative (<35%)'),
+      (_channelColor('POSITIVE_COLOR'), 'Calm (>=60%)'),
+      (const Color(0xFFF39C12), 'Anxious (35-60%)'),
+      (const Color(0xFFE74C3C), 'Distressed (<35%)'),
     ];
 
     return Wrap(

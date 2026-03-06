@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import '../widgets/incoming_call_popup.dart';
-import '../widgets/hybrid_video_call_widget.dart';
 import '../config/env_constant.dart';
 import '../services/auth_token_manager.dart';
 
@@ -121,6 +121,9 @@ class CallNotificationService {
             final declinedCallId = (data['callId'] ?? '').toString();
             if (declinedCallId.isNotEmpty) {
               _suppressIncomingCallId(declinedCallId);
+              if (_activeCallId == declinedCallId) {
+                _activeCallId = null;
+              }
             }
             _notifyCallDeclined(data);
           } else if (type == 'call-invitation-sent') {
@@ -146,6 +149,9 @@ class CallNotificationService {
             final pending = _pendingOutgoingInvitations.remove(callId);
             if (pending != null && !pending.isCompleted) {
               pending.complete(false);
+            }
+            if (_activeCallId == callId) {
+              _activeCallId = null;
             }
             _showCallFeedback(
               '$recipientLabel is unavailable: $reason.',
@@ -297,22 +303,20 @@ class CallNotificationService {
     _dismissIncomingCallPopup(dialogContext: dialogContext);
 
     // Navigate to video call screen
-    Navigator.of(_context!).push(
-      MaterialPageRoute(
-        builder: (context) => HybridVideoCallWidget(
-          userId: _currentUserId!,
-          callId: callId,
-          recipientId: callerId,
-          userRole: _currentUserRole,
-          forcePatientDetailsOnExit: false,
-          returnAsCaregiver: false,
-          isInitiator: false, // This user is joining the call
-          isVideoEnabled: isVideoCall,
-          isAudioEnabled: true,
-          userName: _getCurrentUserName(),
-          recipientName: callerName,
-        ),
-      ),
+    final userName = Uri.encodeComponent(_getCurrentUserName());
+    final recipientName = Uri.encodeComponent(callerName);
+    final role = Uri.encodeComponent((_currentUserRole ?? '').toUpperCase());
+    _context!.push(
+      '/video-call-chime'
+      '?userId=$_currentUserId'
+      '&callId=${Uri.encodeComponent(callId)}'
+      '&recipientId=${Uri.encodeComponent(callerId)}'
+      '&userRole=$role'
+      '&userName=$userName'
+      '&recipientName=$recipientName'
+      '&initiator=false'
+      '&video=${isVideoCall ? 'true' : 'false'}'
+      '&audio=true',
     );
   }
 
@@ -492,6 +496,9 @@ class CallNotificationService {
         const Duration(seconds: 8),
         onTimeout: () {
           _pendingOutgoingInvitations.remove(callId);
+          if (_activeCallId == callId) {
+            _activeCallId = null;
+          }
           _showCallFeedback(
             '${_roleLabel(recipientRole) ?? 'Recipient'} did not confirm availability. They may be offline.',
             backgroundColor: Colors.orange.shade800,
@@ -545,6 +552,50 @@ class CallNotificationService {
     } catch (e) {
       debugPrint('❌ Error sending channel state: $e');
       return false;
+    }
+  }
+
+  static Future<bool> sendEndCallSignal({
+    required String callId,
+    required String otherPartyId,
+  }) async {
+    if (!_isConnected || _channel == null) {
+      return false;
+    }
+
+    final normalizedCallId = callId.trim();
+    final normalizedOther = otherPartyId.trim();
+    if (normalizedCallId.isEmpty || normalizedOther.isEmpty) {
+      return false;
+    }
+
+    try {
+      final msg = {
+        'type': 'end-call',
+        'callId': normalizedCallId,
+        'otherPartyId': normalizedOther,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      _channel!.sink.add(_encode(msg));
+      _suppressIncomingCallId(normalizedCallId, duration: const Duration(seconds: 45));
+      if (_activeCallId == normalizedCallId) {
+        _activeCallId = null;
+      }
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error sending end-call signal: $e');
+      return false;
+    }
+  }
+
+  static void clearActiveCall([String? callId]) {
+    final normalized = callId?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      _activeCallId = null;
+      return;
+    }
+    if (_activeCallId == normalized) {
+      _activeCallId = null;
     }
   }
 

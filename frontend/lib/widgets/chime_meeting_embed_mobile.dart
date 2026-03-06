@@ -439,6 +439,12 @@ class _ChimeMeetingEmbedMobileState extends State<_ChimeMeetingEmbedMobile> {
 
   @override
   void dispose() {
+    unawaited(
+      widget.controller.postFlutterAction({
+        'action': 'teardown',
+        'reason': 'flutter-widget-dispose',
+      }),
+    );
     _activeMobileControllers.remove(widget.meetingId);
     widget.controller.detach();
     super.dispose();
@@ -615,9 +621,14 @@ String _buildMobileMeetingHtml(String configJson) {
         let auxVoiceAnalyser = null;
         let auxVoiceData = null;
         let sentimentVideoTimer = null;
+        let sentimentVideoCanvas = null;
+        let sentimentVideoCtx = null;
         let lastTranscriptSignature = '';
         let lastTranscriptAt = 0;
         let transcriptNoTextWatchdogTimer = null;
+        let flutterMessageHandler = null;
+        let meetingObserver = null;
+        let isShuttingDown = false;
 
         function setStatus(msg) {
           if (statusEl) {
@@ -1544,21 +1555,32 @@ String _buildMobileMeetingHtml(String configJson) {
               return;
             }
 
-            const canvas = document.createElement('canvas');
             const maxWidth = 640;
             const scale = Math.min(1, maxWidth / localVideo.videoWidth);
             const width = Math.max(1, Math.floor(localVideo.videoWidth * scale));
             const height = Math.max(1, Math.floor(localVideo.videoHeight * scale));
-            canvas.width = width;
-            canvas.height = height;
 
-            const ctx = canvas.getContext('2d', { alpha: false });
-            if (!ctx) {
+            if (!sentimentVideoCanvas) {
+              sentimentVideoCanvas = document.createElement('canvas');
+            }
+            if (
+              sentimentVideoCanvas.width !== width ||
+              sentimentVideoCanvas.height !== height
+            ) {
+              sentimentVideoCanvas.width = width;
+              sentimentVideoCanvas.height = height;
+              sentimentVideoCtx = null;
+            }
+
+            if (!sentimentVideoCtx) {
+              sentimentVideoCtx = sentimentVideoCanvas.getContext('2d', { alpha: false });
+            }
+            if (!sentimentVideoCtx) {
               return;
             }
 
-            ctx.drawImage(localVideo, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.68);
+            sentimentVideoCtx.drawImage(localVideo, 0, 0, width, height);
+            const dataUrl = sentimentVideoCanvas.toDataURL('image/jpeg', 0.68);
             const commaIndex = dataUrl.indexOf(',');
             if (commaIndex <= 0) {
               return;
@@ -1913,9 +1935,78 @@ String _buildMobileMeetingHtml(String configJson) {
           return true;
         }
 
-        window.addEventListener('message', async (event) => {
+        function teardownMeeting(reason, emitEndRequest) {
+          if (isShuttingDown) {
+            return;
+          }
+          isShuttingDown = true;
+
+          if (startupWatchdog) {
+            clearTimeout(startupWatchdog);
+            startupWatchdog = null;
+          }
+
+          stopAutoSentimentCapture();
+
+          if (audioVideo) {
+            try {
+              if (meetingObserver && typeof audioVideo.removeObserver === 'function') {
+                audioVideo.removeObserver(meetingObserver);
+              }
+            } catch (_) {}
+
+            try {
+              if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                audioVideo.stopLocalVideoTile();
+              }
+            } catch (_) {}
+
+            try {
+              if (typeof audioVideo.stop === 'function') {
+                audioVideo.stop();
+              }
+            } catch (_) {}
+          }
+
+          if (remoteAudio) {
+            try {
+              remoteAudio.pause();
+            } catch (_) {}
+            remoteAudio.srcObject = null;
+          }
+          if (localVideo) {
+            localVideo.srcObject = null;
+          }
+          if (remoteVideo) {
+            remoteVideo.srcObject = null;
+          }
+
+          if (flutterMessageHandler) {
+            try {
+              window.removeEventListener('message', flutterMessageHandler);
+            } catch (_) {}
+            flutterMessageHandler = null;
+          }
+
+          meetingObserver = null;
+          audioVideo = null;
+          meetingSession = null;
+          sentimentVideoCtx = null;
+          sentimentVideoCanvas = null;
+          report('info', 'Mobile meeting teardown completed: ' + String(reason || 'unknown'));
+          if (emitEndRequest) {
+            emitAction('end-call-request', { reason: String(reason || 'teardown') });
+          }
+        }
+
+        flutterMessageHandler = async (event) => {
           const data = event && event.data ? event.data : null;
           if (!data || data.source !== 'careconnect-flutter') {
+            return;
+          }
+
+          if (data.action === 'teardown') {
+            teardownMeeting(data.reason || 'flutter-teardown', false);
             return;
           }
 
@@ -1962,7 +2053,9 @@ String _buildMobileMeetingHtml(String configJson) {
               report('warn', 'Sentiment channel restart failed: ' + String(e));
             }
           }
-        });
+        };
+
+        window.addEventListener('message', flutterMessageHandler);
 
         async function bindAndPlayVideo(tileId, element, kind) {
           try {
@@ -2123,7 +2216,7 @@ String _buildMobileMeetingHtml(String configJson) {
           );
           setStatus('Preparing audio/video devices...');
 
-          audioVideo.addObserver({
+          meetingObserver = {
             audioVideoDidStart: () => {
               mediaStarted = true;
               if (startupWatchdog) {
@@ -2136,10 +2229,9 @@ String _buildMobileMeetingHtml(String configJson) {
               report('info', 'audioVideoDidStart');
             },
             audioVideoDidStop: (sessionStatus) => {
-              stopAutoSentimentCapture();
               setStatus('Disconnected');
               report('info', 'audioVideoDidStop: ' + (sessionStatus && sessionStatus.statusCode ? sessionStatus.statusCode() : 'unknown'));
-              emitAction('end-call-request', { reason: 'audioVideoDidStop' });
+              teardownMeeting('audioVideoDidStop', true);
             },
             videoTileDidUpdate: (tileState) => {
               if (!tileState || !tileState.tileId || tileState.isContent) {
@@ -2172,7 +2264,9 @@ String _buildMobileMeetingHtml(String configJson) {
                 updateParticipantStatus();
               }
             },
-          });
+          };
+
+          audioVideo.addObserver(meetingObserver);
 
           if (typeof audioVideo.realtimeSubscribeToAttendeeIdPresence === 'function') {
             audioVideo.realtimeSubscribeToAttendeeIdPresence((attendeeId, present) => {

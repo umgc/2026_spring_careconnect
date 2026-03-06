@@ -224,6 +224,19 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
   StreamSubscription<html.MessageEvent>? _messageSubscription;
   String? _guardMessage;
 
+  void _postIframeAction(String action, [Map<String, dynamic>? payload]) {
+    final iframe = _activeMeetingIframes[widget.meetingId];
+    final win = iframe?.contentWindow;
+    if (win == null) return;
+
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': action,
+      if (payload != null) ...payload,
+      'meetingId': widget.meetingId,
+    }, '*');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -455,6 +468,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
   @override
   void dispose() {
+    _postIframeAction('teardown', {'reason': 'flutter-widget-dispose'});
     _messageSubscription?.cancel();
     _activeMeetingIframes.remove(widget.meetingId);
     super.dispose();
@@ -631,6 +645,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         let sentimentAudioFlushTimer = null;
         let sentimentAudioPcmChunks = [];
         let sentimentVideoTimer = null;
+        let sentimentVideoCanvas = null;
+        let sentimentVideoCtx = null;
         let speechRecognizer = null;
         let speechRestartTimer = null;
         let lastTranscriptSignature = '';
@@ -643,6 +659,10 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         let voiceSum = 0;
         let voiceSumSquares = 0;
         let volumeIndicatorHandler = null;
+        let flutterMessageHandler = null;
+        let meetingObserver = null;
+        let isShuttingDown = false;
+        const maxQueuedSentimentAudioChunks = 96;
 
         function setStatus(msg) { statusEl.textContent = msg; }
         function report(level, msg) {
@@ -887,9 +907,69 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           });
         }
 
-        window.addEventListener('message', async (event) => {
+        function teardownMeeting(reason) {
+          if (isShuttingDown) {
+            return;
+          }
+          isShuttingDown = true;
+
+          stopAutoSentimentCapture();
+
+          if (audioVideo) {
+            try {
+              if (meetingObserver && typeof audioVideo.removeObserver === 'function') {
+                audioVideo.removeObserver(meetingObserver);
+              }
+            } catch (_) {}
+
+            try {
+              if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                audioVideo.stopLocalVideoTile();
+              }
+            } catch (_) {}
+
+            try {
+              if (typeof audioVideo.stop === 'function') {
+                audioVideo.stop();
+              }
+            } catch (_) {}
+          }
+
+          if (remoteAudio) {
+            try {
+              remoteAudio.pause();
+            } catch (_) {}
+            remoteAudio.srcObject = null;
+          }
+          if (localVideo) {
+            localVideo.srcObject = null;
+          }
+          if (remoteVideo) {
+            remoteVideo.srcObject = null;
+          }
+
+          if (flutterMessageHandler) {
+            try {
+              window.removeEventListener('message', flutterMessageHandler);
+            } catch (_) {}
+            flutterMessageHandler = null;
+          }
+
+          meetingObserver = null;
+          audioVideo = null;
+          sentimentVideoCtx = null;
+          sentimentVideoCanvas = null;
+          report('info', 'Meeting teardown completed: ' + String(reason || 'unknown'));
+        }
+
+        flutterMessageHandler = async (event) => {
           const data = event && event.data ? event.data : null;
           if (!data || data.source !== 'careconnect-flutter') {
+            return;
+          }
+
+          if (data.action === 'teardown') {
+            teardownMeeting(data.reason || 'flutter-teardown');
             return;
           }
 
@@ -1015,7 +1095,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             }
             return;
           }
-        });
+        };
+
+        window.addEventListener('message', flutterMessageHandler);
 
         function normalizeAudioFormat(mimeType) {
           const lower = String(mimeType || '').toLowerCase();
@@ -1433,6 +1515,12 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
                 return;
               }
               sentimentAudioPcmChunks.push(new Float32Array(channelData));
+              if (sentimentAudioPcmChunks.length > maxQueuedSentimentAudioChunks) {
+                sentimentAudioPcmChunks.splice(
+                  0,
+                  sentimentAudioPcmChunks.length - maxQueuedSentimentAudioChunks,
+                );
+              }
             };
 
             sentimentAudioSourceNode.connect(sentimentAudioProcessorNode);
@@ -1507,21 +1595,32 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
               return;
             }
 
-            const canvas = document.createElement('canvas');
             const maxWidth = 640;
             const scale = Math.min(1, maxWidth / localVideo.videoWidth);
             const width = Math.max(1, Math.floor(localVideo.videoWidth * scale));
             const height = Math.max(1, Math.floor(localVideo.videoHeight * scale));
-            canvas.width = width;
-            canvas.height = height;
 
-            const ctx = canvas.getContext('2d', { alpha: false });
-            if (!ctx) {
+            if (!sentimentVideoCanvas) {
+              sentimentVideoCanvas = document.createElement('canvas');
+            }
+            if (
+              sentimentVideoCanvas.width !== width ||
+              sentimentVideoCanvas.height !== height
+            ) {
+              sentimentVideoCanvas.width = width;
+              sentimentVideoCanvas.height = height;
+              sentimentVideoCtx = null;
+            }
+
+            if (!sentimentVideoCtx) {
+              sentimentVideoCtx = sentimentVideoCanvas.getContext('2d', { alpha: false });
+            }
+            if (!sentimentVideoCtx) {
               return;
             }
 
-            ctx.drawImage(localVideo, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.68);
+            sentimentVideoCtx.drawImage(localVideo, 0, 0, width, height);
+            const dataUrl = sentimentVideoCanvas.toDataURL('image/jpeg', 0.68);
             const commaIndex = dataUrl.indexOf(',');
             if (commaIndex <= 0) {
               return;
@@ -2043,7 +2142,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             });
           }
 
-          audioVideo.addObserver({
+          meetingObserver = {
             audioVideoDidStart: () => {
               updateParticipantStatus();
 
@@ -2136,7 +2235,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
                 updateParticipantStatus();
               }
             }
-          });
+          };
+
+          audioVideo.addObserver(meetingObserver);
 
           if (typeof audioVideo.realtimeSubscribeToAttendeeIdPresence === 'function') {
             audioVideo.realtimeSubscribeToAttendeeIdPresence((attendeeId, present, externalUserId, dropped) => {

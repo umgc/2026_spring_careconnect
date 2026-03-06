@@ -80,6 +80,54 @@ class _PostCallTelemetrySummaryScreenState
       )
       .length;
 
+  Map<String, dynamic>? get _finalOverallEvent {
+    for (final event in _callTelemetry.reversed) {
+      final eventType = (event['eventType'] as String?)?.trim().toUpperCase();
+      if (eventType == 'SENTIMENT_FINAL') {
+        return event;
+      }
+    }
+
+    // Backward compatibility: use latest COMBINED sentiment if explicit final
+    // event is not yet present in historical records.
+    for (final event in _callTelemetry.reversed) {
+      final channel = (event['channel'] as String?)?.trim().toUpperCase();
+      final eventType = (event['eventType'] as String?)?.trim().toUpperCase();
+      if (channel == 'COMBINED' || eventType == 'SENTIMENT_COMBINED') {
+        return event;
+      }
+    }
+    return null;
+  }
+
+  double? get _finalOverallScore {
+    final event = _finalOverallEvent;
+    if (event == null) return null;
+    return (event['sentimentScore'] as num?)?.toDouble();
+  }
+
+  String get _finalOverallScoreText {
+    final score = _finalOverallScore;
+    if (score == null) return '--';
+    return '${(score * 100).toStringAsFixed(1)}%';
+  }
+
+  String get _finalOverallLabel {
+    final event = _finalOverallEvent;
+    if (event == null) return '--';
+    final label = (event['sentimentLabel'] as String?)?.trim();
+    if (label == null || label.isEmpty) return '--';
+    return label;
+  }
+
+  String get _finalOverallNotes {
+    final event = _finalOverallEvent;
+    if (event == null) return '--';
+    final notes = (event['sentimentNotes'] as String?)?.trim();
+    if (notes == null || notes.isEmpty) return '--';
+    return notes;
+  }
+
   String get _latestSentimentLabel {
     for (final event in _callTelemetry.reversed) {
       final label = (event['sentimentLabel'] as String?)?.trim();
@@ -98,6 +146,52 @@ class _PostCallTelemetrySummaryScreenState
       }
     }
     return '--';
+  }
+
+  String get _caregiverRecommendation {
+    final score = _finalOverallScore;
+    if (score == null) {
+      return 'Final overall score is not available yet.';
+    }
+    if (score < 0.30) {
+      return 'High concern: check in immediately and assess acute distress signs.';
+    }
+    if (score < 0.45) {
+      return 'Elevated concern: increase monitoring and follow up soon.';
+    }
+    if (score < 0.65) {
+      return 'Moderate concern: continue routine monitoring.';
+    }
+    return 'Stable: maintain normal follow-up cadence.';
+  }
+
+  Map<String, dynamic>? get _latestCombinedDebug {
+    Map<String, dynamic>? latestCombined;
+    for (final event in _callTelemetry.reversed) {
+      final eventType = (event['eventType'] as String?)?.trim().toUpperCase();
+      if (eventType == 'SENTIMENT_COMBINED') {
+        latestCombined = event;
+        break;
+      }
+    }
+    if (latestCombined == null) return null;
+
+    final payloadJson = latestCombined['payloadJson'];
+    if (payloadJson is! String || payloadJson.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = Map<String, dynamic>.from(
+        (jsonDecode(payloadJson) as Map).cast<String, dynamic>(),
+      );
+      if (!decoded.keys.any((k) => k.toString().startsWith('dbg'))) {
+        return null;
+      }
+      return decoded;
+    } catch (_) {
+      return null;
+    }
   }
 
   String get _finalCallStatus {
@@ -261,14 +355,14 @@ class _PostCallTelemetrySummaryScreenState
     return '${diff.inMinutes}:$seconds';
   }
 
-  _TimelineChannel _resolveEventChannel(Map<String, dynamic> event) {
+  _TimelineChannel? _resolveEventChannel(Map<String, dynamic> event) {
     final channelRaw =
         (event['channel'] as String?)?.trim().toUpperCase() ?? '';
     if (channelRaw == 'TEXT') return _TimelineChannel.text;
     if (channelRaw == 'VOICE' || channelRaw == 'AUDIO') {
       return _TimelineChannel.voice;
     }
-    if (channelRaw == 'COMBINED') return _TimelineChannel.video;
+    if (channelRaw == 'COMBINED') return null;
 
     final eventType =
         (event['eventType'] as String?)?.trim().toUpperCase() ?? '';
@@ -276,7 +370,9 @@ class _PostCallTelemetrySummaryScreenState
     if (eventType.contains('VOICE') || eventType.contains('AUDIO')) {
       return _TimelineChannel.voice;
     }
-    if (eventType.contains('COMBINED')) return _TimelineChannel.video;
+    if (eventType.contains('COMBINED') || eventType.contains('FINAL')) {
+      return null;
+    }
     return _TimelineChannel.video;
   }
 
@@ -301,6 +397,7 @@ class _PostCallTelemetrySummaryScreenState
       if (!eventType.startsWith('SENTIMENT_')) continue;
 
       final channel = _resolveEventChannel(event);
+      if (channel == null) continue;
       if (!byChannel.containsKey(channel)) continue;
 
       final score = (event['sentimentScore'] as num?)?.toDouble();
@@ -363,17 +460,20 @@ class _PostCallTelemetrySummaryScreenState
                       ),
                     ),
                   _SummaryCard(
-                    callId: widget.callId,
-                    totalEvents: _callTelemetry.length,
-                    sentimentEvents: _sentimentEventCount,
-                    latestSentiment: _latestSentimentLabel,
+                    finalOverallScore: _finalOverallScoreText,
+                    finalOverallLabel: _finalOverallLabel,
+                    finalOverallNotes: _finalOverallNotes,
+                    caregiverRecommendation: _caregiverRecommendation,
                     finalCallStatus: _finalCallStatusWithReason,
-                    latestStatus: _latestStatus,
                     callDuration: _callDurationText,
                   ),
+                  if (_latestCombinedDebug != null) ...[
+                    const SizedBox(height: 12),
+                    _DebugBreakdownCard(debug: _latestCombinedDebug!),
+                  ],
                   const SizedBox(height: 16),
                   Text(
-                    'Sentiment Timeline',
+                    'Sentiment Trend',
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
@@ -409,7 +509,7 @@ class _PostCallTelemetrySummaryScreenState
     final channelColors = <_TimelineChannel, Color>{
       _TimelineChannel.text: const Color(0xFF00BCD4),
       _TimelineChannel.voice: const Color(0xFFFF9800),
-      _TimelineChannel.video: const Color(0xFF9C27B0),
+      _TimelineChannel.video: const Color(0xFF7E57C2),
     };
 
     return Card(
@@ -427,7 +527,7 @@ class _PostCallTelemetrySummaryScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Bands represent score zones (Positive/Neutral/Negative). Colored lines plot actual score values at each timestamp.',
+                  'Channels shown: Transcript, Voice, Video.',
                   style: theme.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),
@@ -491,21 +591,19 @@ class _PostCallTelemetrySummaryScreenState
 }
 
 class _SummaryCard extends StatelessWidget {
-  final String callId;
-  final int totalEvents;
-  final int sentimentEvents;
-  final String latestSentiment;
+  final String finalOverallScore;
+  final String finalOverallLabel;
+  final String finalOverallNotes;
+  final String caregiverRecommendation;
   final String finalCallStatus;
-  final String latestStatus;
   final String callDuration;
 
   const _SummaryCard({
-    required this.callId,
-    required this.totalEvents,
-    required this.sentimentEvents,
-    required this.latestSentiment,
+    required this.finalOverallScore,
+    required this.finalOverallLabel,
+    required this.finalOverallNotes,
+    required this.caregiverRecommendation,
     required this.finalCallStatus,
-    required this.latestStatus,
     required this.callDuration,
   });
 
@@ -517,14 +615,67 @@ class _SummaryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Call ID: $callId'),
+            Text(
+              'Final Overall Assessment',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 6),
-            Text('Total telemetry events: $totalEvents'),
-            Text('Sentiment events: $sentimentEvents'),
+            Text('Overall score: $finalOverallScore'),
+            Text('Overall label: $finalOverallLabel'),
+            Text('Clinical note: $finalOverallNotes'),
+            Text('Caregiver guidance: $caregiverRecommendation'),
             Text('Call duration: $callDuration'),
-            Text('Latest sentiment label: $latestSentiment'),
             Text('Final call status: $finalCallStatus'),
-            Text('Latest event status: $latestStatus'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DebugBreakdownCard extends StatelessWidget {
+  final Map<String, dynamic> debug;
+
+  const _DebugBreakdownCard({required this.debug});
+
+  String _fmt(dynamic value) {
+    if (value == null) return '--';
+    if (value is num) {
+      return value.toDouble().toStringAsFixed(3);
+    }
+    final parsed = double.tryParse(value.toString());
+    if (parsed != null) {
+      return parsed.toStringAsFixed(3);
+    }
+    return value.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ts = _fmt(debug['dbgTs']);
+    final vs = _fmt(debug['dbgVs']);
+    final iscore = _fmt(debug['dbgIs']);
+    final tc = _fmt(debug['dbgTc']);
+    final vc = _fmt(debug['dbgVc']);
+    final ic = _fmt(debug['dbgIc']);
+    final tw = _fmt(debug['dbgTw']);
+    final vw = _fmt(debug['dbgVw']);
+    final iw = _fmt(debug['dbgIw']);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Temporary Debug Breakdown',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 6),
+            Text('Transcript score: $ts  (w=$tw, c=$tc)'),
+            Text('Voice score: $vs  (w=$vw, c=$vc)'),
+            Text('Video score: $iscore  (w=$iw, c=$ic)'),
           ],
         ),
       ),
@@ -768,15 +919,15 @@ class _TimelineLegend extends StatelessWidget {
         const _LegendChip(label: 'Neutral zone', color: Colors.amber),
         const _LegendChip(label: 'Negative zone', color: Colors.red),
         _LegendChip(
-          label: 'Transcript line',
+          label: 'Transcript',
           color: channelColors[_TimelineChannel.text] ?? Colors.blueGrey,
         ),
         _LegendChip(
-          label: 'Voice line',
+          label: 'Voice',
           color: channelColors[_TimelineChannel.voice] ?? Colors.blueGrey,
         ),
         _LegendChip(
-          label: 'Video line',
+          label: 'Video',
           color: channelColors[_TimelineChannel.video] ?? Colors.blueGrey,
         ),
       ],

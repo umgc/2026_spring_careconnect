@@ -13,8 +13,9 @@ Widget buildChimeMeetingEmbed({
   int sentimentCaptureIntervalMs = 15000,
   VoidCallback? onEndCallRequested,
   void Function(String transcript)? onTranscriptSample,
-  void Function(String audioBase64, String audioFormat)? onAudioSample,
+  void Function(double averageLevel, double speechRatio, double variability)? onVoiceMetricsSample,
   void Function(String imageBase64)? onVideoSample,
+  void Function(String channel, bool muted)? onSentimentChannelState,
 }) {
   return Container(
     color: Colors.black,
@@ -42,5 +43,12 @@ Future<bool> requestChimeVideoToggle({
 }
 
 Future<bool> requestChimeCameraSwitch({String? meetingId}) async {
+  return false;
+}
+
+Future<bool> requestChimeSentimentChannelRestart({
+  required String channel,
+  String? meetingId,
+}) async {
   return false;
 }

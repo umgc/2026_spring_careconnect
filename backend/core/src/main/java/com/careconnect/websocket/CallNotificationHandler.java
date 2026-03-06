@@ -108,6 +108,9 @@ public class CallNotificationHandler extends TextWebSocketHandler {
                 case "heartbeat":
                     handleHeartbeat(session, payload);
                     break;
+                case "sentiment-channel-state":
+                    handleSentimentChannelState(session, payload);
+                    break;
                 default:
                     log.warn("Unknown message type: {}", type);
                     sendErrorMessage(session, "Unknown message type: " + type);
@@ -448,6 +451,49 @@ public class CallNotificationHandler extends TextWebSocketHandler {
             "timestamp", System.currentTimeMillis()
         );
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
+    }
+
+    private void handleSentimentChannelState(WebSocketSession session, Map<String, Object> payload) throws Exception {
+        User user = sessionUsers.get(session.getId());
+        if (user == null) {
+            sendErrorMessage(session, "User not authenticated");
+            return;
+        }
+
+        String channel = payload.get("channel") == null ? "" : String.valueOf(payload.get("channel")).trim().toLowerCase();
+        if (!("text".equals(channel) || "voice".equals(channel) || "video".equals(channel))) {
+            sendErrorMessage(session, "Invalid channel: " + channel);
+            return;
+        }
+
+        String callId = payload.get("callId") == null ? "" : String.valueOf(payload.get("callId"));
+        String otherPartyId = payload.get("otherPartyId") == null ? "" : String.valueOf(payload.get("otherPartyId"));
+        boolean muted = Boolean.parseBoolean(String.valueOf(payload.getOrDefault("muted", false)));
+        String captureMode = payload.get("captureMode") == null ? null : String.valueOf(payload.get("captureMode"));
+
+        if (otherPartyId.isBlank()) {
+            sendErrorMessage(session, "otherPartyId is required");
+            return;
+        }
+
+        WebSocketSession otherSession = userSessions.get(otherPartyId);
+        if (otherSession != null && otherSession.isOpen()) {
+            Map<String, Object> response = new java.util.HashMap<>();
+            response.put("type", "sentiment-channel-state");
+            response.put("callId", callId);
+            response.put("channel", channel);
+            response.put("muted", muted);
+            response.put("status", muted ? "MUTED" : "AWAITING");
+            response.put("notes", muted ? "Channel Muted" : "Awaiting " + channel + " sentiment sample.");
+            response.put("changedBy", user.getId());
+            response.put("changedByName", getUserDisplayName(user));
+            if (captureMode != null && !captureMode.isBlank()) {
+                response.put("captureMode", captureMode);
+            }
+            response.put("timestamp", System.currentTimeMillis());
+
+            otherSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
+        }
     }
 
     private void sendErrorMessage(WebSocketSession session, String errorMessage) {

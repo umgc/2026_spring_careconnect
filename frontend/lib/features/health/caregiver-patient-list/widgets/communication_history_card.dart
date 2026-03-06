@@ -65,10 +65,7 @@ class CommunicationHistoryCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             ...summaries.take(8).map((summary) {
-              final trailing = summary.lastSentimentLabel == null ||
-                      summary.lastSentimentLabel!.isEmpty
-                  ? null
-                  : summary.lastSentimentLabel;
+              final finalBadgeText = _buildFinalBadgeText(summary);
               final isInteractive = onCallTap != null;
 
               return ListTile(
@@ -84,7 +81,7 @@ class CommunicationHistoryCard extends StatelessWidget {
                 ),
                 subtitle: Text(
                   '${_formatDate(summary.lastOccurredAt)} • '
-                  '${summary.totalEvents} events • '
+                  '${summary.callOutcome} • '
                   '${summary.sentimentEvents} sentiment samples',
                 ),
                 trailing: isInteractive
@@ -92,11 +89,14 @@ class CommunicationHistoryCard extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          if (trailing != null)
+                          if (finalBadgeText != null)
                             Text(
-                              trailing,
+                              finalBadgeText,
                               style: theme.textTheme.labelSmall?.copyWith(
-                                color: cs.onSurfaceVariant,
+                                color: _colorForLabel(
+                                  context,
+                                  summary.finalSentimentLabel,
+                                ),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -120,12 +120,15 @@ class CommunicationHistoryCard extends StatelessWidget {
                           ),
                         ],
                       )
-                    : (trailing == null
+                    : (finalBadgeText == null
                         ? null
                         : Text(
-                            trailing,
+                            finalBadgeText,
                             style: theme.textTheme.labelSmall?.copyWith(
-                              color: cs.onSurfaceVariant,
+                              color: _colorForLabel(
+                                context,
+                                summary.finalSentimentLabel,
+                              ),
                               fontWeight: FontWeight.w600,
                             ),
                           )),
@@ -147,6 +150,7 @@ class CommunicationHistoryCard extends StatelessWidget {
       final occurredAt = _parseDate(event['occurredAt']) ?? DateTime.now();
       final eventType = (event['eventType'] ?? '').toString().toUpperCase();
       final sentimentLabel = (event['sentimentLabel'] ?? '').toString().trim();
+      final sentimentScore = (event['sentimentScore'] as num?)?.toDouble();
 
       final existing = byCallId[rawCallId];
       if (existing == null) {
@@ -156,8 +160,15 @@ class CommunicationHistoryCard extends StatelessWidget {
           totalEvents: 1,
           sentimentEvents: eventType.startsWith('SENTIMENT_') ? 1 : 0,
           lastSentimentLabel: sentimentLabel.isEmpty ? null : sentimentLabel,
+          finalSentimentLabel: eventType == 'SENTIMENT_FINAL' && sentimentLabel.isNotEmpty
+              ? sentimentLabel
+              : null,
+          finalSentimentScore: eventType == 'SENTIMENT_FINAL' ? sentimentScore : null,
+          callOutcome: _resolveCallOutcomeFromEvent(eventType, null),
         );
       } else {
+        final hasFinal = existing.finalSentimentLabel != null ||
+            existing.finalSentimentScore != null;
         byCallId[rawCallId] = _CallSummary(
           callId: existing.callId,
           lastOccurredAt: occurredAt.isAfter(existing.lastOccurredAt)
@@ -169,6 +180,15 @@ class CommunicationHistoryCard extends StatelessWidget {
           lastSentimentLabel: sentimentLabel.isNotEmpty
               ? sentimentLabel
               : existing.lastSentimentLabel,
+          finalSentimentLabel: hasFinal
+              ? existing.finalSentimentLabel
+              : (eventType == 'SENTIMENT_FINAL' && sentimentLabel.isNotEmpty
+                  ? sentimentLabel
+                  : null),
+          finalSentimentScore: hasFinal
+              ? existing.finalSentimentScore
+              : (eventType == 'SENTIMENT_FINAL' ? sentimentScore : null),
+          callOutcome: _resolveCallOutcomeFromEvent(eventType, existing.callOutcome),
         );
       }
     }
@@ -176,6 +196,56 @@ class CommunicationHistoryCard extends StatelessWidget {
     final summaries = byCallId.values.toList();
     summaries.sort((a, b) => b.lastOccurredAt.compareTo(a.lastOccurredAt));
     return summaries;
+  }
+
+  String? _buildFinalBadgeText(_CallSummary summary) {
+    if (summary.finalSentimentScore == null &&
+        (summary.finalSentimentLabel == null ||
+            summary.finalSentimentLabel!.isEmpty)) {
+      return null;
+    }
+
+    final scoreText = summary.finalSentimentScore == null
+        ? null
+      : '${(summary.finalSentimentScore! * 100).toStringAsFixed(1)}%';
+    final labelText = summary.finalSentimentLabel;
+
+    if (scoreText != null && labelText != null && labelText.isNotEmpty) {
+      return '$scoreText $labelText';
+    }
+    return scoreText ?? labelText;
+  }
+
+  String _resolveCallOutcomeFromEvent(String eventType, String? existingOutcome) {
+    if (existingOutcome != null && existingOutcome != '--') {
+      return existingOutcome;
+    }
+    switch (eventType) {
+      case 'WS_DECLINE_CALL':
+        return 'Rejected';
+      case 'WS_ACCEPT_CALL':
+      case 'CALL_JOIN':
+        return 'Accepted';
+      case 'WS_END_CALL':
+      case 'CALL_END':
+        return 'Ended';
+      default:
+        return '--';
+    }
+  }
+
+  Color _colorForLabel(BuildContext context, String? label) {
+    final l = (label ?? '').toUpperCase();
+    if (l == 'POSITIVE' || l == 'CALM') {
+      return Colors.green.shade700;
+    }
+    if (l == 'NEGATIVE' || l == 'DISTRESSED' || l == 'ANXIOUS') {
+      return Colors.red.shade700;
+    }
+    if (l == 'NEUTRAL') {
+      return Colors.amber.shade800;
+    }
+    return Theme.of(context).colorScheme.onSurfaceVariant;
   }
 
   DateTime? _parseDate(dynamic value) {
@@ -207,6 +277,9 @@ class _CallSummary {
   final int totalEvents;
   final int sentimentEvents;
   final String? lastSentimentLabel;
+  final String? finalSentimentLabel;
+  final double? finalSentimentScore;
+  final String callOutcome;
 
   const _CallSummary({
     required this.callId,
@@ -214,5 +287,8 @@ class _CallSummary {
     required this.totalEvents,
     required this.sentimentEvents,
     required this.lastSentimentLabel,
+    required this.finalSentimentLabel,
+    required this.finalSentimentScore,
+    required this.callOutcome,
   });
 }

@@ -21,7 +21,7 @@ class CallNotificationService {
   static bool _isIncomingDialogVisible = false;
   static final Map<String, DateTime> _suppressedIncomingCallIds =
       <String, DateTime>{};
-    static final Map<String, Completer<bool>> _pendingOutgoingInvitations =
+  static final Map<String, Completer<bool>> _pendingOutgoingInvitations =
       <String, Completer<bool>>{};
 
   // Stream controllers for call events
@@ -51,7 +51,9 @@ class CallNotificationService {
       );
       _context = context;
 
-      debugPrint('🔔 Initializing CallNotificationService for $userRole: $userId');
+      debugPrint(
+        '🔔 Initializing CallNotificationService for $userRole: $userId',
+      );
 
       if (_isConnected && _currentUserId == userId && _channel != null) {
         // Reuse existing connection, only refresh context/role references
@@ -76,17 +78,8 @@ class CallNotificationService {
       }
 
       // Authenticate and join user room
-      _channel!.sink.add(
-        _encode({
-          'type': 'authenticate',
-          'token': token,
-        }),
-      );
-      _channel!.sink.add(
-        _encode({
-          'type': 'join-user-room',
-        }),
-      );
+      _channel!.sink.add(_encode({'type': 'authenticate', 'token': token}));
+      _channel!.sink.add(_encode({'type': 'join-user-room'}));
 
       // Listen for messages
       _channel!.stream.listen(
@@ -141,8 +134,12 @@ class CallNotificationService {
             final reason = (data['reason'] ?? 'Recipient unavailable')
                 .toString()
                 .trim();
-            final recipientName = (data['recipientName'] ?? '').toString().trim();
-            final recipientRole = (data['recipientRole'] ?? '').toString().trim();
+            final recipientName = (data['recipientName'] ?? '')
+                .toString()
+                .trim();
+            final recipientRole = (data['recipientRole'] ?? '')
+                .toString()
+                .trim();
             final recipientLabel = recipientName.isNotEmpty
                 ? recipientName
                 : (_roleLabel(recipientRole) ?? 'Recipient');
@@ -155,6 +152,8 @@ class CallNotificationService {
               backgroundColor: Colors.orange.shade800,
             );
           } else if (type == 'sentiment-update') {
+            _incomingCallController.add(data);
+          } else if (type == 'sentiment-channel-state') {
             _incomingCallController.add(data);
           }
         },
@@ -181,12 +180,14 @@ class CallNotificationService {
 
     // Extract call information
     final callId = (callData['callId'] ?? '').toString();
-    final callerId = (callData['senderId'] ?? callData['callerId'] ?? '').toString();
+    final callerId = (callData['senderId'] ?? callData['callerId'] ?? '')
+        .toString();
     final callerRole =
-      (callData['senderRole'] ?? callData['callerRole'] ?? 'PATIENT').toString();
+        (callData['senderRole'] ?? callData['callerRole'] ?? 'PATIENT')
+            .toString();
     final callerName = _normalizeDisplayName(
       (callData['senderName'] ?? callData['callerName'] ?? 'Unknown Caller')
-        .toString(),
+          .toString(),
       roleFallback: callerRole,
       genericFallback: 'Unknown Caller',
     );
@@ -196,7 +197,9 @@ class CallNotificationService {
     _pruneSuppressedIncomingCallIds();
 
     if (_activeCallId == callId || _isIncomingCallSuppressed(callId)) {
-      debugPrint('⏭️ Suppressing duplicate incoming call popup for callId: $callId');
+      debugPrint(
+        '⏭️ Suppressing duplicate incoming call popup for callId: $callId',
+      );
       return;
     }
 
@@ -205,7 +208,9 @@ class CallNotificationService {
         debugPrint('⏭️ Incoming popup already visible for callId: $callId');
         return;
       }
-      debugPrint('⏭️ Ignoring incoming call while another incoming popup is visible');
+      debugPrint(
+        '⏭️ Ignoring incoming call while another incoming popup is visible',
+      );
       return;
     }
 
@@ -387,7 +392,7 @@ class CallNotificationService {
 
     final declinedByName = _normalizeDisplayName(
       (data['declinedByName'] ?? data['senderName'] ?? 'The recipient')
-        .toString(),
+          .toString(),
       genericFallback: 'The recipient',
     );
     final reason = (data['reason'] ?? 'declined').toString();
@@ -503,6 +508,42 @@ class CallNotificationService {
         'Failed to send call invitation. Please try again.',
         backgroundColor: Colors.red.shade700,
       );
+      return false;
+    }
+  }
+
+  static Future<bool> sendSentimentChannelState({
+    required String callId,
+    required String otherPartyId,
+    required String channel,
+    required bool muted,
+    String? captureMode,
+  }) async {
+    if (!_isConnected || _channel == null) {
+      return false;
+    }
+
+    final normalizedChannel = channel.trim().toLowerCase();
+    if (normalizedChannel != 'text' &&
+        normalizedChannel != 'voice' &&
+        normalizedChannel != 'video') {
+      return false;
+    }
+
+    try {
+      final msg = {
+        'type': 'sentiment-channel-state',
+        'callId': callId,
+        'otherPartyId': otherPartyId,
+        'channel': normalizedChannel,
+        'muted': muted,
+        'captureMode': captureMode,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      _channel!.sink.add(_encode(msg));
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error sending channel state: $e');
       return false;
     }
   }

@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Set;
 
 @Slf4j
@@ -47,7 +48,17 @@ public class CallTelemetryService {
         "textLength",
         "overallScore",
         "overallLabel",
-        "timestamp"
+        "timestamp",
+        "dbgTs",
+        "dbgVs",
+        "dbgIs",
+        "dbgTw",
+        "dbgVw",
+        "dbgIw",
+        "dbgTc",
+        "dbgVc",
+        "dbgIc",
+        "dbgCf"
     );
 
     private final CallTelemetryEventRepository callTelemetryEventRepository;
@@ -134,6 +145,29 @@ public class CallTelemetryService {
 
     public List<CallTelemetryEvent> getTelemetryForCall(String callId) {
         return callTelemetryEventRepository.findByCallIdOrderByOccurredAtDesc(callId);
+    }
+
+    public Map<String, CallTelemetryEvent> getLatestSentimentByChannel(String callId) {
+        List<CallTelemetryEvent> events = callTelemetryEventRepository.findByCallIdOrderByOccurredAtDesc(callId);
+        Map<String, CallTelemetryEvent> latestByChannel = new LinkedHashMap<>();
+        for (CallTelemetryEvent event : events) {
+            if (event == null || event.getChannel() == null || event.getSentimentScore() == null) {
+                continue;
+            }
+            String channel = event.getChannel().trim().toUpperCase(Locale.ROOT);
+            if (channel.isEmpty()) {
+                continue;
+            }
+            if (!latestByChannel.containsKey(channel)) {
+                latestByChannel.put(channel, event);
+            }
+            if (latestByChannel.containsKey("TEXT")
+                    && latestByChannel.containsKey("VOICE")
+                    && latestByChannel.containsKey("VIDEO")) {
+                break;
+            }
+        }
+        return latestByChannel;
     }
 
     public List<CallTelemetryEvent> getTelemetryForUser(Long userId) {

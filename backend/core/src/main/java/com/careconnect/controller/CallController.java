@@ -7,6 +7,7 @@ import com.careconnect.service.BedrockSentimentService;
 import com.careconnect.service.BedrockSentimentService.SentimentResult;
 import com.careconnect.service.ChimeService;
 import com.careconnect.service.CallTelemetryService;
+import com.careconnect.model.CallTelemetryEvent;
 
 import com.careconnect.websocket.CallNotificationHandler;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,7 +25,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Locale;
 
 @RestController
 @RequestMapping("/api/v3/calls")
@@ -136,10 +139,11 @@ public class CallController {
             @RequestBody(required = false) Map<String, String> body) {
         try {
             User currentUser = getCurrentUser();
-            chimeService.endMeeting(callId);
             if ((otherPartyId == null || otherPartyId.isBlank()) && body != null) {
                 otherPartyId = body.get("otherPartyId");
             }
+            maybeRecordFinalOverallSentiment(callId, currentUser.getId(), parseUserId(otherPartyId));
+            chimeService.endMeeting(callId);
             if (otherPartyId != null && !otherPartyId.isBlank()) {
                 callNotificationHandler.sendNotificationToUser(otherPartyId, Map.of(
                         "type", "call-ended",
@@ -281,11 +285,32 @@ public class CallController {
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
-            String audioBase64 = body.get("audioBase64");
-            String audioFormat = body.getOrDefault("audioFormat", "wav");
-            if (audioBase64 == null || audioBase64.isBlank())
-                throw new AppException(HttpStatus.BAD_REQUEST, "audioBase64 field is required");
-            SentimentResult result = sentimentService.analyzeVoice(audioBase64, callId, audioFormat);
+            Double averageLevel = parseDouble(body.get("averageLevel"));
+            Double speechRatio = parseDouble(body.get("speechRatio"));
+            Double variability = parseDouble(body.get("variability"));
+
+            if (averageLevel == null || speechRatio == null || variability == null) {
+                throw new AppException(
+                        HttpStatus.BAD_REQUEST,
+                        "Provide Chime metrics fields: averageLevel, speechRatio, variability"
+                );
+            }
+
+            SentimentResult result = sentimentService.analyzeVoiceFromChimeMetrics(
+                    callId,
+                    averageLevel,
+                    speechRatio,
+                    variability
+            );
+            log.info(
+                    "Voice sentiment result callId={} actorUserId={} actorRole={} fallback={} label={} score={}",
+                    callId,
+                    currentUser.getId(),
+                    currentUser.getRole(),
+                    result.fallback(),
+                    result.label(),
+                    result.score()
+            );
                 callTelemetryService.recordSentimentEvent(
                     callId,
                     "SENTIMENT_VOICE",
@@ -434,12 +459,16 @@ public class CallController {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
             String text = body.getOrDefault("text", "");
-            String audioBase64 = body.getOrDefault("audioBase64", "");
-            String audioFormat = body.getOrDefault("audioFormat", "wav");
             String imageBase64 = body.getOrDefault("imageBase64", "");
             String imageFormat = body.getOrDefault("imageFormat", "jpeg");
+                Double averageLevel = parseDouble(body.get("averageLevel"));
+                Double speechRatio = parseDouble(body.get("speechRatio"));
+                Double variability = parseDouble(body.get("variability"));
+
             SentimentResult textResult = text.isBlank() ? null : sentimentService.analyzeText(text, callId);
-            SentimentResult voiceResult = audioBase64.isBlank() ? null : sentimentService.analyzeVoice(audioBase64, callId, audioFormat);
+                SentimentResult voiceResult = (averageLevel == null || speechRatio == null || variability == null)
+                    ? null
+                    : sentimentService.analyzeVoiceFromChimeMetrics(callId, averageLevel, speechRatio, variability);
             SentimentResult videoResult = imageBase64.isBlank() ? null : sentimentService.analyzeVideoFrame(imageBase64, imageFormat, callId);
             Map<String, Object> combined = sentimentService.buildCombinedSentiment(textResult, voiceResult, videoResult, callId);
             callTelemetryService.recordSentimentEvent(
@@ -582,6 +611,17 @@ public class CallController {
         }
     }
 
+    private Double parseDouble(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
     private Map<String, Object> sanitizeTelemetryPayload(Map<String, String> body) {
         Map<String, Object> sanitized = new HashMap<>();
         if (body == null || body.isEmpty()) {
@@ -599,6 +639,15 @@ public class CallController {
         }
         if (body.containsKey("otherPartyId")) {
             sanitized.put("status", "TARGET_PRESENT");
+        }
+        if (body.containsKey("averageLevel")) {
+            sanitized.put("averageLevel", body.get("averageLevel"));
+        }
+        if (body.containsKey("speechRatio")) {
+            sanitized.put("speechRatio", body.get("speechRatio"));
+        }
+        if (body.containsKey("variability")) {
+            sanitized.put("variability", body.get("variability"));
         }
 
         String text = body.get("text");
@@ -633,7 +682,68 @@ public class CallController {
             safe.put("timestamp", timestamp);
         }
 
+        for (String debugKey : List.of(
+                "dbgTs", "dbgVs", "dbgIs",
+                "dbgTw", "dbgVw", "dbgIw",
+                "dbgTc", "dbgVc", "dbgIc", "dbgCf")) {
+            Object debugValue = combined.get(debugKey);
+            if (debugValue != null) {
+                safe.put(debugKey, debugValue);
+            }
+        }
+
         return safe;
+    }
+
+    private void maybeRecordFinalOverallSentiment(String callId, Long actorUserId, Long targetUserId) {
+        try {
+            Map<String, CallTelemetryEvent> latestByChannel = callTelemetryService.getLatestSentimentByChannel(callId);
+            if (latestByChannel.isEmpty()) {
+                return;
+            }
+
+            Map<String, SentimentResult> channelResults = new LinkedHashMap<>();
+            for (Map.Entry<String, CallTelemetryEvent> entry : latestByChannel.entrySet()) {
+                CallTelemetryEvent event = entry.getValue();
+                if (event == null || event.getSentimentScore() == null) {
+                    continue;
+                }
+                String channel = entry.getKey().trim().toUpperCase(Locale.ROOT);
+                channelResults.put(channel, new SentimentResult(
+                        event.getSentimentScore(),
+                        event.getSentimentLabel() == null ? "NEUTRAL" : event.getSentimentLabel(),
+                        event.getSentimentNotes() == null ? "" : event.getSentimentNotes(),
+                        channel,
+                        callId,
+                        event.getAnalysisTimestamp() == null ? System.currentTimeMillis() : event.getAnalysisTimestamp(),
+                        false
+                ));
+            }
+
+            if (channelResults.isEmpty()) {
+                return;
+            }
+
+            SentimentResult finalResult = sentimentService.analyzeFinalOverallSentiment(callId, channelResults);
+            callTelemetryService.recordSentimentEvent(
+                    callId,
+                    "SENTIMENT_FINAL",
+                    "COMBINED",
+                    actorUserId,
+                    targetUserId,
+                    "END_CALL",
+                    finalResult,
+                    Map.of(
+                            "overallScore", finalResult.score(),
+                            "overallLabel", finalResult.label(),
+                            "status", "FINAL_END_CALL"
+                    ),
+                    "SUCCESS",
+                    null
+            );
+        } catch (Exception ex) {
+            log.warn("Final end-call sentiment analysis skipped for callId {}: {}", callId, ex.getMessage());
+        }
     }
 
 }

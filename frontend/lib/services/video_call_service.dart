@@ -73,6 +73,10 @@ class VideoCallService {
         final merged = _mergeSentimentUpdate(data);
         _onSentimentUpdate!(merged);
       }
+      if (type == 'sentiment-channel-state' && _onSentimentUpdate != null) {
+        final merged = _mergeChannelStateEvent(data);
+        _onSentimentUpdate!(merged);
+      }
       if (type == 'call-declined' && _onCallDeclined != null) {
         final declinedCallId = (data['callId'] ?? '').toString();
         if (declinedCallId.isNotEmpty &&
@@ -119,26 +123,28 @@ class VideoCallService {
       );
 
       if (response.statusCode != 200) {
-        throw Exception('Failed to join call: ${response.statusCode} ${response.body}');
+        throw Exception(
+          'Failed to join call: ${response.statusCode} ${response.body}',
+        );
       }
 
       _meetingCredentials = jsonDecode(response.body) as Map<String, dynamic>;
       debugPrint('✅ Chime meeting credentials received for call: $callId');
 
-      if (_isPatientSentimentSource) {
-        _startSentimentTimer();
-      }
+      // Combined sentiment is now posted from real channel capture flow
+      // (transcript/voice/video). Do not send periodic empty combined payloads.
 
       return ChimeCallSession(
-        callId:          callId,
-        meetingId:       _meetingCredentials!['meetingId'] as String,
-        attendeeId:      _meetingCredentials!['attendeeId'] as String,
-        joinToken:       _meetingCredentials!['joinToken'] as String,
-        mediaPlacement:  _meetingCredentials!['mediaPlacement'] as Map<String, dynamic>,
-        mediaRegion:     _meetingCredentials!['mediaRegion'] as String?,
-        externalUserId:  _meetingCredentials!['externalUserId'] as String?,
-        isVideoEnabled:  isVideoEnabled,
-        isAudioEnabled:  isAudioEnabled,
+        callId: callId,
+        meetingId: _meetingCredentials!['meetingId'] as String,
+        attendeeId: _meetingCredentials!['attendeeId'] as String,
+        joinToken: _meetingCredentials!['joinToken'] as String,
+        mediaPlacement:
+            _meetingCredentials!['mediaPlacement'] as Map<String, dynamic>,
+        mediaRegion: _meetingCredentials!['mediaRegion'] as String?,
+        externalUserId: _meetingCredentials!['externalUserId'] as String?,
+        isVideoEnabled: isVideoEnabled,
+        isAudioEnabled: isAudioEnabled,
       );
     } catch (e) {
       _isInCall = false;
@@ -160,7 +166,9 @@ class VideoCallService {
 
     try {
       await http.post(
-        Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/end'),
+        Uri.parse(
+          '${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/end',
+        ),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
@@ -190,7 +198,9 @@ class VideoCallService {
 
     try {
       final response = await http.post(
-        Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/text'),
+        Uri.parse(
+          '${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/text',
+        ),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
@@ -206,7 +216,9 @@ class VideoCallService {
         return true;
       }
 
-      debugPrint('⚠️ Text sentiment request failed: ${response.statusCode} ${response.body}');
+      debugPrint(
+        '⚠️ Text sentiment request failed: ${response.statusCode} ${response.body}',
+      );
       return false;
     } catch (e) {
       debugPrint('⚠️ Text sentiment error: $e');
@@ -214,14 +226,10 @@ class VideoCallService {
     }
   }
 
-  // ================================================================
-  // SENTIMENT — VOICE
-  // Called with a base64 audio chunk every ~15 seconds
-  // ================================================================
-
-  Future<bool> sendAudioForAnalysis(
-    String audioBase64, {
-    String audioFormat = 'wav',
+  Future<bool> sendVoiceMetricsForAnalysis({
+    required double averageLevel,
+    required double speechRatio,
+    required double variability,
     String? captureMode,
   }) async {
     if (!_isPatientSentimentSource || !_isInCall || _currentCallId == null) {
@@ -230,27 +238,33 @@ class VideoCallService {
 
     try {
       final response = await http.post(
-        Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/voice'),
+        Uri.parse(
+          '${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/voice',
+        ),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
         },
         body: jsonEncode({
-          'audioBase64': audioBase64,
-          'audioFormat': audioFormat,
+          'averageLevel': averageLevel.toStringAsFixed(4),
+          'speechRatio': speechRatio.toStringAsFixed(4),
+          'variability': variability.toStringAsFixed(4),
+          'audioFormat': 'chime-metrics',
           'otherPartyId': _otherPartyId,
           'captureMode': captureMode,
         }),
       );
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        debugPrint('⚠️ Voice sentiment request failed: ${response.statusCode} ${response.body}');
-        return false;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
       }
 
-      return true;
+      debugPrint(
+        '⚠️ Voice metrics sentiment request failed: ${response.statusCode} ${response.body}',
+      );
+      return false;
     } catch (e) {
-      debugPrint('⚠️ Voice sentiment error: $e');
+      debugPrint('⚠️ Voice metrics sentiment error: $e');
       return false;
     }
   }
@@ -260,14 +274,19 @@ class VideoCallService {
   // Called with a base64 JPEG frame capture every ~15 seconds
   // ================================================================
 
-  Future<bool> sendVideoFrameForAnalysis(String imageBase64, {String? captureMode}) async {
+  Future<bool> sendVideoFrameForAnalysis(
+    String imageBase64, {
+    String? captureMode,
+  }) async {
     if (!_isPatientSentimentSource || !_isInCall || _currentCallId == null) {
       return false;
     }
 
     try {
       final response = await http.post(
-        Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/video'),
+        Uri.parse(
+          '${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/video',
+        ),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
@@ -284,12 +303,36 @@ class VideoCallService {
         return true;
       }
 
-      debugPrint('⚠️ Video sentiment request failed: ${response.statusCode} ${response.body}');
+      debugPrint(
+        '⚠️ Video sentiment request failed: ${response.statusCode} ${response.body}',
+      );
       return false;
     } catch (e) {
       debugPrint('⚠️ Video sentiment error: $e');
       return false;
     }
+  }
+
+  Future<bool> updateSentimentChannelState({
+    required String channel,
+    required bool muted,
+    String? captureMode,
+  }) async {
+    if (!_isPatientSentimentSource || !_isInCall || _currentCallId == null) {
+      return false;
+    }
+
+    if (_otherPartyId == null || _otherPartyId!.trim().isEmpty) {
+      return false;
+    }
+
+    return CallNotificationService.sendSentimentChannelState(
+      callId: _currentCallId!,
+      otherPartyId: _otherPartyId!,
+      channel: channel,
+      muted: muted,
+      captureMode: captureMode,
+    );
   }
 
   // ================================================================
@@ -298,31 +341,9 @@ class VideoCallService {
 
   void _startSentimentTimer() {
     _sentimentTimer?.cancel();
-    // Post combined sentiment every 15 seconds
-    // In Phase 2, this will capture real audio/video data
-    // For Phase 1 demo, voice and video fall back gracefully to neutral
-    _sentimentTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      _postCombinedSentiment();
-    });
   }
 
-  Future<void> _postCombinedSentiment() async {
-    if (!_isPatientSentimentSource || !_isInCall || _currentCallId == null) return;
-    try {
-      // Phase 1: text-only combined sentiment
-      // Phase 2: will include audioBase64 and imageBase64
-      await http.post(
-        Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$_currentCallId/sentiment/combined'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_jwtToken',
-        },
-        body: jsonEncode({'otherPartyId': _otherPartyId}),
-      );
-    } catch (e) {
-      debugPrint('⚠️ Combined sentiment error: $e');
-    }
-  }
+  Future<void> _postCombinedSentiment() async {}
 
   void _handleRemoteCallEnd() {
     if (!_isInCall) return;
@@ -348,7 +369,8 @@ class VideoCallService {
     }
 
     final channel = (payload['channel'] as String?)?.toLowerCase();
-    final hasPerChannelShape = payload.containsKey('text') ||
+    final hasPerChannelShape =
+        payload.containsKey('text') ||
         payload.containsKey('voice') ||
         payload.containsKey('video') ||
         payload.containsKey('overall');
@@ -381,6 +403,48 @@ class VideoCallService {
     return Map<String, dynamic>.from(_aggregatedSentiment);
   }
 
+  Map<String, dynamic> _mergeChannelStateEvent(Map<String, dynamic> event) {
+    final channel = (event['channel'] as String?)?.trim().toLowerCase();
+    if (channel != 'text' && channel != 'voice' && channel != 'video') {
+      return Map<String, dynamic>.from(_aggregatedSentiment);
+    }
+
+    final muted = event['muted'] == true;
+    final now = DateTime.now().toUtc();
+    final existing = _aggregatedSentiment[channel] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(
+            _aggregatedSentiment[channel] as Map<String, dynamic>,
+          )
+        : <String, dynamic>{};
+
+    final score = (existing['score'] as num?)?.toDouble() ?? 0.5;
+    final label =
+        (existing['label'] as String?)?.toUpperCase() ?? _labelFromScore(score);
+
+    _aggregatedSentiment[channel!] = {
+      'score': score,
+      'label': label,
+      'notes': muted
+          ? 'Channel Muted'
+          : 'Awaiting ${channel.toLowerCase()} sentiment sample.',
+      'status': muted ? 'MUTED' : 'AWAITING',
+      'channel': channel,
+      'updatedAt': now.toIso8601String(),
+      'stale': false,
+      'confidence': muted ? 0.0 : 0.5,
+    };
+
+    _markStaleChannels(now);
+    _aggregatedSentiment['overall'] = _buildOverallFromChannels();
+
+    final captureMode = (event['captureMode'] as String?)?.trim();
+    if (captureMode != null && captureMode.isNotEmpty) {
+      _aggregatedSentiment['_captureMode'] = captureMode.toUpperCase();
+    }
+
+    return Map<String, dynamic>.from(_aggregatedSentiment);
+  }
+
   Map<String, dynamic> _buildOverallFromChannels() {
     final channels = ['text', 'voice', 'video'];
     var scoreSum = 0.0;
@@ -391,9 +455,10 @@ class VideoCallService {
     for (final key in channels) {
       final channelData = _aggregatedSentiment[key];
       if (channelData is Map<String, dynamic>) {
-        final status = (channelData['status'] as String? ?? 'AWAITING').toUpperCase();
+        final status = (channelData['status'] as String? ?? 'AWAITING')
+            .toUpperCase();
         if (status == 'DEGRADED') hasDegraded = true;
-        if (status == 'AWAITING') hasAwaiting = true;
+        if (status == 'AWAITING' || status == 'MUTED') hasAwaiting = true;
         if (status != 'COMPLETED') {
           continue;
         }
@@ -458,24 +523,33 @@ class VideoCallService {
     Map<String, dynamic> raw,
     DateTime now,
   ) {
-    final normalizedChannel = (raw['channel'] as String? ?? sectionKey).toLowerCase();
+    final normalizedChannel = (raw['channel'] as String? ?? sectionKey)
+        .toLowerCase();
     final rawScore = (raw['score'] as num?)?.toDouble();
     final clampedScore = rawScore == null ? 0.5 : rawScore.clamp(0.0, 1.0);
 
     final rawStatus = (raw['status'] as String?)?.toUpperCase();
-    final status = rawStatus ?? (rawScore == null ? 'AWAITING' : 'COMPLETED');
+    final rawNotes = (raw['notes'] as String?)?.trim() ?? '';
+    final fallback =
+        raw['fallback'] == true || _isFallbackSentimentNotes(rawNotes);
+    final status =
+        rawStatus ??
+        (rawScore == null ? 'AWAITING' : (fallback ? 'DEGRADED' : 'COMPLETED'));
 
-    final notes = (raw['notes'] as String?)?.trim().isNotEmpty == true
-        ? (raw['notes'] as String).trim()
+    final notes = rawNotes.isNotEmpty
+        ? rawNotes
         : (status == 'AWAITING'
-            ? 'Awaiting $normalizedChannel sentiment sample.'
-            : 'Sentiment sample received.');
+              ? 'Awaiting $normalizedChannel sentiment sample.'
+              : 'Sentiment sample received.');
 
-    final updatedAt = _parseEventTime(raw['updatedAt']) ??
+    final updatedAt =
+        _parseEventTime(raw['updatedAt']) ??
         _parseEventTime(raw['timestamp']) ??
         now;
 
-    final label = (raw['label'] as String?)?.toUpperCase() ?? _labelFromScore(clampedScore);
+    final label =
+        (raw['label'] as String?)?.toUpperCase() ??
+        _labelFromScore(clampedScore);
 
     return {
       'score': clampedScore,
@@ -485,8 +559,25 @@ class VideoCallService {
       'channel': normalizedChannel,
       'updatedAt': updatedAt.toIso8601String(),
       'stale': false,
-      'confidence': (raw['confidence'] as num?)?.toDouble() ?? 1.0,
+      'confidence':
+          (raw['confidence'] as num?)?.toDouble() ?? (fallback ? 0.0 : 1.0),
     };
+  }
+
+  bool _isFallbackSentimentNotes(String notes) {
+    if (notes.isEmpty) {
+      return false;
+    }
+
+    final lower = notes.toLowerCase();
+    return lower.contains('analysis unavailable') ||
+        lower.contains('temporarily unavailable') ||
+        lower.contains('bedrock disabled') ||
+        lower.contains('parse error') ||
+        lower.contains('empty response') ||
+        lower.contains('no voice sample') ||
+        lower.contains('no video sample') ||
+        lower.contains('no text sample');
   }
 
   DateTime? _parseEventTime(dynamic value) {
@@ -530,6 +621,10 @@ class VideoCallService {
   bool get isInCall => _isInCall;
   String? get currentCallId => _currentCallId;
   Map<String, dynamic>? get meetingCredentials => _meetingCredentials;
+
+  void setPatientSentimentSourceEnabled(bool enabled) {
+    _isPatientSentimentSource = enabled;
+  }
 
   void dispose() {
     _sentimentTimer?.cancel();

@@ -6,6 +6,7 @@ import 'telemetry_settings.dart';
 import 'telemetry_guardrails.dart';
 
 class Telemetry {
+  /// TODO: This is currently hardcoded to a dev endpoint.
   static const String _devEndpoint =
       'http://localhost:8080/v1/api/dev/telemetry';
 

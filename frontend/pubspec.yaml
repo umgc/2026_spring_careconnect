@@ -44,7 +44,6 @@ dependencies:
   crypto: ^3.0.6  # For generating state parameter
   pointycastle: ^4.0.0  # For RSA key operations
   app_links: ^6.4.1  # For handling deep links from OAuth callback (replaced uni_links)
-
   # -- Astha - start
   path_provider: ^2.1.5
   mime: ^2.0.0
@@ -89,7 +88,9 @@ dependencies:
   # my key storage
   flutter_dotenv: ^6.0.0
   # Local storage for offline messaging
-  sqflite: ^2.4.2
+  drift: ^2.29.0
+  sqlite3: ^2.9.4
+  sqlcipher_flutter_libs: ^0.6.8
   # -- Astha - start
   # ag
   provider: ^6.1.5+1
@@ -118,6 +119,8 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   # Flutter SDK
   flutter:
+    sdk: flutter
+  flutter_web_plugins:
     sdk: flutter
   flutter_svg: ^2.0.9  # Add this line
 
@@ -159,9 +162,10 @@ dependencies:
   open_filex: ^4.7.0
 
   ##EVV Dependencies
-  connectivity_plus: ^6.0.5
+  connectivity_plus: ^6.0.5 # For checking network connectivity status
   device_info_plus: ^12.1.0
   flutter_local_notifications: ^17.2.1
+
   # Team D - Dependencies End
 dependency_overrides:
   # llama_cpp_dart:
@@ -176,6 +180,7 @@ dev_dependencies:
     sdk: flutter
   mockito: ^5.5.1
   build_runner: ^2.4.9
+  drift_dev: ^2.29.0
   flutter_launcher_icons: ^0.14.1
   flutter_native_splash: ^2.4.0
 

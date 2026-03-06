@@ -23,6 +23,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   NotificationSettings? _notificationSettings;
   bool _loadingSettings = true;
+  // BNS 7 Obesrvability
   bool _telemetryEnabled = true;
   bool _loadingTelemetry = true;
   bool _telemetryDialogShownThisSession = false;
@@ -507,6 +508,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    
     final t = AppLocalizations.of(context)!;
     final userProvider = Provider.of<UserProvider>(context);
     final user = userProvider.user;
@@ -752,6 +754,27 @@ class _SettingsPageState extends State<SettingsPage> {
 
               // General
               _buildSectionHeader(context, t.settingsGeneral),
+
+              // User-Controlled Persistence Toggle (BNS 5)
+              _buildToggleCard(
+                context,
+                icon: Icons.cloud_off,
+                title: 'Offline Persistence',
+                subtitle: userProvider.offlineModeEnabled
+                    ? 'Save data locally and sync when reconnected'
+                    : 'New data will not be stored locally for offline use.',
+                value: userProvider.offlineModeEnabled,
+                // loading: _loadingPersistence,
+                onChanged: (enabled) {
+                  userProvider.setOfflineMode(enabled);
+                  // BNS 7: Privacy-Preserving Observability and Telemetry.
+                  Telemetry.event('offline_toggled', {
+                    'enabled': enabled,
+                    'timestamp': DateTime.now().toIso8601String(),
+                  });
+                },
+              ),
+
               _buildSettingsCard(
                 context,
                 icon: Icons.cleaning_services,

@@ -186,14 +186,28 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
     );
 
     if (!mounted) return;
-    await _refreshCallHistoryAfterCall();
+    await _refreshCallHistoryAfterCall(callId);
   }
 
-  Future<void> _refreshCallHistoryAfterCall() async {
+  Future<void> _refreshCallHistoryAfterCall(String endedCallId) async {
     await _loadPatientData();
     if (!mounted) return;
 
-    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (endedCallId.trim().isNotEmpty) {
+      const maxAttempts = 6;
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
+        if (!mounted) return;
+
+        final callEvents = await ApiService.getCallTelemetry(endedCallId);
+        if (_hasFinalizedCallTelemetry(callEvents)) {
+          break;
+        }
+
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+      }
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 600));
     if (!mounted) return;
 
     try {
@@ -209,6 +223,23 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
     } catch (_) {
       // Keep the immediate refresh result if follow-up call fails.
     }
+  }
+
+  bool _hasFinalizedCallTelemetry(List<Map<String, dynamic>> events) {
+    if (events.isEmpty) {
+      return false;
+    }
+
+    for (final event in events) {
+      final eventType =
+          (event['eventType'] as String?)?.trim().toUpperCase() ?? '';
+      if (eventType == 'SENTIMENT_FINAL' ||
+          eventType == 'WS_END_CALL' ||
+          eventType == 'CALL_END') {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<void> _openCallHistoryDetail(String callId) async {

@@ -15,7 +15,7 @@ import java.util.Map;
 @AllArgsConstructor
 @Entity
 @Table(name = "telemetry_events")
-public class FeatureTelemetryEvent {
+public class TelemetryEvent {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

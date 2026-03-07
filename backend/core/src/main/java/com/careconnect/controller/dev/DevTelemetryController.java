@@ -1,7 +1,7 @@
 package com.careconnect.controller.dev;
 
-import com.careconnect.model.FeatureTelemetryEvent;
-import com.careconnect.service.FeatureTelemetryService;
+import com.careconnect.model.TelemetryEvent;
+import com.careconnect.service.TelemetryService;
 import com.careconnect.service.TelemetryToggleService;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
@@ -15,10 +15,10 @@ import java.util.Map;
 @Profile("dev")
 public class DevTelemetryController {
 
-    private final FeatureTelemetryService telemetry;
+    private final TelemetryService telemetry;
     private final TelemetryToggleService toggle;
 
-    public DevTelemetryController(FeatureTelemetryService telemetry, TelemetryToggleService toggle) {
+    public DevTelemetryController(TelemetryService telemetry, TelemetryToggleService toggle) {
         this.telemetry = telemetry;
         this.toggle = toggle;
     }
@@ -30,7 +30,7 @@ public class DevTelemetryController {
             return ResponseEntity.noContent().build(); // 204
         }
 
-        FeatureTelemetryEvent e = new FeatureTelemetryEvent();
+        TelemetryEvent e = new TelemetryEvent();
         e.setEventName(asString(body.getOrDefault("eventName", "dev_emit")));
         e.setEventTime(OffsetDateTime.now(java.time.Clock.systemUTC()));
 

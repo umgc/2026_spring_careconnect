@@ -1,7 +1,7 @@
 package com.careconnect.service;
 
-import com.careconnect.model.FeatureTelemetryEvent;
-import com.careconnect.repository.FeatureTelemetryEventRepository;
+import com.careconnect.model.TelemetryEvent;
+import com.careconnect.repository.TelemetryEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -11,20 +11,20 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
-public class FeatureTelemetryService {
+public class TelemetryService {
 
-    private final FeatureTelemetryEventRepository repository;
+    private final TelemetryEventRepository repository;
     private final TelemetryToggleService toggle;
 
-    public FeatureTelemetryEvent record(FeatureTelemetryEvent event) {
+    public TelemetryEvent record(TelemetryEvent event) {
         if (!toggle.isEnabled()) return event; // no-op when disabled
         return repository.save(event);
     }
 
-    public List<FeatureTelemetryEvent> recent(int limit) {
+    public List<TelemetryEvent> recent(int limit) {
         int safe = Math.max(1, Math.min(limit, 200));
 
-        List<FeatureTelemetryEvent> results = repository.findTop50ByOrderByEventTimeDesc();
+        List<TelemetryEvent> results = repository.findTop50ByOrderByEventTimeDesc();
 
         if (results == null || results.isEmpty()) return Collections.emptyList();
         if (results.size() <= safe) return results;
@@ -35,7 +35,7 @@ public class FeatureTelemetryService {
      * Anonymous feature telemetry (no user identifiers).
      * Returns null when telemetry is disabled.
      */
-    public FeatureTelemetryEvent recordAnonymous(
+    public TelemetryEvent recordAnonymous(
             String eventName,
             Map<String, Object> details,
             Map<String, Object> deviceInfo,
@@ -44,7 +44,7 @@ public class FeatureTelemetryService {
     ) {
         if (!toggle.isEnabled()) return null;
 
-        FeatureTelemetryEvent e = FeatureTelemetryEvent.builder()
+        TelemetryEvent e = TelemetryEvent.builder()
                 .eventName(eventName)
                 .traceId(traceId)
                 .spanId(spanId)

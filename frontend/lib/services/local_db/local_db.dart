@@ -1,5 +1,5 @@
 // Barrel exports for local offline database modules.
-export 'app_database.dart';
+export 'app_database_stub.dart' if (dart.library.io) 'app_database.dart';
 export 'connectivity_router_service.dart';
 export 'create_table.dart';
 export 'db_encryption_service.dart';

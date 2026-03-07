@@ -14,7 +14,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "feature_telemetry_event")
+@Table(name = "telemetry_events")
 public class FeatureTelemetryEvent {
 
     @Id

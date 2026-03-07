@@ -3,9 +3,6 @@ CREATE TABLE feature_telemetry_event (
   event_name VARCHAR(128) NOT NULL,
   event_time TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  actor_user_id BIGINT,
-  patient_id BIGINT,
-
   trace_id VARCHAR(64),
   span_id VARCHAR(32),
 

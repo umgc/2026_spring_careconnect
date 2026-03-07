@@ -27,12 +27,6 @@ public class FeatureTelemetryEvent {
     @Column(name = "event_time", nullable = false)
     private OffsetDateTime eventTime;
 
-    @Column(name = "actor_user_id")
-    private Long actorUserId;
-
-    @Column(name = "patient_id")
-    private Long patientId;
-
     @Column(name = "trace_id", length = 64)
     private String traceId;
 

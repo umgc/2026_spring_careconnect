@@ -46,8 +46,6 @@ public class FeatureTelemetryService {
 
         FeatureTelemetryEvent e = FeatureTelemetryEvent.builder()
                 .eventName(eventName)
-                .actorUserId(null)
-                .patientId(null)
                 .traceId(traceId)
                 .spanId(spanId)
                 .details(details)

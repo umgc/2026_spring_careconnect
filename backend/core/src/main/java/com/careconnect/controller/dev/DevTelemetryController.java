@@ -36,8 +36,6 @@ public class DevTelemetryController {
 
         e.setTraceId(asString(body.get("traceId")));
         e.setSpanId(asString(body.get("spanId")));
-        e.setActorUserId(asLong(body.get("actorUserId")));
-        e.setPatientId(asLong(body.get("patientId")));
 
         e.setDetails(asMap(body.get("details")));
         e.setDeviceInfo(asMap(body.get("deviceInfo")));
@@ -62,12 +60,6 @@ public class DevTelemetryController {
 
     private static String asString(Object o) {
         return o == null ? null : String.valueOf(o);
-    }
-
-    private static Long asLong(Object o) {
-        if (o == null) return null;
-        if (o instanceof Number n) return n.longValue();
-        try { return Long.parseLong(String.valueOf(o)); } catch (Exception ex) { return null; }
     }
 
     @SuppressWarnings("unchecked")

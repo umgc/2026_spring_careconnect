@@ -6,9 +6,14 @@ import 'telemetry_settings.dart';
 import 'telemetry_guardrails.dart';
 
 class Telemetry {
-  /// TODO: This is currently hardcoded to a dev endpoint.
-  static const String _devEndpoint =
-      'http://localhost:8080/v1/api/dev/telemetry';
+  // Backend base URL (configurable via Dart environment variable)
+  static const String _backendBase = String.fromEnvironment(
+    'CARECONNECT_API',
+    defaultValue: 'http://localhost:8080',
+  );
+
+  // Telemetry endpoint
+  static final String _devEndpoint = '$_backendBase/v1/api/dev/telemetry';
 
   // Cache backend enabled state so we don't call the backend on every event.
   static bool? _backendEnabledCache;

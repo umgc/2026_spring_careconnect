@@ -92,16 +92,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadTelemetrySettings() async {
     final optedOut = await TelemetrySettings.isOptedOut();
-    var backendEnabled = await Telemetry.getBackendEnabled();
-
-    if (optedOut && backendEnabled) {
-      backendEnabled = await Telemetry.setBackendEnabled(false);
-    }
 
     if (!mounted) return;
 
     setState(() {
-      _telemetryEnabled = !optedOut && backendEnabled;
+      _telemetryEnabled = !optedOut;
       _loadingTelemetry = false;
     });
 
@@ -114,15 +109,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _maybeShowTelemetryDefaultOnDialog() async {
     if (!mounted) return;
     if (_telemetryDialogShownThisSession) return;
-
     if (!_telemetryEnabled) return;
 
     final seen = await TelemetrySettings.hasSeenDialog();
     if (!mounted) return;
-
     if (seen) return;
 
-    if (!mounted) return;
     setState(() => _telemetryDialogShownThisSession = true);
 
     final result = await showDialog<bool>(
@@ -153,16 +145,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (result == false) {
       await TelemetrySettings.setOptedOut(true);
-      await Telemetry.setBackendEnabled(false);
 
       if (!mounted) return;
       setState(() => _telemetryEnabled = false);
     } else if (result == true) {
       await TelemetrySettings.setOptedOut(false);
-      final backendValue = await Telemetry.setBackendEnabled(true);
 
       if (!mounted) return;
-      setState(() => _telemetryEnabled = backendValue);
+      setState(() => _telemetryEnabled = true);
     }
   }
 
@@ -520,7 +510,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    
     final t = AppLocalizations.of(context)!;
     final userProvider = Provider.of<UserProvider>(context);
     final user = userProvider.user;
@@ -706,13 +695,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
                   try {
                     await TelemetrySettings.setOptedOut(!enabled);
-                    final backendValue = await Telemetry.setBackendEnabled(
-                      enabled,
-                    );
 
                     if (!mounted) return;
                     setState(() {
-                      _telemetryEnabled = enabled && backendValue;
+                      _telemetryEnabled = enabled;
                       _loadingTelemetry = false;
                     });
 

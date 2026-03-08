@@ -2,18 +2,16 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../config/env_constant.dart';
 import 'telemetry_settings.dart';
 import 'telemetry_guardrails.dart';
 
 class Telemetry {
   // Backend base URL (configurable via Dart environment variable)
-  static const String _backendBase = String.fromEnvironment(
-    'CARECONNECT_API',
-    defaultValue: 'http://localhost:8080',
-  );
+  static String get _backendBase => getBackendBaseUrl();
 
   // Telemetry endpoint
-  static final String _devEndpoint = '$_backendBase/v1/api/dev/telemetry';
+  static String get _devEndpoint => '$_backendBase/v1/api/dev/telemetry';
 
   // Cache backend enabled state so we don't call the backend on every event.
   static bool? _backendEnabledCache;

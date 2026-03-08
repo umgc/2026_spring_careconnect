@@ -42,7 +42,15 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/v1/api/dev/telemetry/**").permitAll()
+
+                        // allow telemetry event submission
+                        .requestMatchers(HttpMethod.POST, "/v1/api/dev/telemetry").permitAll()
+
+                        // restrict global telemetry controls and inspection
+                        .requestMatchers(HttpMethod.PUT, "/v1/api/dev/telemetry/enabled").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/v1/api/dev/telemetry/enabled").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/v1/api/dev/telemetry/recent").hasRole("ADMIN")
+
                         .anyRequest().denyAll()
                 )
                 .build();

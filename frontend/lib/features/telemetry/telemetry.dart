@@ -126,8 +126,12 @@ class Telemetry {
       return;
     }
 
+    final micros = DateTime.now().microsecondsSinceEpoch;
+
     final payload = {
       'eventName': name,
+      'traceId': 'trace-$micros',
+      'spanId': 'span-${micros + 1}',
       'details': sanitized,
       'deviceInfo': {
         'uiSurface': kIsWeb ? 'web' : 'mobile',

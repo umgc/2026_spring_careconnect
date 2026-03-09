@@ -7,6 +7,9 @@ import com.careconnect.service.BedrockSentimentService;
 import com.careconnect.service.BedrockSentimentService.SentimentResult;
 import com.careconnect.service.ChimeService;
 import com.careconnect.service.CallTelemetryService;
+import com.careconnect.service.CallTranscriptService;
+import com.careconnect.service.CallSummaryService;
+import com.careconnect.service.CaregiverPatientLinkService;
 import com.careconnect.model.CallTelemetryEvent;
 
 import com.careconnect.websocket.CallNotificationHandler;
@@ -24,10 +27,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Locale;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v3/calls")
@@ -44,6 +49,9 @@ public class CallController {
     @Autowired private BedrockSentimentService sentimentService;
     @Autowired private CallNotificationHandler callNotificationHandler;
     @Autowired private CallTelemetryService callTelemetryService;
+    @Autowired private CallTranscriptService callTranscriptService;
+    @Autowired private CallSummaryService callSummaryService;
+    @Autowired private CaregiverPatientLinkService caregiverPatientLinkService;
     @Autowired private UserRepository userRepository;
     @Autowired private Environment environment;
 
@@ -83,17 +91,20 @@ public class CallController {
 
     @PostMapping("/{callId}/join")
     @Operation(summary = "Join or create a Chime meeting for a call")
-    public ResponseEntity<java.util.Map<String, Object>> joinCall(@PathVariable String callId) {
+    public ResponseEntity<java.util.Map<String, Object>> joinCall(
+            @PathVariable String callId,
+            @RequestBody(required = false) Map<String, Object> body) {
         try {
             User currentUser = getCurrentUser();
             Map<String, Object> response = chimeService.joinMeeting(callId, currentUser.getId().toString());
+            Map<String, Object> contextMetadata = extractCallContextMetadata(body);
             callTelemetryService.recordCallEvent(
                     callId,
                     "CALL_JOIN",
                     currentUser.getId(),
                     null,
                     "SUCCESS",
-                    Map.of("meetingActive", chimeService.isMeetingActive(callId)),
+                    mergeMetadata(Map.of("meetingActive", chimeService.isMeetingActive(callId)), contextMetadata),
                     null
             );
             log.info("User {} joined call {}", currentUser.getId(), callId);
@@ -139,13 +150,16 @@ public class CallController {
     public ResponseEntity<Map<String, String>> endCall(
             @PathVariable String callId,
             @RequestParam(required = false) String otherPartyId,
-            @RequestBody(required = false) Map<String, String> body) {
+            @RequestBody(required = false) Map<String, Object> body) {
         try {
             User currentUser = getCurrentUser();
             if ((otherPartyId == null || otherPartyId.isBlank()) && body != null) {
-                otherPartyId = body.get("otherPartyId");
+                Object otherPartyRaw = body.get("otherPartyId");
+                otherPartyId = otherPartyRaw == null ? null : otherPartyRaw.toString();
             }
+            Map<String, Object> contextMetadata = extractCallContextMetadata(body);
             maybeRecordFinalOverallSentiment(callId, currentUser.getId(), parseUserId(otherPartyId));
+            maybeGenerateAndStoreCallSummary(callId, currentUser.getId());
             chimeService.endMeeting(callId);
             if (otherPartyId != null && !otherPartyId.isBlank()) {
                 callNotificationHandler.sendNotificationToUser(otherPartyId, Map.of(
@@ -160,7 +174,10 @@ public class CallController {
                     currentUser.getId(),
                     parseUserId(otherPartyId),
                     "SUCCESS",
-                    Map.of("notifiedOtherParty", otherPartyId != null && !otherPartyId.isBlank()),
+                    mergeMetadata(
+                            Map.of("notifiedOtherParty", otherPartyId != null && !otherPartyId.isBlank()),
+                            contextMetadata
+                    ),
                     null
             );
             log.info("User {} ended call {}", currentUser.getId(), callId);
@@ -210,6 +227,7 @@ public class CallController {
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
+            ensureSentimentEnabledForCall(callId);
             String text = body.get("text");
             if (text == null || text.isBlank())
                 throw new AppException(HttpStatus.BAD_REQUEST, "text field is required");
@@ -288,6 +306,7 @@ public class CallController {
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
+            ensureSentimentEnabledForCall(callId);
             Long otherPartyUserId = parseUserId(body.get("otherPartyId"));
             Double averageLevel = parseDouble(body.get("averageLevel"));
             Double speechRatio = parseDouble(body.get("speechRatio"));
@@ -440,6 +459,7 @@ public class CallController {
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
+            ensureSentimentEnabledForCall(callId);
             String imageBase64 = body.get("imageBase64");
             if (imageBase64 == null || imageBase64.isBlank())
                 throw new AppException(HttpStatus.BAD_REQUEST, "imageBase64 field is required");
@@ -516,6 +536,7 @@ public class CallController {
         try {
             User currentUser = getCurrentUser();
             ensurePatientSource(currentUser);
+            ensureSentimentEnabledForCall(callId);
             String text = body.getOrDefault("text", "");
             String imageBase64 = body.getOrDefault("imageBase64", "");
             String imageFormat = body.getOrDefault("imageFormat", "jpeg");
@@ -609,6 +630,86 @@ public class CallController {
         return ResponseEntity.ok(status);
     }
 
+    @PostMapping("/{callId}/transcript/segments")
+    @Operation(summary = "Persist transcript segments for a call")
+    public ResponseEntity<Map<String, Object>> saveTranscriptSegments(
+            @PathVariable String callId,
+            @RequestBody Map<String, Object> body
+    ) {
+        if (callId == null || callId.trim().isEmpty() || callId.length() > 120) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Invalid callId");
+        }
+        User currentUser = getCurrentUser();
+        boolean isAdmin = currentUser.getRole() == com.careconnect.security.Role.ADMIN;
+        if (!isAdmin && !isCallParticipant(callId, currentUser.getId())) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Only call participants can persist transcript segments");
+        }
+        List<CallTranscriptService.TranscriptSegmentInput> segments = extractTranscriptSegments(body);
+        if (segments.size() > 200) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Too many transcript segments in one request");
+        }
+        int saved = callTranscriptService.recordSegments(callId, currentUser.getId(), segments);
+        log.info("Saved {} transcript segments for callId={} by userId={}", saved, callId, currentUser.getId());
+        return ResponseEntity.ok(Map.of(
+                "callId", callId,
+                "savedSegments", saved,
+                "status", "saved"
+        ));
+    }
+
+    @GetMapping("/{callId}/summary")
+    @Operation(summary = "Get latest stored call summary")
+    public ResponseEntity<Map<String, Object>> getCallSummary(@PathVariable String callId) {
+        User currentUser = getCurrentUser();
+        boolean isAdmin = currentUser.getRole() == com.careconnect.security.Role.ADMIN;
+        boolean inTelemetry = callTelemetryService.getTelemetryForCall(callId).stream().anyMatch(e ->
+                currentUser.getId().equals(e.getActorUserId()) || currentUser.getId().equals(e.getTargetUserId())
+        );
+        boolean inTranscript = callTranscriptService.hasTranscriptAccess(callId, currentUser.getId());
+
+        Optional<com.careconnect.model.CallSummary> latestEntity = callSummaryService.getLatestSummaryEntity(callId);
+        boolean isSummaryOwner = latestEntity
+                .map(s -> currentUser.getId().equals(s.getGeneratedByUserId()))
+                .orElse(false);
+
+        if (!isAdmin && !inTelemetry && !inTranscript && !isSummaryOwner) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        // If end-call summary ran before transcript retries landed, regenerate on read.
+        if (latestEntity.isPresent()
+                && "NO_TRANSCRIPT".equalsIgnoreCase(latestEntity.get().getStatus())
+                && callTranscriptService.countSegments(callId) > 0) {
+            Map<String, CallTelemetryEvent> latestByChannel = callTelemetryService.getLatestSentimentByChannel(callId);
+            callSummaryService.generateAndStoreSummary(callId, currentUser.getId(), latestByChannel);
+        }
+
+        return callSummaryService.getLatestSummary(callId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "callId", callId,
+                        "status", "NOT_FOUND",
+                        "message", "No stored summary found for this call"
+                )));
+    }
+
+    @GetMapping("/{callId}/transcript/segments")
+    @Operation(summary = "Get stored transcript segments for a call")
+    public ResponseEntity<List<com.careconnect.model.CallTranscriptSegment>> getTranscriptSegments(
+            @PathVariable String callId
+    ) {
+        User currentUser = getCurrentUser();
+        boolean isAdmin = currentUser.getRole() == com.careconnect.security.Role.ADMIN;
+        boolean inTelemetry = callTelemetryService.getTelemetryForCall(callId).stream().anyMatch(e ->
+                currentUser.getId().equals(e.getActorUserId()) || currentUser.getId().equals(e.getTargetUserId())
+        );
+        boolean inTranscript = callTranscriptService.hasTranscriptAccess(callId, currentUser.getId());
+        if (!isAdmin && !inTelemetry && !inTranscript) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        return ResponseEntity.ok(callTranscriptService.getSegmentsForCall(callId));
+    }
+
     @DeleteMapping("/{callId}/telemetry")
     @Operation(summary = "Delete stored call telemetry events (dev/local only)")
     public ResponseEntity<Map<String, Object>> deleteCallTelemetry(@PathVariable String callId) {
@@ -631,6 +732,18 @@ public class CallController {
     public ResponseEntity<List<com.careconnect.model.CallTelemetryEvent>> getMyTelemetry() {
         User currentUser = getCurrentUser();
         return ResponseEntity.ok(callTelemetryService.getTelemetryForUser(currentUser.getId()));
+    }
+
+    @GetMapping("/sentiment-history")
+    @Operation(summary = "Get longitudinal per-call sentiment summaries for a user")
+    public ResponseEntity<List<Map<String, Object>>> getSentimentHistory(
+            @RequestParam Long userId
+    ) {
+        User currentUser = getCurrentUser();
+        if (!canAccessSentimentHistory(currentUser, userId)) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        return ResponseEntity.ok(callTelemetryService.getSentimentHistoryForUser(userId));
     }
 
     private void broadcastSentimentToCaregivers(
@@ -666,6 +779,31 @@ public class CallController {
         } catch (NumberFormatException ex) {
             log.warn("Skipping sentiment recipient with invalid userId: {}", userId);
         }
+    }
+
+    private void ensureSentimentEnabledForCall(String callId) {
+        if (isCareTeamCall(callId)) {
+            throw new AppException(
+                    HttpStatus.FORBIDDEN,
+                    "Sentiment analysis is disabled for care-team calls"
+            );
+        }
+    }
+
+    private boolean isCareTeamCall(String callId) {
+        if (callId == null || callId.isBlank()) {
+            return false;
+        }
+
+        return callTelemetryService.getTelemetryForCall(callId).stream().anyMatch(event -> {
+            String metadataJson = event.getMetadataJson();
+            if (metadataJson == null || metadataJson.isBlank()) {
+                return false;
+            }
+            String normalized = metadataJson.toUpperCase(Locale.ROOT);
+            return normalized.contains("\"CALLKIND\":\"CARE_TEAM\"")
+                    || normalized.contains("\"CALLKIND\": \"CARE_TEAM\"");
+        });
     }
 
     private Long parseUserId(String userId) {
@@ -812,6 +950,150 @@ public class CallController {
         } catch (Exception ex) {
             log.warn("Final end-call sentiment analysis skipped for callId {}: {}", callId, ex.getMessage());
         }
+    }
+
+    private Map<String, Object> extractCallContextMetadata(Map<String, Object> body) {
+        if (body == null || body.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        String callKind = asString(body.get("callKind"));
+        if (callKind != null) {
+            metadata.put("callKind", callKind.toUpperCase(Locale.ROOT));
+        }
+
+        Object rawContextIds = body.get("contextPatientUserIds");
+        List<Long> contextPatientUserIds = new ArrayList<>();
+        if (rawContextIds instanceof List<?> list) {
+            for (Object item : list) {
+                Long parsed = asLong(item);
+                if (parsed != null && parsed > 0L && !contextPatientUserIds.contains(parsed)) {
+                    contextPatientUserIds.add(parsed);
+                }
+            }
+        }
+
+        if (contextPatientUserIds.isEmpty()) {
+            Long singleContext = asLong(body.get("contextPatientUserId"));
+            if (singleContext != null && singleContext > 0L) {
+                contextPatientUserIds.add(singleContext);
+            }
+        }
+
+        if (!contextPatientUserIds.isEmpty()) {
+            metadata.put("contextPatientUserIds", contextPatientUserIds);
+            metadata.put("contextPatientUserId", contextPatientUserIds.get(0));
+        }
+
+        return metadata;
+    }
+
+    private Map<String, Object> mergeMetadata(Map<String, Object> base, Map<String, Object> extras) {
+        if ((base == null || base.isEmpty()) && (extras == null || extras.isEmpty())) {
+            return Map.of();
+        }
+        if (extras == null || extras.isEmpty()) {
+            return base == null ? Map.of() : base;
+        }
+
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (base != null && !base.isEmpty()) {
+            merged.putAll(base);
+        }
+        merged.putAll(extras);
+        return merged;
+    }
+
+    private void maybeGenerateAndStoreCallSummary(String callId, Long actorUserId) {
+        try {
+            Map<String, CallTelemetryEvent> latestByChannel = callTelemetryService.getLatestSentimentByChannel(callId);
+            callSummaryService.generateAndStoreSummary(callId, actorUserId, latestByChannel);
+        } catch (Exception ex) {
+            log.warn("Call summary generation skipped for callId {}: {}", callId, ex.getMessage());
+        }
+    }
+
+    private List<CallTranscriptService.TranscriptSegmentInput> extractTranscriptSegments(Map<String, Object> body) {
+        if (body == null || body.isEmpty()) {
+            return List.of();
+        }
+
+        List<CallTranscriptService.TranscriptSegmentInput> segments = new ArrayList<>();
+        Object rawSegments = body.get("segments");
+        if (rawSegments instanceof List<?> segmentList) {
+            for (Object rawSegment : segmentList) {
+                if (!(rawSegment instanceof Map<?, ?> map)) {
+                    continue;
+                }
+                segments.add(toTranscriptInput(map));
+            }
+            return segments;
+        }
+
+        segments.add(new CallTranscriptService.TranscriptSegmentInput(
+                asString(body.get("speakerLabel")),
+                asString(body.get("text")),
+                asLong(body.get("startMs")),
+                asLong(body.get("endMs")),
+                asString(body.get("source"))
+        ));
+        return segments;
+    }
+
+    private CallTranscriptService.TranscriptSegmentInput toTranscriptInput(Map<?, ?> rawSegment) {
+        return new CallTranscriptService.TranscriptSegmentInput(
+                asString(rawSegment.get("speakerLabel")),
+                asString(rawSegment.get("text")),
+                asLong(rawSegment.get("startMs")),
+                asLong(rawSegment.get("endMs")),
+                asString(rawSegment.get("source"))
+        );
+    }
+
+    private String asString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString().trim();
+        return text.isEmpty() ? null : text;
+    }
+
+    private Long asLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        try {
+            return Long.parseLong(value.toString().trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private boolean isCallParticipant(String callId, Long userId) {
+        if (callId == null || callId.isBlank() || userId == null) {
+            return false;
+        }
+        return callTelemetryService.getTelemetryForCall(callId).stream().anyMatch(e ->
+                userId.equals(e.getActorUserId()) || userId.equals(e.getTargetUserId())
+        );
+    }
+
+    private boolean canAccessSentimentHistory(User currentUser, Long requestedUserId) {
+        if (currentUser == null || requestedUserId == null) {
+            return false;
+        }
+        if (currentUser.getRole() == com.careconnect.security.Role.ADMIN) {
+            return true;
+        }
+        if (currentUser.getId().equals(requestedUserId)) {
+            return true;
+        }
+        return currentUser.getRole() == com.careconnect.security.Role.CAREGIVER
+                && caregiverPatientLinkService.hasAccessToPatient(currentUser.getId(), requestedUserId);
     }
 
 }

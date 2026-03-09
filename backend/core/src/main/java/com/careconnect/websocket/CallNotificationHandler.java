@@ -3,6 +3,7 @@ package com.careconnect.websocket;
 import com.careconnect.model.User;
 import com.careconnect.repository.UserRepository;
 import com.careconnect.security.JwtTokenProvider;
+import com.careconnect.service.CaregiverPatientLinkService;
 import com.careconnect.service.CallTelemetryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,7 @@ public class CallNotificationHandler extends TextWebSocketHandler {
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final CallTelemetryService callTelemetryService;
+    private final CaregiverPatientLinkService caregiverPatientLinkService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Store active connections: userId -> WebSocketSession
@@ -257,6 +259,43 @@ public class CallNotificationHandler extends TextWebSocketHandler {
         if (recipient == null) {
             sendErrorMessage(session, "Recipient not found");
             return;
+        }
+
+        if (sender.getRole() == com.careconnect.security.Role.PATIENT
+                && recipient.getRole() == com.careconnect.security.Role.CAREGIVER) {
+            boolean linked = caregiverPatientLinkService.hasAccessToPatient(
+                    recipient.getId(),
+                    sender.getId()
+            );
+            if (!linked) {
+                Map<String, Object> errorResponse = Map.of(
+                        "type", "call-invitation-failed",
+                        "callId", callId,
+                        "reason", "No active caregiver-patient link",
+                        "recipientId", recipientId,
+                        "recipientRole", recipient.getRole().name(),
+                        "recipientName", getUserDisplayName(recipient)
+                );
+                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorResponse)));
+                return;
+            }
+
+            boolean patientCallsEnabled = caregiverPatientLinkService.isPatientVideoCallsEnabled(
+                    recipient.getId(),
+                    sender.getId()
+            );
+            if (!patientCallsEnabled) {
+                Map<String, Object> errorResponse = Map.of(
+                        "type", "call-invitation-failed",
+                        "callId", callId,
+                        "reason", "Caregiver disabled patient-initiated calls",
+                        "recipientId", recipientId,
+                        "recipientRole", recipient.getRole().name(),
+                        "recipientName", getUserDisplayName(recipient)
+                );
+                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorResponse)));
+                return;
+            }
         }
         
         // Find recipient session

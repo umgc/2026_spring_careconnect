@@ -14,6 +14,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/v1/api/caregiver-patient-links")
@@ -178,5 +179,26 @@ public class CaregiverPatientLinkController {
 
         linkService.cleanupExpiredLinks();
         return ResponseEntity.ok().build();
+    }
+
+    // 11. Caregiver toggle: allow/disallow patient-initiated video calls for this link
+    @PostMapping("/{linkId}/patient-video-calls")
+    public ResponseEntity<CaregiverPatientLinkResponse> setPatientVideoCalls(
+            @PathVariable Long linkId,
+            @RequestBody Map<String, Object> request
+    ) {
+        User currentUser = getCurrentUser();
+        Object enabledRaw = request.get("enabled");
+        boolean enabled = enabledRaw instanceof Boolean
+                ? (Boolean) enabledRaw
+                : Boolean.parseBoolean(String.valueOf(enabledRaw));
+
+        CaregiverPatientLinkResponse response = linkService.setPatientVideoCallsEnabled(
+                linkId,
+                enabled,
+                currentUser.getId(),
+                currentUser.getRole()
+        );
+        return ResponseEntity.ok(response);
     }
 }

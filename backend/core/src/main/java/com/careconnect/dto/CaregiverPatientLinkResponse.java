@@ -12,6 +12,7 @@ public record CaregiverPatientLinkResponse(
     String patientEmail,
     String status,
     String linkType,
+    boolean patientVideoCallsEnabled,
     LocalDateTime createdAt,
     LocalDateTime expiresAt,
     String notes,

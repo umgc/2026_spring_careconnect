@@ -9,12 +9,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -174,6 +179,42 @@ public class CallTelemetryService {
         return callTelemetryEventRepository.findTop500ByActorUserIdOrTargetUserIdOrderByOccurredAtDesc(userId, userId);
     }
 
+    public List<Map<String, Object>> getSentimentHistoryForUser(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+
+        List<CallTelemetryEvent> events = callTelemetryEventRepository
+                .findByActorUserIdOrTargetUserIdOrderByOccurredAtAsc(userId, userId);
+        if (events.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, List<CallTelemetryEvent>> byCall = events.stream()
+                .filter(event -> event.getCallId() != null && !event.getCallId().isBlank())
+                .collect(Collectors.groupingBy(
+                        CallTelemetryEvent::getCallId,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        List<Map<String, Object>> summaries = new ArrayList<>();
+        for (Map.Entry<String, List<CallTelemetryEvent>> entry : byCall.entrySet()) {
+            Map<String, Object> summary = summarizeCall(entry.getKey(), entry.getValue());
+            if (!summary.isEmpty()) {
+                summaries.add(summary);
+            }
+        }
+
+        summaries.sort((a, b) -> {
+            LocalDateTime left = (LocalDateTime) a.getOrDefault("_sortDate", LocalDateTime.MIN);
+            LocalDateTime right = (LocalDateTime) b.getOrDefault("_sortDate", LocalDateTime.MIN);
+            return right.compareTo(left);
+        });
+        summaries.forEach(item -> item.remove("_sortDate"));
+        return summaries;
+    }
+
     @Transactional
     public long deleteTelemetryForCall(String callId) {
         String normalizedCallId = trim(callId);
@@ -258,5 +299,181 @@ public class CallTelemetryService {
     private String defaultStatus(String status) {
         String normalized = trim(status);
         return normalized == null ? "SUCCESS" : normalized;
+    }
+
+    private Map<String, Object> summarizeCall(String callId, List<CallTelemetryEvent> allEvents) {
+        if (allEvents == null || allEvents.isEmpty()) {
+            return Map.of();
+        }
+
+        List<CallTelemetryEvent> sorted = allEvents.stream()
+                .filter(e -> e.getOccurredAt() != null)
+                .sorted(Comparator.comparing(CallTelemetryEvent::getOccurredAt))
+                .toList();
+        if (sorted.isEmpty()) {
+            return Map.of();
+        }
+
+        LocalDateTime callStart = sorted.stream()
+                .filter(e -> "CALL_JOIN".equalsIgnoreCase(e.getEventType()))
+                .map(CallTelemetryEvent::getOccurredAt)
+                .findFirst()
+                .orElse(sorted.get(0).getOccurredAt());
+
+        LocalDateTime callEnd = sorted.stream()
+                .filter(e -> "CALL_END".equalsIgnoreCase(e.getEventType()))
+                .map(CallTelemetryEvent::getOccurredAt)
+                .reduce((first, second) -> second)
+                .orElse(sorted.get(sorted.size() - 1).getOccurredAt());
+
+        long totalSeconds = Math.max(1L, Duration.between(callStart, callEnd).getSeconds());
+
+        List<CallTelemetryEvent> timelineSamples = sorted.stream()
+                .filter(e -> e.getSentimentScore() != null && e.getSentimentLabel() != null)
+                .filter(e -> {
+                    String channel = e.getChannel() == null ? "" : e.getChannel().trim().toUpperCase(Locale.ROOT);
+                    if (channel.isEmpty() || "COMBINED".equals(channel)) {
+                        return false;
+                    }
+                    String eventType = e.getEventType() == null ? "" : e.getEventType().trim().toUpperCase(Locale.ROOT);
+                    return eventType.startsWith("SENTIMENT_") && !"SENTIMENT_FINAL".equals(eventType);
+                })
+                .toList();
+
+        Map<String, Long> durationByBucket = new HashMap<>();
+        durationByBucket.put("CALM", 0L);
+        durationByBucket.put("ANXIOUS", 0L);
+        durationByBucket.put("DISTRESSED", 0L);
+
+        if (!timelineSamples.isEmpty()) {
+            for (int i = 0; i < timelineSamples.size(); i++) {
+                CallTelemetryEvent current = timelineSamples.get(i);
+                LocalDateTime from = current.getOccurredAt();
+                LocalDateTime to = (i < timelineSamples.size() - 1)
+                        ? timelineSamples.get(i + 1).getOccurredAt()
+                        : callEnd;
+                long segmentSeconds = Math.max(1L, Duration.between(from, to).getSeconds());
+                String bucket = normalizeLabel(current.getSentimentLabel());
+                durationByBucket.put(bucket, durationByBucket.getOrDefault(bucket, 0L) + segmentSeconds);
+            }
+        }
+
+        CallTelemetryEvent finalEvent = sorted.stream()
+                .filter(e -> "SENTIMENT_FINAL".equalsIgnoreCase(e.getEventType()))
+                .filter(e -> e.getSentimentScore() != null)
+                .reduce((first, second) -> second)
+                .orElse(null);
+
+        double overallScore;
+        String overallLabel;
+        if (finalEvent != null) {
+            overallScore = clamp(finalEvent.getSentimentScore());
+            overallLabel = normalizeLabel(finalEvent.getSentimentLabel());
+        } else if (!timelineSamples.isEmpty()) {
+            overallScore = clamp(timelineSamples.stream()
+                    .map(CallTelemetryEvent::getSentimentScore)
+                    .filter(v -> v != null)
+                    .mapToDouble(Double::doubleValue)
+                    .average()
+                    .orElse(0.5));
+            overallLabel = labelFromScore(overallScore);
+        } else {
+            return Map.of();
+        }
+
+        List<Double> sampleScores = timelineSamples.stream()
+                .map(CallTelemetryEvent::getSentimentScore)
+                .filter(v -> v != null)
+                .map(this::clamp)
+                .toList();
+        if (sampleScores.isEmpty()) {
+            sampleScores = List.of(overallScore);
+        }
+
+        double stabilityScore = computeStability(sampleScores);
+        double calmPct = percent(durationByBucket.get("CALM"), totalSeconds);
+        double anxiousPct = percent(durationByBucket.get("ANXIOUS"), totalSeconds);
+        double distressedPct = percent(durationByBucket.get("DISTRESSED"), totalSeconds);
+
+        if (timelineSamples.isEmpty()) {
+            if ("CALM".equals(overallLabel)) {
+                calmPct = 1.0;
+            } else if ("DISTRESSED".equals(overallLabel)) {
+                distressedPct = 1.0;
+            } else {
+                anxiousPct = 1.0;
+            }
+        }
+
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("callId", callId);
+        output.put("callDate", callStart);
+        output.put("durationMinutes", round(totalSeconds / 60.0));
+        output.put("overallScore", round(overallScore));
+        output.put("overallLabel", overallLabel);
+        output.put("positiveTimePct", round(calmPct));
+        output.put("neutralTimePct", round(anxiousPct));
+        output.put("negativeTimePct", round(distressedPct));
+        output.put("stabilityScore", round(stabilityScore));
+        output.put("_sortDate", callStart);
+        return output;
+    }
+
+    private String normalizeLabel(String label) {
+        String normalized = label == null ? "" : label.trim().toUpperCase(Locale.ROOT);
+        if (normalized.contains("CALM") || normalized.contains("POSITIVE")) {
+            return "CALM";
+        }
+        if (normalized.contains("DISTRESS") || normalized.contains("NEGATIVE")) {
+            return "DISTRESSED";
+        }
+        return "ANXIOUS";
+    }
+
+    private String labelFromScore(double score) {
+        if (score >= 0.67) {
+            return "CALM";
+        }
+        if (score < 0.34) {
+            return "DISTRESSED";
+        }
+        return "ANXIOUS";
+    }
+
+    private double computeStability(List<Double> values) {
+        if (values == null || values.isEmpty()) {
+            return 0.0;
+        }
+        if (values.size() == 1) {
+            return 1.0;
+        }
+        double mean = values.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double variance = values.stream()
+                .mapToDouble(v -> Math.pow(v - mean, 2))
+                .average()
+                .orElse(0.0);
+        double stdDev = Math.sqrt(variance);
+        return clamp(1.0 - stdDev);
+    }
+
+    private double percent(long part, long total) {
+        if (total <= 0) {
+            return 0.0;
+        }
+        return clamp((double) part / (double) total);
+    }
+
+    private double round(double value) {
+        return Math.round(value * 1000.0) / 1000.0;
+    }
+
+    private double clamp(double value) {
+        if (value < 0.0) {
+            return 0.0;
+        }
+        if (value > 1.0) {
+            return 1.0;
+        }
+        return value;
     }
 }

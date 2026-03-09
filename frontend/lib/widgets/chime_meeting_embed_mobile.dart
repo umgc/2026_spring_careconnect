@@ -39,6 +39,7 @@ Widget buildChimeMeetingEmbed({
   int sentimentCaptureIntervalMs = 15000,
   VoidCallback? onEndCallRequested,
   void Function(String transcript)? onTranscriptSample,
+  void Function(String status, String? detail)? onTranscriptStatus,
   void Function(double averageLevel, double speechRatio, double variability)? onVoiceMetricsSample,
   void Function(String imageBase64)? onVideoSample,
   void Function(String channel, bool muted)? onSentimentChannelState,
@@ -62,6 +63,7 @@ Widget buildChimeMeetingEmbed({
     sentimentCaptureIntervalMs: sentimentCaptureIntervalMs,
     onEndCallRequested: onEndCallRequested,
     onTranscriptSample: onTranscriptSample,
+    onTranscriptStatus: onTranscriptStatus,
     onVoiceMetricsSample: onVoiceMetricsSample,
     onVideoSample: onVideoSample,
     onSentimentChannelState: onSentimentChannelState,
@@ -132,6 +134,7 @@ class _ChimeMeetingEmbedMobile extends StatefulWidget {
     required this.sentimentCaptureIntervalMs,
     required this.onEndCallRequested,
     required this.onTranscriptSample,
+    required this.onTranscriptStatus,
     required this.onVoiceMetricsSample,
     required this.onVideoSample,
     required this.onSentimentChannelState,
@@ -150,6 +153,7 @@ class _ChimeMeetingEmbedMobile extends StatefulWidget {
   final int sentimentCaptureIntervalMs;
   final VoidCallback? onEndCallRequested;
   final void Function(String transcript)? onTranscriptSample;
+  final void Function(String status, String? detail)? onTranscriptStatus;
   final void Function(double averageLevel, double speechRatio, double variability)?
   onVoiceMetricsSample;
   final void Function(String imageBase64)? onVideoSample;
@@ -390,6 +394,7 @@ class _ChimeMeetingEmbedMobileState extends State<_ChimeMeetingEmbedMobile> {
       } else {
         debugPrint('[CareConnect][Chime][mobile][info] $message');
       }
+      _emitTranscriptStatusFromLog(level, message);
     }
     final userFacingStatus = _toUserFacingStatus(message);
     if (userFacingStatus != null && mounted) {
@@ -398,8 +403,37 @@ class _ChimeMeetingEmbedMobileState extends State<_ChimeMeetingEmbedMobile> {
       });
     }
 
-    if (action == 'sentiment-transcript' && payload is Map<String, dynamic>) {
-      // Transcript sentiment is intentionally disabled in voice/video-only mode.
+    if (action == 'sentiment-transcript') {
+      Map<String, dynamic> payloadMap = const {};
+      if (payload is Map<String, dynamic>) {
+        payloadMap = payload;
+      } else if (payload is Map) {
+        payloadMap = payload.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+      } else if (payload is String && payload.trim().isNotEmpty) {
+        try {
+          final decoded = jsonDecode(payload);
+          if (decoded is Map) {
+            payloadMap = decoded.map(
+              (key, value) => MapEntry(key.toString(), value),
+            );
+          }
+        } catch (_) {}
+      }
+      final transcript = (payloadMap['text'] ?? '').toString().trim();
+      if (transcript.isNotEmpty) {
+        debugPrint(
+          '[CareConnect][Transcript][mobile] received len=${transcript.length}',
+        );
+        final source = (payloadMap['source'] ?? '').toString().toLowerCase();
+        if (source.contains('speech')) {
+          widget.onTranscriptStatus?.call('FALLBACK', 'Speech recognition');
+        } else {
+          widget.onTranscriptStatus?.call('CONNECTED', 'Live transcript');
+        }
+        widget.onTranscriptSample?.call(transcript);
+      }
       return;
     }
 
@@ -448,6 +482,31 @@ class _ChimeMeetingEmbedMobileState extends State<_ChimeMeetingEmbedMobile> {
     _activeMobileControllers.remove(widget.meetingId);
     widget.controller.detach();
     super.dispose();
+  }
+
+  void _emitTranscriptStatusFromLog(String level, String message) {
+    if (message.isEmpty || widget.onTranscriptStatus == null) {
+      return;
+    }
+    final lower = message.toLowerCase();
+    if (lower.contains('chime transcript capture subscribed')) {
+      widget.onTranscriptStatus!.call('AWAITING', 'Subscribed, waiting for transcript');
+      return;
+    }
+    if (lower.contains('speech transcription capture started')) {
+      widget.onTranscriptStatus!.call('FALLBACK', 'Speech recognition');
+      return;
+    }
+    if (lower.contains('speechrecognition api unavailable') ||
+        lower.contains('speech recognition error: not-allowed') ||
+        lower.contains('speech recognition error: service-not-allowed')) {
+      widget.onTranscriptStatus!.call('BLOCKED', 'Microphone or browser blocked');
+      return;
+    }
+    if ((level == 'warn' || level == 'warning') &&
+        lower.contains('no usable transcript text captured')) {
+      widget.onTranscriptStatus!.call('FALLBACK', 'No live transcript text');
+    }
   }
 
   @override
@@ -600,6 +659,7 @@ String _buildMobileMeetingHtml(String configJson) {
         let speechRecognizer = null;
         let speechRestartTimer = null;
         let speechResultWatchdogTimer = null;
+        let speechPermissionDenied = false;
         let lastSpeechRecognitionStartAt = 0;
         let voiceMetricsTimer = null;
         let voiceCaptureWatchdogTimer = null;
@@ -780,10 +840,6 @@ String _buildMobileMeetingHtml(String configJson) {
         }
 
         function emitTranscriptSample(rawText, source) {
-          if (isAudioMuted) {
-            return;
-          }
-
           const text = String(rawText || '').trim();
           if (text.length < 3) {
             return;
@@ -976,7 +1032,10 @@ String _buildMobileMeetingHtml(String configJson) {
         }
 
         function startSpeechRecognitionCapture() {
-          if (!shouldAutoSentimentCapture || isAudioMuted || !config.audioEnabled) {
+          if (!shouldAutoSentimentCapture) {
+            return false;
+          }
+          if (speechPermissionDenied) {
             return false;
           }
           if (chimeTranscriptActive) {
@@ -1002,10 +1061,6 @@ String _buildMobileMeetingHtml(String configJson) {
           };
 
           speechRecognizer.onresult = (event) => {
-            if (isAudioMuted) {
-              return;
-            }
-
             let transcript = '';
             for (let i = event.resultIndex; i < event.results.length; i += 1) {
               const result = event.results[i];
@@ -1030,11 +1085,16 @@ String _buildMobileMeetingHtml(String configJson) {
           };
 
           speechRecognizer.onerror = (event) => {
-            report('warn', 'Speech recognition error: ' + String(event && event.error ? event.error : 'unknown'));
+            const errorCode = String(event && event.error ? event.error : 'unknown');
+            report('warn', 'Speech recognition error: ' + errorCode);
+            if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+              speechPermissionDenied = true;
+              stopSpeechRecognitionCapture();
+            }
           };
 
           speechRecognizer.onend = () => {
-            if (!shouldAutoSentimentCapture || isAudioMuted) {
+            if (!shouldAutoSentimentCapture) {
               return;
             }
             if (speechRestartTimer) {
@@ -1060,7 +1120,7 @@ String _buildMobileMeetingHtml(String configJson) {
               clearInterval(speechResultWatchdogTimer);
             }
             speechResultWatchdogTimer = setInterval(() => {
-              if (!speechRecognizer || isAudioMuted || !shouldAutoSentimentCapture) {
+              if (!speechRecognizer || !shouldAutoSentimentCapture) {
                 return;
               }
 
@@ -1092,7 +1152,7 @@ String _buildMobileMeetingHtml(String configJson) {
         }
 
         function startChimeTranscriptCapture() {
-          if (!shouldAutoSentimentCapture || isAudioMuted || !config.audioEnabled) {
+          if (!shouldAutoSentimentCapture) {
             return false;
           }
           if (!audioVideo) {
@@ -1105,9 +1165,6 @@ String _buildMobileMeetingHtml(String configJson) {
           transcriptControllerProbeCount = 0;
           transcriptTextSampleCount = 0;
           chimeTranscriptHandler = (transcriptEvent) => {
-            if (isAudioMuted) {
-              return;
-            }
             const text = extractTranscriptTextFromChimeEvent(transcriptEvent);
             if (text.length > 0) {
               emitTranscriptSample(text, 'chime-transcript');
@@ -1131,10 +1188,6 @@ String _buildMobileMeetingHtml(String configJson) {
               typeof audioVideo.transcriptionController.subscribeToTranscriptEvent === 'function'
             ) {
               chimeTranscriptControllerHandler = (transcriptEvent) => {
-                if (isAudioMuted) {
-                  return;
-                }
-
                 if (transcriptControllerProbeCount < 5) {
                   transcriptControllerProbeCount += 1;
                   report(
@@ -1176,9 +1229,6 @@ String _buildMobileMeetingHtml(String configJson) {
               ];
 
               chimeTranscriptDataMessageHandler = (dataMessage) => {
-                if (isAudioMuted) {
-                  return;
-                }
                 const text = extractTranscriptTextFromDataMessage(dataMessage);
                 if (transcriptDataMessageProbeCount < 5) {
                   transcriptDataMessageProbeCount += 1;
@@ -1228,7 +1278,7 @@ String _buildMobileMeetingHtml(String configJson) {
                   clearTimeout(chimeTranscriptDataWatchdogTimer);
                 }
                 chimeTranscriptDataWatchdogTimer = setTimeout(() => {
-                  if (!chimeTranscriptActive || isAudioMuted || !shouldAutoSentimentCapture) {
+                  if (!chimeTranscriptActive || !shouldAutoSentimentCapture) {
                     return;
                   }
                   if (transcriptDataMessageProbeCount === 0) {
@@ -1247,7 +1297,7 @@ String _buildMobileMeetingHtml(String configJson) {
                 clearTimeout(transcriptNoTextWatchdogTimer);
               }
               transcriptNoTextWatchdogTimer = setTimeout(() => {
-                if (!chimeTranscriptActive || isAudioMuted || !shouldAutoSentimentCapture) {
+                if (!chimeTranscriptActive || !shouldAutoSentimentCapture) {
                   return;
                 }
                 if (transcriptTextSampleCount === 0) {
@@ -1629,8 +1679,11 @@ String _buildMobileMeetingHtml(String configJson) {
             return startVideoSentimentCapture();
           }
           if (normalized === 'text') {
-            emitSentimentChannelState('text', true, 'disabled-by-config');
-            return false;
+            const chimeStarted = startChimeTranscriptCapture();
+            if (!chimeStarted) {
+              return startSpeechRecognitionCapture();
+            }
+            return true;
           }
           return false;
         }
@@ -1656,9 +1709,12 @@ String _buildMobileMeetingHtml(String configJson) {
 
           autoSentimentCaptureStarted = true;
 
+          const chimeTranscriptStarted = startChimeTranscriptCapture();
+          if (!chimeTranscriptStarted) {
+            startSpeechRecognitionCapture();
+          }
           startChimeVoiceMetricsCapture();
           startVideoSentimentCapture();
-          emitSentimentChannelState('text', true, 'disabled-by-config');
         }
 
         function buildMeetingPayload() {

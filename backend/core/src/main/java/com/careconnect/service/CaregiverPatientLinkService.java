@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional
 public class CaregiverPatientLinkService {
+    private static final String PATIENT_VIDEO_CALLS_DISABLED_TOKEN = "[PATIENT_VIDEO_CALLS=OFF]";
 
     private final CaregiverPatientLinkRepository caregiverPatientLinkRepository;
     private final UserRepository userRepository;
@@ -188,6 +189,51 @@ public class CaregiverPatientLinkService {
         return caregiverPatientLinkRepository.existsActiveNonExpiredLink(caregiverUser, patientUser, LocalDateTime.now());
     }
 
+    @Transactional(readOnly = true)
+    public boolean isPatientVideoCallsEnabled(Long caregiverUserId, Long patientUserId) {
+        User caregiverUser = userRepository.findById(caregiverUserId).orElse(null);
+        User patientUser = userRepository.findById(patientUserId).orElse(null);
+        if (caregiverUser == null || patientUser == null) {
+            return false;
+        }
+
+        Optional<CaregiverPatientLink> link = caregiverPatientLinkRepository
+                .findTopByCaregiverUserAndPatientUserAndStatusOrderByUpdatedAtDesc(
+                        caregiverUser,
+                        patientUser,
+                        CaregiverPatientLink.LinkStatus.ACTIVE
+                );
+
+        return link.map(this::isPatientVideoCallsEnabledInternal).orElse(false);
+    }
+
+    public CaregiverPatientLinkResponse setPatientVideoCallsEnabled(
+            Long linkId,
+            boolean enabled,
+            Long actorUserId,
+            Role actorRole
+    ) {
+        CaregiverPatientLink link = caregiverPatientLinkRepository.findById(linkId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Link not found"));
+
+        boolean isAdmin = actorRole == Role.ADMIN;
+        boolean isOwningCaregiver = actorRole == Role.CAREGIVER
+                && link.getCaregiverUser() != null
+                && actorUserId.equals(link.getCaregiverUser().getId());
+
+        if (!isAdmin && !isOwningCaregiver) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (link.getStatus() != CaregiverPatientLink.LinkStatus.ACTIVE || link.isExpired()) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Only active links can be updated");
+        }
+
+        link.setNotes(updatePatientVideoCallToken(link.getNotes(), enabled));
+        caregiverPatientLinkRepository.save(link);
+        return toCaregiverPatientLinkResponse(link);
+    }
+
     /**
      * Get all links (for admin purposes)
      */
@@ -250,6 +296,7 @@ public class CaregiverPatientLinkService {
                 link.getPatientUser().getEmail(),
                 link.getStatus().name(),
                 link.getLinkType().name(),
+                isPatientVideoCallsEnabledInternal(link),
                 link.getCreatedAt(),
                 link.getExpiresAt(),
                 link.getNotes(),
@@ -257,6 +304,26 @@ public class CaregiverPatientLinkService {
                 link.isActive(),
                 link.isExpired()
         );
+    }
+
+    private boolean isPatientVideoCallsEnabledInternal(CaregiverPatientLink link) {
+        String notes = link.getNotes();
+        if (notes == null || notes.isBlank()) {
+            return true;
+        }
+        return !notes.contains(PATIENT_VIDEO_CALLS_DISABLED_TOKEN);
+    }
+
+    private String updatePatientVideoCallToken(String notes, boolean enabled) {
+        String base = notes == null ? "" : notes;
+        base = base.replace(PATIENT_VIDEO_CALLS_DISABLED_TOKEN, "").trim();
+        if (enabled) {
+            return base.isBlank() ? null : base;
+        }
+        if (base.isBlank()) {
+            return PATIENT_VIDEO_CALLS_DISABLED_TOKEN;
+        }
+        return base + " " + PATIENT_VIDEO_CALLS_DISABLED_TOKEN;
     }
 
     private String getCaregiverName(User caregiverUser) {

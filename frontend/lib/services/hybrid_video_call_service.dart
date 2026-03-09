@@ -225,7 +225,7 @@ class HybridVideoCallService {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Call ID: $callId',
+                          'Telehealth session',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,

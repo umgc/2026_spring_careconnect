@@ -459,6 +459,7 @@ class CallNotificationService {
     required String recipientRole, // 'CAREGIVER' or 'PATIENT'
     required String callId,
     required bool isVideoCall,
+    String? callType,
   }) async {
     if (!_isConnected || _channel == null) {
       debugPrint('❌ Cannot send call invitation - not connected');
@@ -479,6 +480,7 @@ class CallNotificationService {
         'recipientId': recipientId,
         'recipientRole': recipientRole,
         'isVideoCall': isVideoCall,
+        'callType': (callType ?? 'general'),
         'timestamp': DateTime.now().toIso8601String(),
       };
       _channel!.sink.add(_encode(msg));

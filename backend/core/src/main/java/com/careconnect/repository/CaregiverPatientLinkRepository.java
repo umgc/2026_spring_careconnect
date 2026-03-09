@@ -24,6 +24,9 @@ public interface CaregiverPatientLinkRepository extends JpaRepository<CaregiverP
     Optional<CaregiverPatientLink> findByCaregiverUserAndPatientUserAndStatus(
             User caregiverUser, User patientUser, CaregiverPatientLink.LinkStatus status);
 
+    Optional<CaregiverPatientLink> findTopByCaregiverUserAndPatientUserAndStatusOrderByUpdatedAtDesc(
+            User caregiverUser, User patientUser, CaregiverPatientLink.LinkStatus status);
+
     // Check if link exists between caregiver and patient
     boolean existsByCaregiverUserAndPatientUserAndStatus(
         User caregiverUser, User patientUser, CaregiverPatientLink.LinkStatus status);

@@ -1,18 +1,35 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../config/theme/sentiment_colors.dart';
 import '../services/api_service.dart';
 
 class PostCallTelemetrySummaryScreen extends StatefulWidget {
   final String callId;
   final String? recipientName;
 
+  /// Optional: called when the user taps "Call Again".
+  final VoidCallback? onCallAgain;
+
+  /// Optional: called when the user taps "Send Message".
+  final VoidCallback? onSendMessage;
+
+  /// When true the screen auto-dismisses after [autoDismissSeconds] seconds.
+  /// Any interaction cancels the countdown.
+  final bool autoDismiss;
+  final int autoDismissSeconds;
+
   const PostCallTelemetrySummaryScreen({
     super.key,
     required this.callId,
     this.recipientName,
+    this.onCallAgain,
+    this.onSendMessage,
+    this.autoDismiss = false,
+    this.autoDismissSeconds = 5,
   });
 
   @override
@@ -24,33 +41,85 @@ class _PostCallTelemetrySummaryScreenState
     extends State<PostCallTelemetrySummaryScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _callTelemetry = const [];
+  Map<String, dynamic>? _callSummary;
+  List<Map<String, dynamic>> _transcriptSegments = const [];
   _TimelineChannel _selectedChannel = _TimelineChannel.all;
+  DateTime? _selectedSentimentAt;
+  double? _selectedSentimentMinute;
+  double? _selectedSentimentScore;
+  bool _transcriptExpanded = false;
+  final GlobalKey _transcriptCardKey = GlobalKey();
+  final Map<int, GlobalKey> _transcriptRowKeys = <int, GlobalKey>{};
+  final ScrollController _timelineScrollController = ScrollController();
+  _CallTimelineWindow _timelineWindow = _CallTimelineWindow.fullCall;
+  RangeValues? _customTimelineRange;
+
+  Timer? _dismissTimer;
+  int _dismissSecondsLeft = 0;
 
   @override
   void initState() {
     super.initState();
     _loadTelemetry();
+    if (widget.autoDismiss) {
+      _dismissSecondsLeft = widget.autoDismissSeconds;
+      _startDismissTimer();
+    }
   }
 
   @override
   void dispose() {
+    _dismissTimer?.cancel();
+    _timelineScrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadTelemetry() async {
-    setState(() {
-      _loading = true;
+  void _startDismissTimer() {
+    _dismissTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _dismissSecondsLeft--);
+      if (_dismissSecondsLeft <= 0) {
+        t.cancel();
+        if (mounted) Navigator.of(context).maybePop();
+      }
     });
+  }
 
-    final callEvents = await ApiService.getCallTelemetry(widget.callId);
+  void _cancelDismiss() {
+    if (_dismissTimer?.isActive == true) {
+      _dismissTimer!.cancel();
+      setState(() => _dismissSecondsLeft = 0);
+    }
+  }
+
+  Future<void> _loadTelemetry() async {
+    setState(() => _loading = true);
+    final results = await Future.wait([
+      ApiService.getCallTelemetry(widget.callId),
+      ApiService.getCallSummary(widget.callId),
+      ApiService.getCallTranscriptSegments(widget.callId),
+    ]);
+    final callEvents = (results[0] as List<Map<String, dynamic>>);
+    final callSummary = results[1] as Map<String, dynamic>?;
+    final transcriptSegments = (results[2] as List<Map<String, dynamic>>);
     final sorted = _sortByOccurredAtAsc(callEvents);
-
     if (!mounted) return;
     setState(() {
       _callTelemetry = sorted;
+      _callSummary = callSummary;
+      _transcriptSegments = transcriptSegments;
+      _selectedSentimentAt = null;
+      _selectedSentimentMinute = null;
+      _selectedSentimentScore = null;
+      _customTimelineRange = null;
       _loading = false;
     });
   }
+
+  // ── Sorting ───────────────────────────────────────────────────────
 
   List<Map<String, dynamic>> _sortByOccurredAtAsc(
     List<Map<String, dynamic>> events,
@@ -70,29 +139,146 @@ class _PostCallTelemetrySummaryScreenState
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
+  Map<String, dynamic>? get _summaryPayload {
+    final root = _callSummary;
+    if (root == null) return null;
+    final raw = root['summary'];
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  String? _summaryText(dynamic value, {int max = 220}) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    if (text.length <= max) return text;
+    return '${text.substring(0, max)}...';
+  }
+
+  List<String> _summaryList(dynamic value, {int maxItems = 3}) {
+    if (value is! List) return const [];
+    return value
+        .map((e) => _summaryText(e, max: 140))
+        .whereType<String>()
+        .take(maxItems)
+        .toList();
+  }
+
+  // ── Sentiment sample selection ────────────────────────────────────
+  // Prefer COMBINED / FINAL events; fall back to any event with a score.
+
+  List<Map<String, dynamic>> get _sentimentSampleEvents {
+    // Prefer ≥2 COMBINED/FINAL events — unambiguous aggregated scores across
+    // the call timeline.  A single final event is not enough for a meaningful
+    // distribution, so we fall through to per-channel streams in that case.
+    final combined = _callTelemetry.where((e) {
+      final type = (e['eventType'] as String?)?.trim().toUpperCase() ?? '';
+      return (type == 'SENTIMENT_COMBINED' || type == 'SENTIMENT_FINAL') &&
+          e['sentimentScore'] != null;
+    }).toList();
+    if (combined.length >= 2) return combined;
+
+    // Fall back to a single-channel stream to avoid double-counting parallel
+    // voice/video/text events that share timestamps.
+    for (final preferred in [
+      'SENTIMENT_VOICE',
+      'SENTIMENT_VIDEO',
+      'SENTIMENT_TEXT',
+    ]) {
+      final channel = _callTelemetry.where((e) {
+        final type = (e['eventType'] as String?)?.trim().toUpperCase() ?? '';
+        return type == preferred && e['sentimentScore'] != null;
+      }).toList();
+      if (channel.length >= 2) return channel;
+    }
+
+    // Last resort: return whatever SENTIMENT_* events we have (may be ≤1).
+    final all = _callTelemetry.where((e) {
+      final type = (e['eventType'] as String?)?.trim().toUpperCase() ?? '';
+      return type.startsWith('SENTIMENT_') && e['sentimentScore'] != null;
+    }).toList();
+    return all.isNotEmpty ? all : combined;
+  }
+
+  // ── Time-in-state breakdown ───────────────────────────────────────
+
+  Map<String, double> get _timeInStatePct {
+    final samples = _sentimentSampleEvents;
+    if (samples.isEmpty) return {'CALM': 0, 'ANXIOUS': 0, 'DISTRESSED': 0};
+
+    double calmMs = 0, anxiousMs = 0, distressedMs = 0;
+
+    for (var i = 0; i < samples.length; i++) {
+      final score =
+          (samples[i]['sentimentScore'] as num?)?.toDouble() ?? 0.5;
+      final from = _safeDate(samples[i]['occurredAt']);
+      final to = i + 1 < samples.length
+          ? _safeDate(samples[i + 1]['occurredAt'])
+          : (_callEnd ?? from);
+
+      final durationMs =
+          to.difference(from).inMilliseconds.toDouble();
+      if (durationMs <= 0) continue;
+
+      if (score >= SentimentColors.calmThreshold) {
+        calmMs += durationMs;
+      } else if (score >= SentimentColors.anxiousThreshold) {
+        anxiousMs += durationMs;
+      } else {
+        distressedMs += durationMs;
+      }
+    }
+
+    final total = calmMs + anxiousMs + distressedMs;
+    if (total <= 0) return {'CALM': 0, 'ANXIOUS': 0, 'DISTRESSED': 0};
+
+    return {
+      'CALM': calmMs / total,
+      'ANXIOUS': anxiousMs / total,
+      'DISTRESSED': distressedMs / total,
+    };
+  }
+
+  // ── Stability score (1 − normalised std-dev) ─────────────────────
+
+  /// Returns null when there are fewer than 2 samples — stability cannot be
+  /// computed from a single data point and should be displayed as "N/A".
+  double? get _stabilityScore {
+    final samples = _sentimentSampleEvents;
+    if (samples.length < 2) return null;
+
+    final scores = samples
+        .map((e) => (e['sentimentScore'] as num?)?.toDouble() ?? 0.5)
+        .toList();
+    final mean = scores.reduce((a, b) => a + b) / scores.length;
+    final variance = scores
+            .map((s) => (s - mean) * (s - mean))
+            .reduce((a, b) => a + b) /
+        scores.length;
+    final stdDev = math.sqrt(variance);
+    // Typical max std-dev for a 0–1 variable is 0.5; normalise against that.
+    return (1.0 - (stdDev / 0.5)).clamp(0.0, 1.0);
+  }
+
+  // ── Final overall sentiment ───────────────────────────────────────
+
   int get _sentimentEventCount => _callTelemetry
-      .where(
-        (event) =>
-            (event['eventType'] as String?)?.toUpperCase().startsWith(
-              'SENTIMENT_',
-            ) ==
-            true,
-      )
+      .where((e) =>
+          (e['eventType'] as String?)?.toUpperCase().startsWith('SENTIMENT_') ==
+          true)
       .length;
 
   Map<String, dynamic>? get _finalOverallEvent {
     for (final event in _callTelemetry.reversed) {
-      final eventType = (event['eventType'] as String?)?.trim().toUpperCase();
-      if (eventType == 'SENTIMENT_FINAL') {
-        return event;
-      }
+      final eventType =
+          (event['eventType'] as String?)?.trim().toUpperCase();
+      if (eventType == 'SENTIMENT_FINAL') return event;
     }
-
-    // Backward compatibility: use latest COMBINED sentiment if explicit final
-    // event is not yet present in historical records.
     for (final event in _callTelemetry.reversed) {
       final channel = (event['channel'] as String?)?.trim().toUpperCase();
-      final eventType = (event['eventType'] as String?)?.trim().toUpperCase();
+      final eventType =
+          (event['eventType'] as String?)?.trim().toUpperCase();
       if (channel == 'COMBINED' || eventType == 'SENTIMENT_COMBINED') {
         return event;
       }
@@ -100,11 +286,8 @@ class _PostCallTelemetrySummaryScreenState
     return null;
   }
 
-  double? get _finalOverallScore {
-    final event = _finalOverallEvent;
-    if (event == null) return null;
-    return (event['sentimentScore'] as num?)?.toDouble();
-  }
+  double? get _finalOverallScore =>
+      (_finalOverallEvent?['sentimentScore'] as num?)?.toDouble();
 
   String get _finalOverallScoreText {
     final score = _finalOverallScore;
@@ -128,92 +311,34 @@ class _PostCallTelemetrySummaryScreenState
     return notes;
   }
 
-  String get _latestSentimentLabel {
-    for (final event in _callTelemetry.reversed) {
-      final label = (event['sentimentLabel'] as String?)?.trim();
-      if (label != null && label.isNotEmpty) {
-        return _toClinicalLabel(label);
-      }
-    }
-    return '--';
-  }
-
   String _toClinicalLabel(String raw) {
-    final normalized = raw.trim().toUpperCase();
-    if (normalized == 'CALM' || normalized == 'ANXIOUS' || normalized == 'DISTRESSED') {
-      return normalized;
-    }
-    if (normalized == 'POSITIVE') return 'CALM';
-    if (normalized == 'NEGATIVE') return 'DISTRESSED';
+    final n = raw.trim().toUpperCase();
+    if (n == 'CALM' || n == 'ANXIOUS' || n == 'DISTRESSED') return n;
+    if (n == 'POSITIVE') return 'CALM';
+    if (n == 'NEGATIVE') return 'DISTRESSED';
     return 'ANXIOUS';
-  }
-
-  String get _latestStatus {
-    for (final event in _callTelemetry.reversed) {
-      final status = (event['status'] as String?)?.trim();
-      if (status != null && status.isNotEmpty) {
-        return status;
-      }
-    }
-    return '--';
   }
 
   String get _caregiverRecommendation {
     final score = _finalOverallScore;
-    if (score == null) {
-      return 'Final overall score is not available yet.';
-    }
+    if (score == null) return 'Final assessment not yet available.';
     if (score < 0.30) {
-      return 'High concern: check in immediately and assess acute distress signs.';
+      return 'High concern — check in immediately and assess acute distress signs.';
     }
-    if (score < 0.45) {
-      return 'Elevated concern: increase monitoring and follow up soon.';
-    }
-    if (score < 0.65) {
-      return 'Moderate concern: continue routine monitoring.';
-    }
-    return 'Stable: maintain normal follow-up cadence.';
+    if (score < 0.45) return 'Elevated concern — increase monitoring and follow up soon.';
+    if (score < 0.65) return 'Moderate concern — continue routine monitoring.';
+    return 'Stable — maintain normal follow-up cadence.';
   }
 
-  Map<String, dynamic>? get _latestCombinedDebug {
-    Map<String, dynamic>? latestCombined;
-    for (final event in _callTelemetry.reversed) {
-      final eventType = (event['eventType'] as String?)?.trim().toUpperCase();
-      if (eventType == 'SENTIMENT_COMBINED') {
-        latestCombined = event;
-        break;
-      }
-    }
-    if (latestCombined == null) return null;
-
-    final payloadJson = latestCombined['payloadJson'];
-    if (payloadJson is! String || payloadJson.trim().isEmpty) {
-      return null;
-    }
-
-    try {
-      final decoded = Map<String, dynamic>.from(
-        (jsonDecode(payloadJson) as Map).cast<String, dynamic>(),
-      );
-      if (!decoded.keys.any((k) => k.toString().startsWith('dbg'))) {
-        return null;
-      }
-      return decoded;
-    } catch (_) {
-      return null;
-    }
-  }
+  // ── Call metadata ─────────────────────────────────────────────────
 
   String get _finalCallStatus {
     for (final event in _callTelemetry.reversed) {
       final eventType =
           (event['eventType'] as String?)?.trim().toUpperCase() ?? '';
-      final status = (event['status'] as String?)?.trim().toUpperCase() ?? '';
-
-      if (status == 'ERROR') {
-        return 'Failed';
-      }
-
+      final status =
+          (event['status'] as String?)?.trim().toUpperCase() ?? '';
+      if (status == 'ERROR') return 'Failed';
       switch (eventType) {
         case 'WS_DECLINE_CALL':
           return 'Rejected';
@@ -228,33 +353,25 @@ class _PostCallTelemetrySummaryScreenState
           return 'Joined';
       }
     }
-
     return '--';
   }
 
   String get _finalCallWhy {
     final finalEvent = _resolveFinalOutcomeEvent();
-    if (finalEvent == null) {
-      return '--';
-    }
+    if (finalEvent == null) return '--';
 
     final eventType =
         (finalEvent['eventType'] as String?)?.trim().toUpperCase() ?? '';
     final status =
         (finalEvent['status'] as String?)?.trim().toUpperCase() ?? '';
     final errorMessage = (finalEvent['errorMessage'] as String?)?.trim();
-    if (errorMessage != null && errorMessage.isNotEmpty) {
-      return errorMessage;
-    }
+    if (errorMessage != null && errorMessage.isNotEmpty) return errorMessage;
 
-    final payloadReason = _extractReasonFromJsonBlob(finalEvent['payloadJson']);
-    if (payloadReason != null) {
-      return payloadReason;
-    }
+    final payloadReason =
+        _extractReasonFromJsonBlob(finalEvent['payloadJson']);
+    if (payloadReason != null) return payloadReason;
 
-    if (status == 'ERROR') {
-      return 'The call action failed to complete.';
-    }
+    if (status == 'ERROR') return 'The call action failed to complete.';
 
     switch (eventType) {
       case 'WS_DECLINE_CALL':
@@ -276,26 +393,18 @@ class _PostCallTelemetrySummaryScreenState
   String get _finalCallStatusWithReason {
     final status = _finalCallStatus;
     final why = _finalCallWhy;
-
-    if (status == '--') {
-      return status;
-    }
-    if (why == '--') {
-      return status;
-    }
-    return '$status - $why';
+    if (status == '--') return status;
+    if (why == '--') return status;
+    return '$status — $why';
   }
 
   Map<String, dynamic>? _resolveFinalOutcomeEvent() {
     for (final event in _callTelemetry.reversed) {
       final eventType =
           (event['eventType'] as String?)?.trim().toUpperCase() ?? '';
-      final status = (event['status'] as String?)?.trim().toUpperCase() ?? '';
-
-      if (status == 'ERROR') {
-        return event;
-      }
-
+      final status =
+          (event['status'] as String?)?.trim().toUpperCase() ?? '';
+      if (status == 'ERROR') return event;
       if (eventType == 'WS_DECLINE_CALL' ||
           eventType == 'WS_ACCEPT_CALL' ||
           eventType == 'WS_END_CALL' ||
@@ -309,61 +418,48 @@ class _PostCallTelemetrySummaryScreenState
   }
 
   String? _extractReasonFromJsonBlob(dynamic jsonBlob) {
-    if (jsonBlob is! String || jsonBlob.trim().isEmpty) {
-      return null;
-    }
-
+    if (jsonBlob is! String || jsonBlob.trim().isEmpty) return null;
     try {
       final decoded = Map<String, dynamic>.from(
         (jsonDecode(jsonBlob) as Map).cast<String, dynamic>(),
       );
       final reason = (decoded['reason'] as String?)?.trim();
-      if (reason != null && reason.isNotEmpty) {
-        return reason;
-      }
+      if (reason != null && reason.isNotEmpty) return reason;
       final message = (decoded['message'] as String?)?.trim();
-      if (message != null && message.isNotEmpty) {
-        return message;
-      }
-    } catch (_) {
-      return null;
-    }
+      if (message != null && message.isNotEmpty) return message;
+    } catch (_) {}
     return null;
   }
 
-  DateTime? get _callStart {
-    if (_callTelemetry.isEmpty) return null;
-    return _safeDate(_callTelemetry.first['occurredAt']);
-  }
+  // ── Duration ──────────────────────────────────────────────────────
 
-  DateTime? get _callEnd {
-    if (_callTelemetry.isEmpty) return null;
-    return _safeDate(_callTelemetry.last['occurredAt']);
-  }
+  DateTime? get _callStart =>
+      _callTelemetry.isEmpty ? null : _safeDate(_callTelemetry.first['occurredAt']);
+
+  DateTime? get _callEnd =>
+      _callTelemetry.isEmpty ? null : _safeDate(_callTelemetry.last['occurredAt']);
 
   double get _callDurationMinutes {
     final start = _callStart;
     final end = _callEnd;
     if (start == null || end == null) return 0;
     final seconds = end.difference(start).inSeconds;
-    if (seconds <= 0) return 1;
-    return seconds / 60.0;
+    return seconds <= 0 ? 1 : seconds / 60.0;
   }
 
   String get _callDurationText {
     final start = _callStart;
     final end = _callEnd;
     if (start == null || end == null) return '--';
-
     final diff = end.difference(start);
     final hours = diff.inHours;
     final minutes = diff.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = diff.inSeconds.remainder(60).toString().padLeft(2, '0');
-    if (hours > 0) {
-      return '$hours:$minutes:$seconds';
-    }
+    if (hours > 0) return '$hours:$minutes:$seconds';
     return '${diff.inMinutes}:$seconds';
   }
+
+  // ── Timeline series ───────────────────────────────────────────────
 
   _TimelineChannel? _resolveEventChannel(Map<String, dynamic> event) {
     final channelRaw =
@@ -372,7 +468,6 @@ class _PostCallTelemetrySummaryScreenState
       return _TimelineChannel.voice;
     }
     if (channelRaw == 'COMBINED') return null;
-
     final eventType =
         (event['eventType'] as String?)?.trim().toUpperCase() ?? '';
     if (eventType.contains('VOICE') || eventType.contains('AUDIO')) {
@@ -392,113 +487,277 @@ class _PostCallTelemetrySummaryScreenState
         _TimelineChannel.video: const <_ScoreSample>[],
       };
     }
-
     final byChannel = <_TimelineChannel, List<_ScoreSample>>{
       _TimelineChannel.voice: <_ScoreSample>[],
       _TimelineChannel.video: <_ScoreSample>[],
     };
-
     for (final event in _callTelemetry) {
-      final eventType = (event['eventType'] as String?)?.toUpperCase() ?? '';
+      final eventType =
+          (event['eventType'] as String?)?.toUpperCase() ?? '';
       if (!eventType.startsWith('SENTIMENT_')) continue;
-
       final channel = _resolveEventChannel(event);
-      if (channel == null) continue;
-      if (!byChannel.containsKey(channel)) continue;
-
+      if (channel == null || !byChannel.containsKey(channel)) continue;
       final score = (event['sentimentScore'] as num?)?.toDouble();
       if (score == null) continue;
-
       final at = _safeDate(event['occurredAt']);
-      final minuteOffset = at.difference(start).inMilliseconds / 60000.0;
+      final minuteOffset =
+          at.difference(start).inMilliseconds / 60000.0;
       byChannel[channel]!.add(
         _ScoreSample(
           minuteOffset: minuteOffset.clamp(0.0, _callDurationMinutes),
           score: score.clamp(0.0, 1.0),
+          occurredAt: at,
         ),
       );
     }
-
     for (final points in byChannel.values) {
       points.sort((a, b) => a.minuteOffset.compareTo(b.minuteOffset));
     }
-
     return byChannel;
   }
 
   Map<_TimelineChannel, List<_ScoreSample>> get _visibleSeries {
     final all = _allChannelSeries;
-    if (_selectedChannel == _TimelineChannel.all) {
-      return all;
-    }
-    return {_selectedChannel: all[_selectedChannel] ?? const <_ScoreSample>[]};
+    if (_selectedChannel == _TimelineChannel.all) return all;
+    return {
+      _selectedChannel: all[_selectedChannel] ?? const <_ScoreSample>[]
+    };
   }
+
+  void _handleTimelineTap({
+    required Offset localPosition,
+    required Size canvasSize,
+    required Map<_TimelineChannel, List<_ScoreSample>> visibleSeries,
+    required double durationMinutes,
+    required double minuteOffsetBase,
+  }) {
+    if (durationMinutes <= 0) return;
+    const leftPad = 72.0;
+    const rightPad = 20.0;
+    const topPad = 20.0;
+    const bottomPad = 44.0;
+
+    final plotWidth = math.max(1.0, canvasSize.width - leftPad - rightPad);
+    final plotHeight = math.max(1.0, canvasSize.height - topPad - bottomPad);
+    final plotRect = Rect.fromLTWH(leftPad, topPad, plotWidth, plotHeight);
+    if (!plotRect.contains(localPosition)) return;
+
+    double yForScore(double s) =>
+        plotRect.bottom - s.clamp(0.0, 1.0) * plotRect.height;
+
+    _ScoreSample? nearest;
+    double nearestDist2 = double.infinity;
+    for (final points in visibleSeries.values) {
+      for (final sample in points) {
+        final x = leftPad + (sample.minuteOffset / durationMinutes) * plotWidth;
+        final y = yForScore(sample.score);
+        final dx = x - localPosition.dx;
+        final dy = y - localPosition.dy;
+        final dist2 = dx * dx + dy * dy;
+        if (dist2 < nearestDist2) {
+          nearestDist2 = dist2;
+          nearest = sample;
+        }
+      }
+    }
+    if (nearest == null) return;
+
+    setState(() {
+      _selectedSentimentAt = nearest!.occurredAt;
+      _selectedSentimentMinute = nearest.minuteOffset + minuteOffsetBase;
+      _selectedSentimentScore = nearest.score;
+    });
+
+    final transcriptCtx = _transcriptCardKey.currentContext;
+    if (transcriptCtx != null) {
+      unawaited(
+        Scrollable.ensureVisible(
+          transcriptCtx,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: 0.1,
+        ),
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollTranscriptToSelectedSegment();
+    });
+  }
+
+  _TimelineWindowSpan _resolveTimelineWindow(double fullDurationMinutes) {
+    final safeDuration = fullDurationMinutes <= 0 ? 1.0 : fullDurationMinutes;
+    switch (_timelineWindow) {
+      case _CallTimelineWindow.first5:
+        return _TimelineWindowSpan(
+          startMinute: 0.0,
+          endMinute: math.min(5.0, safeDuration),
+        );
+      case _CallTimelineWindow.first15:
+        return _TimelineWindowSpan(
+          startMinute: 0.0,
+          endMinute: math.min(15.0, safeDuration),
+        );
+      case _CallTimelineWindow.last5:
+        return _TimelineWindowSpan(
+          startMinute: math.max(0.0, safeDuration - 5.0),
+          endMinute: safeDuration,
+        );
+      case _CallTimelineWindow.last15:
+        return _TimelineWindowSpan(
+          startMinute: math.max(0.0, safeDuration - 15.0),
+          endMinute: safeDuration,
+        );
+      case _CallTimelineWindow.custom:
+        final rv = _customTimelineRange ??
+            RangeValues(
+              0.0,
+              math.max(1.0, safeDuration),
+            );
+        final start = rv.start.clamp(0.0, safeDuration);
+        final end = rv.end.clamp(0.0, safeDuration);
+        final normalizedStart = math.min(start, end - 0.1);
+        final normalizedEnd = math.max(end, normalizedStart + 0.1);
+        return _TimelineWindowSpan(
+          startMinute: normalizedStart,
+          endMinute: normalizedEnd,
+        );
+      case _CallTimelineWindow.fullCall:
+        return _TimelineWindowSpan(startMinute: 0.0, endMinute: safeDuration);
+    }
+  }
+
+  Map<_TimelineChannel, List<_ScoreSample>> _sliceSeriesToWindow({
+    required Map<_TimelineChannel, List<_ScoreSample>> source,
+    required double windowStartMinute,
+    required double windowEndMinute,
+  }) {
+    final span = math.max(0.001, windowEndMinute - windowStartMinute);
+    final sliced = <_TimelineChannel, List<_ScoreSample>>{};
+    source.forEach((channel, samples) {
+      final points = samples
+          .where((s) =>
+              s.minuteOffset >= windowStartMinute &&
+              s.minuteOffset <= windowEndMinute)
+          .map(
+            (s) => _ScoreSample(
+              minuteOffset:
+                  (s.minuteOffset - windowStartMinute).clamp(0.0, span),
+              score: s.score,
+              occurredAt: s.occurredAt,
+            ),
+          )
+          .toList();
+      sliced[channel] = points;
+    });
+    return sliced;
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Call Summary'),
-        actions: [
-          IconButton(
-            onPressed: _loadTelemetry,
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadTelemetry,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (widget.recipientName != null &&
-                      widget.recipientName!.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        'Call with ${widget.recipientName}',
-                        style: theme.textTheme.titleMedium,
-                      ),
+    final bool showCountdown =
+        widget.autoDismiss && _dismissSecondsLeft > 0;
+
+    return GestureDetector(
+      onTap: _cancelDismiss,
+      behavior: HitTestBehavior.translucent,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Call Summary'),
+          actions: [
+            if (showCountdown)
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Center(
+                  child: Text(
+                    'Closing in $_dismissSecondsLeft s',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white54 : Colors.black54,
                     ),
-                  _SummaryCard(
-                    finalOverallScore: _finalOverallScoreText,
-                    finalOverallLabel: _finalOverallLabel,
-                    finalOverallNotes: _finalOverallNotes,
-                    caregiverRecommendation: _caregiverRecommendation,
-                    finalCallStatus: _finalCallStatusWithReason,
-                    callDuration: _callDurationText,
                   ),
-                  if (_latestCombinedDebug != null) ...[
-                    const SizedBox(height: 12),
-                    _DebugBreakdownCard(debug: _latestCombinedDebug!),
-                  ],
-                  const SizedBox(height: 16),
-                  Text(
-                    'Sentiment Trend',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildTimelineCard(),
-                ],
+                ),
               ),
+            IconButton(
+              onPressed: _loadTelemetry,
+              tooltip: 'Refresh',
+              icon: const Icon(Icons.refresh),
             ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: () async {
+                  _cancelDismiss();
+                  await _loadTelemetry();
+                },
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    if (widget.recipientName != null &&
+                        widget.recipientName!.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'Call with ${widget.recipientName}',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      ),
+                    _SummarySection(
+                      isDark: isDark,
+                      finalOverallScore: _finalOverallScoreText,
+                      finalOverallLabel: _finalOverallLabel,
+                      finalOverallNotes: _finalOverallNotes,
+                      caregiverRecommendation: _caregiverRecommendation,
+                      callSummaryHeadline:
+                          _summaryText(_summaryPayload?['headline'], max: 100),
+                      callSummaryAssessment: _summaryText(
+                        _summaryPayload?['overallAssessment'],
+                        max: 240,
+                      ),
+                      callSummaryConcerns: _summaryList(
+                        _summaryPayload?['keyConcerns'],
+                      ),
+                      callSummaryActions: _summaryList(
+                        _summaryPayload?['recommendedActions'],
+                      ),
+                      finalCallStatus: _finalCallStatusWithReason,
+                      callDuration: _callDurationText,
+                      timeInStatePct: _timeInStatePct,
+                      sampleCount: _sentimentSampleEvents.length,
+                      stabilityScore: _stabilityScore,
+                      onCallAgain: widget.onCallAgain,
+                      onSendMessage: widget.onSendMessage,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Sentiment Trend',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildTimelineCard(isDark),
+                    const SizedBox(height: 12),
+                    _buildTranscriptCard(isDark),
+                  ],
+                ),
+              ),
+      ),
     );
   }
 
-  Widget _buildTimelineCard() {
+  // ── Timeline card ─────────────────────────────────────────────────
+
+  Widget _buildTimelineCard(bool isDark) {
     final theme = Theme.of(context);
     final duration = _callDurationMinutes;
     final allSeries = _allChannelSeries;
-    final visibleSeries = _visibleSeries;
-    final hasAnySamples = allSeries.values.any((points) => points.isNotEmpty);
-    final hasSelectedSamples = visibleSeries.values.any(
-      (points) => points.isNotEmpty,
-    );
+    final hasAnySamples = allSeries.values.any((p) => p.isNotEmpty);
 
     if (_callTelemetry.isEmpty) {
       return Card(
@@ -513,9 +772,23 @@ class _PostCallTelemetrySummaryScreenState
     }
 
     final channelColors = <_TimelineChannel, Color>{
-      _TimelineChannel.voice: const Color(0xFFFF9800),
-      _TimelineChannel.video: const Color(0xFF7E57C2),
+      _TimelineChannel.voice: SentimentColors.forChannel('VOICE', isDark: isDark),
+      _TimelineChannel.video: SentimentColors.forChannel('VIDEO', isDark: isDark),
     };
+    final window = _resolveTimelineWindow(duration);
+    final windowDuration = math.max(0.1, window.endMinute - window.startMinute);
+    final visibleSeries = _sliceSeriesToWindow(
+      source: _visibleSeries,
+      windowStartMinute: window.startMinute,
+      windowEndMinute: window.endMinute,
+    );
+    final hasSelectedSamples = visibleSeries.values.any((p) => p.isNotEmpty);
+    final selectedMinuteInWindow = _selectedSentimentMinute == null
+        ? null
+        : ((_selectedSentimentMinute! >= window.startMinute &&
+                _selectedSentimentMinute! <= window.endMinute)
+            ? (_selectedSentimentMinute! - window.startMinute)
+            : null);
 
     return Card(
       child: Padding(
@@ -523,39 +796,106 @@ class _PostCallTelemetrySummaryScreenState
         child: LayoutBuilder(
           builder: (context, constraints) {
             final viewportWidth = math.max(320.0, constraints.maxWidth);
-            final baseTimelineWidth = math.max(viewportWidth, duration * 120.0);
-            final contentWidth = math
-                .min(24000.0, baseTimelineWidth)
-                .toDouble();
+            final baseTimelineWidth =
+                math.max(viewportWidth, windowDuration * 120.0);
+            final contentWidth =
+                math.min(24000.0, baseTimelineWidth).toDouble();
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Channels shown: Voice, Video.',
+                  'Voice and Video channels shown.',
                   style: theme.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _TimelineChannel.values.map((channel) {
+                  children: _TimelineChannel.values.map((ch) {
                     return ChoiceChip(
-                      label: Text(channel.label),
-                      selected: _selectedChannel == channel,
-                      onSelected: (_) {
-                        setState(() {
-                          _selectedChannel = channel;
-                        });
-                      },
+                      label: Text(ch.label),
+                      selected: _selectedChannel == ch,
+                      onSelected: (_) => setState(() {
+                        _selectedChannel = ch;
+                        _selectedSentimentAt = null;
+                        _selectedSentimentMinute = null;
+                        _selectedSentimentScore = null;
+                      }),
                     );
                   }).toList(),
                 ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<_CallTimelineWindow>(
+                        value: _timelineWindow,
+                        items: _CallTimelineWindow.values
+                            .map(
+                              (w) => DropdownMenuItem<_CallTimelineWindow>(
+                                value: w,
+                                child: Text(w.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() {
+                            _timelineWindow = value;
+                            if (value != _CallTimelineWindow.custom) return;
+                            _customTimelineRange ??= RangeValues(
+                              0.0,
+                              math.max(1.0, duration),
+                            );
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Window',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_timelineWindow == _CallTimelineWindow.custom) ...[
+                  RangeSlider(
+                    min: 0.0,
+                    max: math.max(1.0, duration),
+                    values: _customTimelineRange ??
+                        RangeValues(0.0, math.max(1.0, duration)),
+                    labels: RangeLabels(
+                      _formatElapsed(window.startMinute),
+                      _formatElapsed(window.endMinute),
+                    ),
+                    onChanged: (values) {
+                      setState(() {
+                        _customTimelineRange = RangeValues(
+                          values.start.clamp(0.0, duration),
+                          values.end.clamp(0.0, duration),
+                        );
+                      });
+                    },
+                  ),
+                ],
+                Text(
+                  'Window: ${_formatElapsed(window.startMinute)} - ${_formatElapsed(window.endMinute)}',
+                  style: theme.textTheme.bodySmall,
+                ),
+                if (_selectedSentimentAt != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Selected sample: ${_formatAbsoluteTime(_selectedSentimentAt!)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
                 if (!hasAnySamples)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      'No score-based sentiment samples were captured for this call yet.',
+                      'No score-based sentiment samples captured for this call.',
                       style: theme.textTheme.bodyMedium,
                     ),
                   )
@@ -563,29 +903,50 @@ class _PostCallTelemetrySummaryScreenState
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      'No samples for ${_selectedChannel.label}. Select another channel to continue.',
+                      'No samples for ${_selectedChannel.label}. Select another channel.',
                       style: theme.textTheme.bodyMedium,
                     ),
                   ),
                 const SizedBox(height: 8),
                 SizedBox(
                   height: 300,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width: contentWidth,
-                      child: CustomPaint(
-                        painter: _SentimentTimelinePainter(
-                          durationMinutes: duration,
-                          series: visibleSeries,
-                          channelColors: channelColors,
+                  child: Scrollbar(
+                    controller: _timelineScrollController,
+                    thumbVisibility: contentWidth > viewportWidth,
+                    child: SingleChildScrollView(
+                      controller: _timelineScrollController,
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: contentWidth,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (details) => _handleTimelineTap(
+                            localPosition: details.localPosition,
+                            canvasSize: Size(contentWidth, 300),
+                            visibleSeries: visibleSeries,
+                            durationMinutes: windowDuration,
+                            minuteOffsetBase: window.startMinute,
+                          ),
+                          child: CustomPaint(
+                            painter: _SentimentTimelinePainter(
+                              durationMinutes: windowDuration,
+                              series: visibleSeries,
+                              channelColors: channelColors,
+                              isDark: isDark,
+                              selectedMinute: selectedMinuteInWindow,
+                              selectedScore: _selectedSentimentScore,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 8),
-                _TimelineLegend(channelColors: channelColors),
+                _TimelineLegend(
+                  channelColors: channelColors,
+                  isDark: isDark,
+                ),
               ],
             );
           },
@@ -593,44 +954,694 @@ class _PostCallTelemetrySummaryScreenState
       ),
     );
   }
+
+  String _formatElapsed(double minute) {
+    final totalSeconds = (minute * 60).round().clamp(0, 24 * 3600 * 30);
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    final s = totalSeconds % 60;
+    if (h > 0) return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildTranscriptCard(bool isDark) {
+    final segments = _transcriptSegments;
+    if (segments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final anchorOccurredAt = _safeDate(segments.first['occurredAt']);
+    final callStart = _resolveTranscriptCallStart(
+      segments: segments,
+      anchorOccurredAt: anchorOccurredAt,
+      fallbackCallStart: _callStart,
+    );
+    final selectedAt = _selectedSentimentAt;
+    final selectedSegmentIndex = _resolveSelectedSegmentIndex(
+      segments: segments,
+      selectedAt: selectedAt,
+      callStart: callStart,
+      anchorOccurredAt: anchorOccurredAt,
+    );
+
+    final preview = segments;
+    return Card(
+      key: _transcriptCardKey,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Call Transcript',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: _transcriptExpanded ? 'Collapse' : 'Expand',
+                  onPressed: () {
+                    setState(() => _transcriptExpanded = !_transcriptExpanded);
+                  },
+                  icon: Icon(
+                    _transcriptExpanded
+                        ? Icons.unfold_less
+                        : Icons.unfold_more,
+                    size: 18,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            Text(
+              _selectedSentimentAt == null
+                  ? 'Select a plot sample to show matching sentiment badges.'
+                  : 'Badges show the selected sample context.',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: _transcriptExpanded ? 460 : 260,
+              child: ListView(
+                children: preview.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final segment = entry.value;
+                  final speaker = (segment['speakerLabel'] ?? 'PARTICIPANT')
+                      .toString()
+                      .trim();
+                  final text = (segment['text'] ?? '').toString().trim();
+                  final matchingSentiment = _sentimentHitsForSegment(
+                    segment,
+                    callStart: callStart,
+                    anchorOccurredAt: anchorOccurredAt,
+                    isDark: isDark,
+                  );
+                  final rangeObj = _segmentAbsoluteRange(
+                    segment,
+                    callStart: callStart,
+                    anchorOccurredAt: anchorOccurredAt,
+                  );
+                  final range = _formatSegmentRange(
+                    segment['startMs'],
+                    segment['endMs'],
+                    occurredAt: segment['occurredAt'],
+                    anchorOccurredAt: anchorOccurredAt,
+                  );
+                  final isSelectedRange = selectedAt != null &&
+                      rangeObj != null &&
+                      !selectedAt.isBefore(rangeObj.start) &&
+                      !selectedAt.isAfter(rangeObj.end);
+                  final isNearestSelected =
+                      selectedSegmentIndex != null && selectedSegmentIndex == index;
+                  final showBadges = selectedAt != null &&
+                      (isSelectedRange || isNearestSelected);
+                  if (text.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    key: _keyForTranscriptRow(index),
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelectedRange
+                            ? SentimentColors.forScore(
+                                _selectedSentimentScore ?? 0.5,
+                                isDark: isDark,
+                              ).withValues(alpha: isDark ? 0.18 : 0.12)
+                            : (isNearestSelected
+                                ? (isDark
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : Colors.black.withValues(alpha: 0.05))
+                                : Colors.transparent),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      // selected match gets stronger border, nearest fallback gets soft border
+                      foregroundDecoration: (isSelectedRange || isNearestSelected)
+                          ? BoxDecoration(
+                              border: Border.all(
+                                color: isSelectedRange
+                                    ? SentimentColors.forScore(
+                                        _selectedSentimentScore ?? 0.5,
+                                        isDark: isDark,
+                                      ).withValues(alpha: 0.7)
+                                    : (isDark
+                                        ? Colors.white.withValues(alpha: 0.35)
+                                        : Colors.black.withValues(alpha: 0.28)),
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            )
+                          : null,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$range [$speaker] $text',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                              fontWeight: (isSelectedRange || isNearestSelected)
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                          if (showBadges && matchingSentiment.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: matchingSentiment.take(4).map((hit) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: hit.color.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: hit.color.withValues(alpha: 0.55),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${hit.timeText}  ${hit.channel} ${hit.label}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: hit.color,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  DateTime? _resolveTranscriptCallStart({
+    required List<Map<String, dynamic>> segments,
+    required DateTime anchorOccurredAt,
+    required DateTime? fallbackCallStart,
+  }) {
+    for (final segment in segments) {
+      final startMs = _asInt(segment['startMs']);
+      final occurredAt = _safeDate(segment['occurredAt']);
+      if (startMs == null) continue;
+      if (occurredAt.millisecondsSinceEpoch <= 0) continue;
+      final offsetMs = startMs < 0 ? 0 : startMs;
+      return occurredAt.subtract(Duration(milliseconds: offsetMs));
+    }
+    if (anchorOccurredAt.millisecondsSinceEpoch > 0) {
+      return anchorOccurredAt;
+    }
+    return fallbackCallStart;
+  }
+
+  int? _resolveSelectedSegmentIndex({
+    required List<Map<String, dynamic>> segments,
+    required DateTime? selectedAt,
+    required DateTime? callStart,
+    required DateTime anchorOccurredAt,
+  }) {
+    if (selectedAt == null) return null;
+
+    int? containingIndex;
+    int? nearestIndex;
+    var nearestDistanceMs = 1 << 30;
+
+    for (var i = 0; i < segments.length; i++) {
+      final range = _segmentAbsoluteRange(
+        segments[i],
+        callStart: callStart,
+        anchorOccurredAt: anchorOccurredAt,
+      );
+      if (range == null) continue;
+
+      if (!selectedAt.isBefore(range.start) && !selectedAt.isAfter(range.end)) {
+        containingIndex = i;
+        break;
+      }
+
+      final distanceMs = selectedAt.isBefore(range.start)
+          ? range.start.difference(selectedAt).inMilliseconds
+          : selectedAt.difference(range.end).inMilliseconds;
+      if (distanceMs < nearestDistanceMs) {
+        nearestDistanceMs = distanceMs;
+        nearestIndex = i;
+      }
+    }
+
+    if (containingIndex != null) return containingIndex;
+    // Accept nearest fallback up to 12 seconds away to absorb clock drift/jitter.
+    if (nearestIndex != null && nearestDistanceMs <= 12000) return nearestIndex;
+    return null;
+  }
+
+  GlobalKey _keyForTranscriptRow(int index) {
+    return _transcriptRowKeys.putIfAbsent(index, () => GlobalKey());
+  }
+
+  void _scrollTranscriptToSelectedSegment() {
+    final selectedAt = _selectedSentimentAt;
+    final segments = _transcriptSegments;
+    if (selectedAt == null || segments.isEmpty) return;
+
+    final anchorOccurredAt = _safeDate(segments.first['occurredAt']);
+    final callStart = _resolveTranscriptCallStart(
+      segments: segments,
+      anchorOccurredAt: anchorOccurredAt,
+      fallbackCallStart: _callStart,
+    );
+    final selectedIndex = _resolveSelectedSegmentIndex(
+      segments: segments,
+      selectedAt: selectedAt,
+      callStart: callStart,
+      anchorOccurredAt: anchorOccurredAt,
+    );
+    if (selectedIndex == null) return;
+
+    final rowContext = _transcriptRowKeys[selectedIndex]?.currentContext;
+    if (rowContext == null) return;
+
+    unawaited(
+      Scrollable.ensureVisible(
+        rowContext,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOut,
+        alignment: 0.25,
+      ),
+    );
+  }
+
+  List<_SegmentSentimentHit> _sentimentHitsForSegment(
+    Map<String, dynamic> segment, {
+    required DateTime? callStart,
+    required DateTime anchorOccurredAt,
+    required bool isDark,
+  }) {
+    final range = _segmentAbsoluteRange(
+      segment,
+      callStart: callStart,
+      anchorOccurredAt: anchorOccurredAt,
+    );
+    if (range == null) return const [];
+
+    final hits = <_SegmentSentimentHit>[];
+    for (final event in _callTelemetry) {
+      final eventType = (event['eventType'] as String?)?.toUpperCase() ?? '';
+      if (!eventType.startsWith('SENTIMENT_')) continue;
+      final resolvedChannel = _resolveEventChannel(event);
+      if (resolvedChannel == null) continue;
+
+      final score = (event['sentimentScore'] as num?)?.toDouble();
+      if (score == null) continue;
+
+      final at = _safeDate(event['occurredAt']);
+      if (at.isBefore(range.start) || at.isAfter(range.end)) continue;
+
+      final channel =
+          resolvedChannel == _TimelineChannel.voice ? 'VOICE' : 'VIDEO';
+      final color = SentimentColors.forChannel(channel, isDark: isDark);
+      final rawLabel = (event['sentimentLabel'] as String?)?.trim();
+      final label = (rawLabel == null || rawLabel.isEmpty)
+          ? _toClinicalLabelFromScore(score)
+          : _toClinicalLabel(rawLabel);
+
+      hits.add(
+        _SegmentSentimentHit(
+          timeText: _formatAbsoluteTime(at),
+          channel: channel,
+          label: label,
+          color: color,
+          occurredAt: at,
+        ),
+      );
+    }
+
+    hits.sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    return hits;
+  }
+
+  _SegmentAbsoluteRange? _segmentAbsoluteRange(
+    Map<String, dynamic> segment, {
+    required DateTime? callStart,
+    required DateTime anchorOccurredAt,
+  }) {
+    final startMs = _asInt(segment['startMs']);
+    final endMs = _asInt(segment['endMs']);
+
+    DateTime? start;
+    DateTime? end;
+
+    if (callStart != null && startMs != null) {
+      start = callStart.add(Duration(milliseconds: startMs));
+    }
+    if (callStart != null && endMs != null) {
+      end = callStart.add(Duration(milliseconds: endMs));
+    }
+
+    if (start == null) {
+      final fallbackStart = _fallbackStartMs(
+        segment['occurredAt'],
+        anchorOccurredAt,
+      );
+      if (fallbackStart != null) {
+        start = anchorOccurredAt.add(Duration(milliseconds: fallbackStart));
+      }
+    }
+
+    if (end == null && start != null) {
+      if (endMs != null && startMs != null && endMs >= startMs) {
+        end = start.add(Duration(milliseconds: endMs - startMs));
+      } else {
+        end = start.add(const Duration(seconds: 2));
+      }
+    }
+
+    if (start == null || end == null) return null;
+    if (end.isBefore(start)) end = start;
+    return _SegmentAbsoluteRange(start: start, end: end);
+  }
+
+  String _toClinicalLabelFromScore(double score) {
+    if (score >= SentimentColors.calmThreshold) return 'CALM';
+    if (score >= SentimentColors.anxiousThreshold) return 'ANXIOUS';
+    return 'DISTRESSED';
+  }
+
+  String _formatAbsoluteTime(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    final s = dt.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  String _formatSegmentRange(
+    dynamic startMs,
+    dynamic endMs, {
+    dynamic occurredAt,
+    DateTime? anchorOccurredAt,
+  }) {
+    final start = _asInt(startMs);
+    final end = _asInt(endMs);
+    if (start == null && end == null) {
+      final fallbackStart = _fallbackStartMs(occurredAt, anchorOccurredAt);
+      if (fallbackStart != null) {
+        return '[${_formatMs(fallbackStart)}]';
+      }
+      return '[--:--]';
+    }
+    if (start != null && end != null) {
+      return '[${_formatMs(start)}-${_formatMs(end)}]';
+    }
+    if (start != null) {
+      return '[${_formatMs(start)}-..:..]';
+    }
+    return '[..:..-${_formatMs(end!)}]';
+  }
+
+  int? _fallbackStartMs(dynamic occurredAt, DateTime? anchorOccurredAt) {
+    if (anchorOccurredAt == null) {
+      return null;
+    }
+    final at = _safeDate(occurredAt);
+    if (at.millisecondsSinceEpoch <= 0 ||
+        anchorOccurredAt.millisecondsSinceEpoch <= 0) {
+      return null;
+    }
+    final delta = at.difference(anchorOccurredAt).inMilliseconds;
+    return delta < 0 ? 0 : delta;
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  String _formatMs(int ms) {
+    final clamped = ms < 0 ? 0 : ms;
+    final totalSeconds = clamped ~/ 1000;
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
 }
 
-class _SummaryCard extends StatelessWidget {
+// ── Summary section ───────────────────────────────────────────────────────────
+
+class _SummarySection extends StatelessWidget {
+  final bool isDark;
   final String finalOverallScore;
   final String finalOverallLabel;
   final String finalOverallNotes;
   final String caregiverRecommendation;
+  final String? callSummaryHeadline;
+  final String? callSummaryAssessment;
+  final List<String> callSummaryConcerns;
+  final List<String> callSummaryActions;
   final String finalCallStatus;
   final String callDuration;
+  final Map<String, double> timeInStatePct;
+  final int sampleCount;
+  final double? stabilityScore;
+  final VoidCallback? onCallAgain;
+  final VoidCallback? onSendMessage;
 
-  const _SummaryCard({
+  const _SummarySection({
+    required this.isDark,
     required this.finalOverallScore,
     required this.finalOverallLabel,
     required this.finalOverallNotes,
     required this.caregiverRecommendation,
+    required this.callSummaryHeadline,
+    required this.callSummaryAssessment,
+    required this.callSummaryConcerns,
+    required this.callSummaryActions,
     required this.finalCallStatus,
     required this.callDuration,
+    required this.timeInStatePct,
+    required this.sampleCount,
+    required this.stabilityScore,
+    this.onCallAgain,
+    this.onSendMessage,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final overallColor = SentimentColors.forLabel(
+      finalOverallLabel,
+      isDark: isDark,
+    );
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Final Overall Assessment',
-              style: Theme.of(context).textTheme.titleMedium,
+            // ── Header row: duration + status ──────────────────────
+            Row(
+              children: [
+                const Icon(Icons.timer_outlined, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  callDuration,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: (isDark
+                            ? Colors.white12
+                            : Colors.black.withValues(alpha: 0.06)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    finalCallStatus,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
-            Text('Overall score: $finalOverallScore'),
-            Text('Overall label: $finalOverallLabel'),
-            Text('Clinical note: $finalOverallNotes'),
-            Text('Caregiver guidance: $caregiverRecommendation'),
-            Text('Call duration: $callDuration'),
-            Text('Final call status: $finalCallStatus'),
+            const SizedBox(height: 16),
+
+            // ── Time-in-state distribution ─────────────────────────
+            Text(
+              'EMOTIONAL STATE DISTRIBUTION',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.0,
+                color: isDark ? Colors.white38 : Colors.black45,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _StateDistributionRow(
+              timeInStatePct: timeInStatePct,
+              sampleCount: sampleCount,
+              isDark: isDark,
+            ),
+            const SizedBox(height: 16),
+
+            // ── Stability bar ──────────────────────────────────────
+            _StabilityBar(score: stabilityScore, isDark: isDark),
+            const SizedBox(height: 16),
+
+            // ── Overall assessment ─────────────────────────────────
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  finalOverallLabel == '--' ? '' : finalOverallLabel,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: overallColor,
+                  ),
+                ),
+                if (finalOverallScore != '--') ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    finalOverallScore,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: overallColor.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (finalOverallNotes != '--') ...[
+              const SizedBox(height: 4),
+              Text(
+                finalOverallNotes,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: isDark ? Colors.white54 : Colors.black54,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              caregiverRecommendation,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            if (callSummaryHeadline != null ||
+                callSummaryAssessment != null ||
+                callSummaryConcerns.isNotEmpty ||
+                callSummaryActions.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text(
+                'Call summary',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+              if (callSummaryHeadline != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  callSummaryHeadline!,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+              ],
+              if (callSummaryAssessment != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  callSummaryAssessment!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+              ],
+              if (callSummaryConcerns.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Key concerns: ${callSummaryConcerns.join(' | ')}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.white60 : Colors.black54,
+                  ),
+                ),
+              ],
+              if (callSummaryActions.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Actions: ${callSummaryActions.join(' | ')}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.white60 : Colors.black54,
+                  ),
+                ),
+              ],
+            ],
+            // ── Action buttons ─────────────────────────────────────
+            if (onCallAgain != null || onSendMessage != null) ...[
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  if (onCallAgain != null)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onCallAgain,
+                        icon: const Icon(Icons.videocam_outlined, size: 18),
+                        label: const Text('Call Again'),
+                      ),
+                    ),
+                  if (onCallAgain != null && onSendMessage != null)
+                    const SizedBox(width: 12),
+                  if (onSendMessage != null)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onSendMessage,
+                        icon: const Icon(Icons.message_outlined, size: 18),
+                        label: const Text('Send Message'),
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -638,51 +1649,234 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-class _DebugBreakdownCard extends StatelessWidget {
-  final Map<String, dynamic> debug;
+// ── State distribution row ────────────────────────────────────────────────────
 
-  const _DebugBreakdownCard({required this.debug});
+class _StateDistributionRow extends StatelessWidget {
+  final Map<String, double> timeInStatePct;
+  final int sampleCount;
+  final bool isDark;
 
-  String _fmt(dynamic value) {
-    if (value == null) return '--';
-    if (value is num) {
-      return value.toDouble().toStringAsFixed(3);
-    }
-    final parsed = double.tryParse(value.toString());
-    if (parsed != null) {
-      return parsed.toStringAsFixed(3);
-    }
-    return value.toString();
-  }
+  const _StateDistributionRow({
+    required this.timeInStatePct,
+    required this.sampleCount,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final vs = _fmt(debug['dbgVs']);
-    final iscore = _fmt(debug['dbgIs']);
-    final vc = _fmt(debug['dbgVc']);
-    final ic = _fmt(debug['dbgIc']);
-    final vw = _fmt(debug['dbgVw']);
-    final iw = _fmt(debug['dbgIw']);
+    final calm = timeInStatePct['CALM'] ?? 0.0;
+    final anxious = timeInStatePct['ANXIOUS'] ?? 0.0;
+    final distressed = timeInStatePct['DISTRESSED'] ?? 0.0;
+    final hasData = (calm + anxious + distressed) > 0;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    if (!hasData) {
+      return Text(
+        'No sentiment data available for this call.',
+        style: TextStyle(
+          fontSize: 12,
+          color: isDark ? Colors.white38 : Colors.black38,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Stacked proportional bar
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Row(
+            children: [
+              if (calm > 0)
+                Flexible(
+                  flex: (calm * 1000).round(),
+                  child: Container(
+                    height: 10,
+                    color: SentimentColors.forScore(0.8, isDark: isDark),
+                  ),
+                ),
+              if (anxious > 0)
+                Flexible(
+                  flex: (anxious * 1000).round(),
+                  child: Container(
+                    height: 10,
+                    color: SentimentColors.forScore(0.5, isDark: isDark),
+                  ),
+                ),
+              if (distressed > 0)
+                Flexible(
+                  flex: (distressed * 1000).round(),
+                  child: Container(
+                    height: 10,
+                    color: SentimentColors.forScore(0.1, isDark: isDark),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Label chips
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
           children: [
-            Text(
-              'Temporary Debug Breakdown',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 6),
-            Text('Voice score: $vs  (w=$vw, c=$vc)'),
-            Text('Video score: $iscore  (w=$iw, c=$ic)'),
+            if (calm > 0)
+              _StatChip(
+                label: 'CALM',
+                value: '${(calm * 100).round()}%',
+                color: SentimentColors.forScore(0.8, isDark: isDark),
+                isDark: isDark,
+              ),
+            if (anxious > 0)
+              _StatChip(
+                label: 'ANXIOUS',
+                value: '${(anxious * 100).round()}%',
+                color: SentimentColors.forScore(0.5, isDark: isDark),
+                isDark: isDark,
+              ),
+            if (distressed > 0)
+              _StatChip(
+                label: 'DISTRESSED',
+                value: '${(distressed * 100).round()}%',
+                color: SentimentColors.forScore(0.1, isDark: isDark),
+                isDark: isDark,
+              ),
           ],
         ),
+        if (sampleCount <= 1) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Based on final assessment only — not enough readings for a full timeline.',
+            style: TextStyle(
+              fontSize: 10,
+              fontStyle: FontStyle.italic,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final bool isDark;
+
+  const _StatChip({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.18 : 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.40)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$label  $value',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
+// ── Stability bar ─────────────────────────────────────────────────────────────
+
+class _StabilityBar extends StatelessWidget {
+  final double? score; // null = insufficient data
+  final bool isDark;
+
+  const _StabilityBar({required this.score, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasData = score != null;
+    final color = hasData
+        ? SentimentColors.forScore(score!, isDark: isDark)
+        : (isDark ? Colors.white38 : Colors.black45);
+    final pct = hasData ? '${(score! * 100).round()}%' : 'N/A';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'EMOTIONAL STABILITY',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.0,
+                color: isDark ? Colors.white38 : Colors.black45,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              pct,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Stack(
+            children: [
+              Container(
+                height: 8,
+                color: isDark
+                    ? Colors.white10
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+              FractionallySizedBox(
+                widthFactor: hasData ? score!.clamp(0.0, 1.0) : 0.0,
+                child: Container(
+                  height: 8,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [color.withValues(alpha: 0.7), color],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Painters & helpers ────────────────────────────────────────────────────────
 
 enum _TimelineChannel {
   all('All'),
@@ -693,221 +1887,275 @@ enum _TimelineChannel {
   const _TimelineChannel(this.label);
 }
 
+enum _CallTimelineWindow {
+  fullCall('Full call'),
+  first5('First 5 min'),
+  first15('First 15 min'),
+  last5('Last 5 min'),
+  last15('Last 15 min'),
+  custom('Custom range');
+
+  final String label;
+  const _CallTimelineWindow(this.label);
+}
+
+class _TimelineWindowSpan {
+  final double startMinute;
+  final double endMinute;
+
+  const _TimelineWindowSpan({
+    required this.startMinute,
+    required this.endMinute,
+  });
+}
+
 class _ScoreSample {
   final double minuteOffset;
   final double score;
+  final DateTime occurredAt;
+  const _ScoreSample({
+    required this.minuteOffset,
+    required this.score,
+    required this.occurredAt,
+  });
+}
 
-  const _ScoreSample({required this.minuteOffset, required this.score});
+class _SegmentAbsoluteRange {
+  final DateTime start;
+  final DateTime end;
+
+  const _SegmentAbsoluteRange({required this.start, required this.end});
+}
+
+class _SegmentSentimentHit {
+  final String timeText;
+  final String channel;
+  final String label;
+  final Color color;
+  final DateTime occurredAt;
+
+  const _SegmentSentimentHit({
+    required this.timeText,
+    required this.channel,
+    required this.label,
+    required this.color,
+    required this.occurredAt,
+  });
 }
 
 class _SentimentTimelinePainter extends CustomPainter {
   final double durationMinutes;
   final Map<_TimelineChannel, List<_ScoreSample>> series;
   final Map<_TimelineChannel, Color> channelColors;
+  final bool isDark;
+  final double? selectedMinute;
+  final double? selectedScore;
 
   const _SentimentTimelinePainter({
     required this.durationMinutes,
     required this.series,
     required this.channelColors,
+    required this.isDark,
+    required this.selectedMinute,
+    required this.selectedScore,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    const leftPad = 72.0;
-    const rightPad = 20.0;
-    const topPad = 20.0;
+    if (durationMinutes <= 0) return;
+    const leftPad   = 72.0;
+    const rightPad  = 20.0;
+    const topPad    = 20.0;
     const bottomPad = 44.0;
 
-    final plotWidth = math.max(1.0, size.width - leftPad - rightPad);
-    final plotHeight = math.max(1.0, size.height - topPad - bottomPad);
-    final plotRect = Rect.fromLTWH(leftPad, topPad, plotWidth, plotHeight);
+    final plotWidth  = math.max(1.0, size.width  - leftPad - rightPad);
+    final plotHeight = math.max(1.0, size.height - topPad  - bottomPad);
+    final plotRect   = Rect.fromLTWH(leftPad, topPad, plotWidth, plotHeight);
 
-    final framePaint = Paint()
-      ..color = Colors.grey.shade400
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    canvas.drawRect(plotRect, framePaint);
+    // Frame
+    canvas.drawRect(
+      plotRect,
+      Paint()
+        ..color = (isDark ? Colors.white24 : Colors.grey.shade400)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
 
-    final textPainter = TextPainter(textDirection: TextDirection.ltr);
-    double yForScore(double score) {
-      return plotRect.bottom - score.clamp(0.0, 1.0) * plotRect.height;
+    final tp = TextPainter(textDirection: TextDirection.ltr);
+    double yForScore(double s) =>
+        plotRect.bottom - s.clamp(0.0, 1.0) * plotRect.height;
+
+    // Band fills
+    final bands = <(double lo, double hi, double midScore)>[
+      (0.60, 1.00, 0.80), // calm
+      (0.35, 0.60, 0.50), // anxious
+      (0.00, 0.35, 0.10), // distressed
+    ];
+    for (final (lo, hi, mid) in bands) {
+      canvas.drawRect(
+        Rect.fromLTRB(
+          plotRect.left, yForScore(hi), plotRect.right, yForScore(lo),
+        ),
+        Paint()
+          ..color = SentimentColors.forScore(mid, isDark: isDark)
+                    .withValues(alpha: isDark ? 0.14 : 0.10),
+      );
     }
 
-    final calmTop = yForScore(1.0);
-    final calmBottom = yForScore(0.6);
-    final anxiousTop = yForScore(0.6);
-    final anxiousBottom = yForScore(0.35);
-    final distressedTop = yForScore(0.35);
-    final distressedBottom = yForScore(0.0);
+    // Band mid-line guidelines
+    for (final (lo, hi, mid) in bands) {
+      final y = (yForScore(lo) + yForScore(hi)) / 2;
+      canvas.drawLine(
+        Offset(plotRect.left, y),
+        Offset(plotRect.right, y),
+        Paint()
+          ..color = SentimentColors.forScore(mid, isDark: isDark)
+                    .withValues(alpha: 0.5)
+          ..strokeWidth = 1,
+      );
+    }
 
-    canvas.drawRect(
-      Rect.fromLTRB(plotRect.left, calmTop, plotRect.right, calmBottom),
-      Paint()..color = Colors.green.withValues(alpha: 0.12),
-    );
-    canvas.drawRect(
-      Rect.fromLTRB(plotRect.left, anxiousTop, plotRect.right, anxiousBottom),
-      Paint()..color = Colors.amber.withValues(alpha: 0.12),
-    );
-    canvas.drawRect(
-      Rect.fromLTRB(plotRect.left, distressedTop, plotRect.right, distressedBottom),
-      Paint()..color = Colors.red.withValues(alpha: 0.12),
-    );
-
-    _drawBandGuideline(
-      canvas,
-      y: (calmTop + calmBottom) / 2,
-      color: Colors.green,
-      leftPad: leftPad,
-      rightX: leftPad + plotWidth,
-    );
-    _drawBandGuideline(
-      canvas,
-      y: (anxiousTop + anxiousBottom) / 2,
-      color: Colors.amber.shade700,
-      leftPad: leftPad,
-      rightX: leftPad + plotWidth,
-    );
-    _drawBandGuideline(
-      canvas,
-      y: (distressedTop + distressedBottom) / 2,
-      color: Colors.red,
-      leftPad: leftPad,
-      rightX: leftPad + plotWidth,
-    );
-
-    const yTicks = [1.0, 0.8, 0.6, 0.4, 0.2, 0.0];
-    for (final tick in yTicks) {
+    // Y-axis ticks + labels
+    final axisColor = isDark ? Colors.white38 : Colors.grey.shade600;
+    for (final tick in [1.0, 0.8, 0.6, 0.4, 0.2, 0.0]) {
       final y = yForScore(tick);
       canvas.drawLine(
-        Offset(leftPad - 6, y),
-        Offset(leftPad, y),
-        Paint()..color = Colors.grey.shade500,
+        Offset(leftPad - 6, y), Offset(leftPad, y),
+        Paint()..color = axisColor,
       );
-
-      textPainter.text = TextSpan(
+      tp.text = TextSpan(
         text: tick.toStringAsFixed(1),
-        style: TextStyle(color: Colors.grey.shade700, fontSize: 10),
+        style: TextStyle(color: axisColor, fontSize: 10),
       );
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(leftPad - textPainter.width - 10, y - textPainter.height / 2),
-      );
+      tp.layout();
+      tp.paint(canvas,
+          Offset(leftPad - tp.width - 10, y - tp.height / 2));
     }
 
-    textPainter.text = TextSpan(
-      text: 'Sentiment score (0-1)',
-      style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+    // Y-axis title
+    tp.text = TextSpan(
+      text: 'Sentiment score (0–1)',
+      style: TextStyle(color: axisColor, fontSize: 11),
     );
-    textPainter.layout();
+    tp.layout();
     canvas.save();
-    canvas.translate(14, topPad + (plotHeight / 2) + (textPainter.width / 2));
+    canvas.translate(14, topPad + plotHeight / 2 + tp.width / 2);
     canvas.rotate(-math.pi / 2);
-    textPainter.paint(canvas, Offset.zero);
+    tp.paint(canvas, Offset.zero);
     canvas.restore();
 
+    // Data lines
     for (final entry in series.entries) {
       final points = entry.value;
       if (points.isEmpty) continue;
-
-      final color = channelColors[entry.key] ?? Colors.blueGrey;
-      final linePaint = Paint()
-        ..color = color
-        ..strokeWidth = 2.2
-        ..style = PaintingStyle.stroke;
+      final color = channelColors[entry.key] ??
+          SentimentColors.forChannel(
+            entry.key.name.toUpperCase(), isDark: isDark,
+          );
 
       final path = Path();
       for (var i = 0; i < points.length; i++) {
-        final sample = points[i];
-        final x = leftPad + (sample.minuteOffset / durationMinutes) * plotWidth;
-        final y = yForScore(sample.score);
-        if (i == 0) {
-          path.moveTo(x, y);
-        } else {
-          path.lineTo(x, y);
-        }
-
+        final x = leftPad +
+            (points[i].minuteOffset / durationMinutes) * plotWidth;
+        final y = yForScore(points[i].score);
+        i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
         canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = color);
       }
-
-      canvas.drawPath(path, linePaint);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color
+          ..strokeWidth = 2.2
+          ..style = PaintingStyle.stroke,
+      );
     }
 
+    if (selectedMinute != null && selectedScore != null) {
+      final sx =
+          leftPad + (selectedMinute!.clamp(0.0, durationMinutes) / durationMinutes) * plotWidth;
+      final sy = yForScore(selectedScore!.clamp(0.0, 1.0));
+      final marker = SentimentColors.forScore(selectedScore!, isDark: isDark);
+      canvas.drawLine(
+        Offset(sx, plotRect.top),
+        Offset(sx, plotRect.bottom),
+        Paint()
+          ..color = marker.withValues(alpha: 0.7)
+          ..strokeWidth = 1.2,
+      );
+      canvas.drawCircle(
+        Offset(sx, sy),
+        7,
+        Paint()
+          ..color = marker.withValues(alpha: 0.18)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawCircle(
+        Offset(sx, sy),
+        4,
+        Paint()..color = marker,
+      );
+    }
+
+    // X-axis ticks + labels
     const tickCount = 5;
     for (var i = 0; i < tickCount; i++) {
-      final ratio = i / (tickCount - 1);
-      final x = leftPad + ratio * plotWidth;
+      final ratio     = i / (tickCount - 1);
+      final x         = leftPad + ratio * plotWidth;
       final tickMinute = durationMinutes * ratio;
       canvas.drawLine(
-        Offset(x, plotRect.bottom),
-        Offset(x, plotRect.bottom + 6),
-        Paint()..color = Colors.grey.shade500,
+        Offset(x, plotRect.bottom), Offset(x, plotRect.bottom + 6),
+        Paint()..color = axisColor,
       );
-
-      textPainter.text = TextSpan(
+      tp.text = TextSpan(
         text: _formatMinuteTick(tickMinute),
-        style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+        style: TextStyle(color: axisColor, fontSize: 11),
       );
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(x - textPainter.width / 2, plotRect.bottom + 10),
-      );
+      tp.layout();
+      tp.paint(canvas,
+          Offset(x - tp.width / 2, plotRect.bottom + 10));
     }
 
-    textPainter.text = TextSpan(
+    // X-axis title
+    tp.text = TextSpan(
       text: 'Elapsed Time',
-      style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+      style: TextStyle(color: axisColor, fontSize: 12),
     );
-    textPainter.layout();
-    textPainter.paint(
+    tp.layout();
+    tp.paint(
       canvas,
-      Offset(
-        leftPad + plotWidth / 2 - textPainter.width / 2,
-        size.height - textPainter.height,
-      ),
+      Offset(leftPad + plotWidth / 2 - tp.width / 2,
+             size.height - tp.height),
     );
-  }
-
-  void _drawBandGuideline(
-    Canvas canvas, {
-    required double y,
-    required Color color,
-    required double leftPad,
-    required double rightX,
-  }) {
-    final paint = Paint()
-      ..color = color.withValues(alpha: 0.6)
-      ..strokeWidth = 1;
-    canvas.drawLine(Offset(leftPad, y), Offset(rightX, y), paint);
   }
 
   String _formatMinuteTick(double minute) {
     final totalSeconds = (minute * 60).round();
-    final hours = totalSeconds ~/ 3600;
-    final minutes = (totalSeconds % 3600) ~/ 60;
-    final seconds = totalSeconds % 60;
-    if (hours > 0) {
-      return '${hours}h ${minutes}m';
-    }
-    if (minutes > 0) {
-      return '${minutes}m ${seconds}s';
-    }
-    return '${seconds}s';
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    final s = totalSeconds % 60;
+    if (h > 0) return '${h}h ${m}m';
+    if (m > 0) return '${m}m ${s}s';
+    return '${s}s';
   }
 
   @override
-  bool shouldRepaint(covariant _SentimentTimelinePainter oldDelegate) {
-    return oldDelegate.durationMinutes != durationMinutes ||
-        oldDelegate.series != series ||
-        oldDelegate.channelColors != channelColors;
-  }
+  bool shouldRepaint(covariant _SentimentTimelinePainter old) =>
+      old.durationMinutes != durationMinutes ||
+      old.series != series ||
+      old.channelColors != channelColors ||
+      old.isDark != isDark ||
+      old.selectedMinute != selectedMinute ||
+      old.selectedScore != selectedScore;
 }
 
 class _TimelineLegend extends StatelessWidget {
   final Map<_TimelineChannel, Color> channelColors;
+  final bool isDark;
 
-  const _TimelineLegend({required this.channelColors});
+  const _TimelineLegend({
+    required this.channelColors,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -915,16 +2163,27 @@ class _TimelineLegend extends StatelessWidget {
       spacing: 12,
       runSpacing: 8,
       children: [
-        const _LegendChip(label: 'Calm zone', color: Colors.green),
-        const _LegendChip(label: 'Anxious zone', color: Colors.amber),
-        const _LegendChip(label: 'Distressed zone', color: Colors.red),
+        _LegendChip(
+          label: 'Calm',
+          color: SentimentColors.forScore(0.8, isDark: isDark),
+        ),
+        _LegendChip(
+          label: 'Anxious',
+          color: SentimentColors.forScore(0.5, isDark: isDark),
+        ),
+        _LegendChip(
+          label: 'Distressed',
+          color: SentimentColors.forScore(0.1, isDark: isDark),
+        ),
         _LegendChip(
           label: 'Voice',
-          color: channelColors[_TimelineChannel.voice] ?? Colors.blueGrey,
+          color: channelColors[_TimelineChannel.voice] ??
+              SentimentColors.forChannel('VOICE', isDark: isDark),
         ),
         _LegendChip(
           label: 'Video',
-          color: channelColors[_TimelineChannel.video] ?? Colors.blueGrey,
+          color: channelColors[_TimelineChannel.video] ??
+              SentimentColors.forChannel('VIDEO', isDark: isDark),
         ),
       ],
     );
@@ -934,7 +2193,6 @@ class _TimelineLegend extends StatelessWidget {
 class _LegendChip extends StatelessWidget {
   final String label;
   final Color color;
-
   const _LegendChip({required this.label, required this.color});
 
   @override
@@ -956,3 +2214,4 @@ class _LegendChip extends StatelessWidget {
     );
   }
 }
+

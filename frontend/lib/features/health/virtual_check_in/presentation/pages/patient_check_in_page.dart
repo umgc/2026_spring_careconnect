@@ -34,28 +34,40 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
   ];
 
   late bool videoCallActive = false;
-  bool isCameraAvailable = false;
-  bool isCheckingCamera = true;
+  bool isCameraAvailable = true;
+  bool isCheckingCamera = false;
+  bool _cameraChecked = false;
 
   @override
   void initState() {
     super.initState();
-    _checkCameraAvailability();
   }
 
-  Future<void> _checkCameraAvailability() async {
+  Future<bool> _checkCameraAvailability() async {
     try {
+      setState(() {
+        isCheckingCamera = true;
+      });
       final cameras = await availableCameras();
-      setState(() {
-        isCameraAvailable = cameras.isNotEmpty;
-        isCheckingCamera = false;
-      });
+      final available = cameras.isNotEmpty;
+      if (mounted) {
+        setState(() {
+          isCameraAvailable = available;
+          isCheckingCamera = false;
+          _cameraChecked = true;
+        });
+      }
+      return available;
     } catch (e) {
-      setState(() {
-        isCameraAvailable = false;
-        isCheckingCamera = false;
-      });
+      if (mounted) {
+        setState(() {
+          isCameraAvailable = false;
+          isCheckingCamera = false;
+          _cameraChecked = true;
+        });
+      }
       print('Error checking camera availability: $e');
+      return false;
     }
   }
 
@@ -68,6 +80,18 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
 
   void cameraHandler() async
   {
+    final available = await _checkCameraAvailability();
+    if (!available) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera not available on this device/session.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     if(!videoCallActive)
       {
         targetCamera = setUpCamera();
@@ -167,12 +191,14 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
     return Scaffold(
       appBar: DefaultAppHeader(),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: isCameraAvailable ? Colors.green : Colors.grey,
+        backgroundColor: (isCheckingCamera || (!isCameraAvailable && _cameraChecked))
+            ? Colors.grey
+            : Colors.green,
         foregroundColor: Colors.white,
-        onPressed: (isCheckingCamera || !isCameraAvailable) ? null : () => cameraHandler(),
+        onPressed: isCheckingCamera ? null : () => cameraHandler(),
         tooltip: isCheckingCamera
             ? 'Checking camera...'
-            : (isCameraAvailable
+            : ((!_cameraChecked || isCameraAvailable)
                 ? 'Start Video Call'
                 : 'Camera not available'),
         child: isCheckingCamera
@@ -182,10 +208,12 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                 child: CircularProgressIndicator(
                   color: Colors.white,
                   strokeWidth: 2,
-                ),
+                  ),
               )
             : Icon(
-                isCameraAvailable ? Icons.video_call : Icons.videocam_off,
+                (!_cameraChecked || isCameraAvailable)
+                    ? Icons.video_call
+                    : Icons.videocam_off,
               ),
       ),
       body: SafeArea(
@@ -210,7 +238,7 @@ class _PatientVirtualCheckInState extends State<PatientVirtualCheckIn> {
                     "Share how you're feeling today",
                     style: TextStyle(color: Colors.grey[600]),
                   ),
-                  if (!isCheckingCamera && !isCameraAvailable)
+                  if (_cameraChecked && !isCheckingCamera && !isCameraAvailable)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
                       child: Container(

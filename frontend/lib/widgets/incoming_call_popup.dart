@@ -213,20 +213,6 @@ class _IncomingCallPopupState extends State<IncomingCallPopup>
                       ],
                     ),
 
-                    // Call ID (for debugging/reference)
-                    if (widget.callId.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(
-                          'Call ID: ${widget.callId.substring(0, 8)}...',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Colors.grey[500],
-                                fontFamily: 'monospace',
-                              ),
-                        ),
-                      ),
-
                     // Action Buttons
                     Padding(
                       padding: const EdgeInsets.all(20),

@@ -93,6 +93,9 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
   List<Map<String, dynamic>> _callHistoryEvents = [];
   bool _isDeletingCallHistory = false;
   int _callHistoryPatientUserId = 0;
+  int? _caregiverLinkId;
+  bool _patientInitiatedCallsEnabled = true;
+  bool _isSavingPatientCallPolicy = false;
 
   int _currentPain = 0;
   String _painLocation = 'Not provided';
@@ -321,6 +324,7 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
         caregiverData: caregiverData,
         familyMembers: familyMembers,
       );
+      _applyCaregiverCallPolicy(caregiverData);
       _applyMoodData(moodData);
       _applySymptomData(symptomData);
       _applyVirtualCheckIns(detailsPayload);
@@ -683,7 +687,22 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
 
       final actorId = _safeUserId(event['actorUserId']);
       final targetId = _safeUserId(event['targetUserId']);
-      return actorId == patientUserId || targetId == patientUserId;
+      if (actorId == patientUserId || targetId == patientUserId) {
+        return true;
+      }
+
+      final metadata = _extractJsonMap(event['metadataJson']);
+      final contextRaw = metadata['contextPatientUserIds'];
+      if (contextRaw is List) {
+        for (final item in contextRaw) {
+          final contextId = _safeUserId(item);
+          if (contextId == patientUserId) {
+            return true;
+          }
+        }
+      }
+      final singleContext = _safeUserId(metadata['contextPatientUserId']);
+      return singleContext == patientUserId;
     }).toList();
 
     filtered.sort((a, b) {
@@ -695,6 +714,96 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
     });
 
     _callHistoryEvents = filtered;
+  }
+
+  Map<String, dynamic> _extractJsonMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is String) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+      } catch (_) {
+        return const <String, dynamic>{};
+      }
+    }
+    return const <String, dynamic>{};
+  }
+
+  void _applyCaregiverCallPolicy(Map<String, dynamic>? caregiverData) {
+    if (caregiverData == null) {
+      return;
+    }
+    final link = caregiverData['link'];
+    if (link is! Map<String, dynamic>) {
+      return;
+    }
+
+    final linkIdRaw = link['linkId'] ?? link['id'];
+    final linkId = linkIdRaw is int
+        ? linkIdRaw
+        : int.tryParse(linkIdRaw?.toString() ?? '');
+
+    final enabledRaw = link['patientVideoCallsEnabled'];
+    final enabled = enabledRaw is bool
+        ? enabledRaw
+        : enabledRaw == null
+            ? true
+            : enabledRaw.toString().toLowerCase() != 'false';
+
+    _caregiverLinkId = linkId;
+    _patientInitiatedCallsEnabled = enabled;
+  }
+
+  Future<void> _togglePatientInitiatedCalls(bool enabled) async {
+    final linkId = _caregiverLinkId;
+    if (linkId == null || _isSavingPatientCallPolicy) {
+      return;
+    }
+
+    setState(() {
+      _isSavingPatientCallPolicy = true;
+      _patientInitiatedCallsEnabled = enabled;
+    });
+
+    final success = await ApiService.setPatientVideoCallsEnabledForLink(
+      linkId: linkId,
+      enabled: enabled,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      setState(() {
+        _patientInitiatedCallsEnabled = !enabled;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to update patient call policy. Please retry.'),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            enabled
+                ? 'Patient-initiated calls are enabled.'
+                : 'Patient-initiated calls are disabled.',
+          ),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSavingPatientCallPolicy = false;
+      });
+    }
   }
 
   int? _safeUserId(dynamic value) {
@@ -1083,6 +1192,29 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
                                           ? 'Deleting call history...'
                                           : 'Delete Call History (Dev)',
                                     ),
+                                  ),
+                                ),
+                              ),
+                            if (widget.isCaregiver && _caregiverLinkId != null)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                child: Card(
+                                  margin: EdgeInsets.zero,
+                                  child: SwitchListTile.adaptive(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 4,
+                                    ),
+                                    title: const Text('Allow Patient-Initiated Video Calls'),
+                                    subtitle: Text(
+                                      _patientInitiatedCallsEnabled
+                                          ? 'This patient can initiate video calls to their care team.'
+                                          : 'Patient-initiated video calls are currently blocked.',
+                                    ),
+                                    value: _patientInitiatedCallsEnabled,
+                                    onChanged: _isSavingPatientCallPolicy
+                                        ? null
+                                        : _togglePatientInitiatedCalls,
                                   ),
                                 ),
                               ),

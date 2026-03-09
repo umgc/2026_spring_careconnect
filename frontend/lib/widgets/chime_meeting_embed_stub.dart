@@ -27,6 +27,7 @@ Widget buildChimeMeetingEmbed({
   int sentimentCaptureIntervalMs = 15000,
   VoidCallback? onEndCallRequested,
   void Function(String transcript)? onTranscriptSample,
+  void Function(String status, String? detail)? onTranscriptStatus,
   void Function(double averageLevel, double speechRatio, double variability)? onVoiceMetricsSample,
   void Function(String imageBase64)? onVideoSample,
   void Function(String channel, bool muted)? onSentimentChannelState,

@@ -155,6 +155,7 @@ Widget buildChimeMeetingEmbed({
   int sentimentCaptureIntervalMs = 15000,
   VoidCallback? onEndCallRequested,
   void Function(String transcript)? onTranscriptSample,
+  void Function(String status, String? detail)? onTranscriptStatus,
   void Function(double averageLevel, double speechRatio, double variability)?
   onVoiceMetricsSample,
   void Function(String imageBase64)? onVideoSample,
@@ -173,6 +174,7 @@ Widget buildChimeMeetingEmbed({
     sentimentCaptureIntervalMs: sentimentCaptureIntervalMs,
     onEndCallRequested: onEndCallRequested,
     onTranscriptSample: onTranscriptSample,
+    onTranscriptStatus: onTranscriptStatus,
     onVoiceMetricsSample: onVoiceMetricsSample,
     onVideoSample: onVideoSample,
     onSentimentChannelState: onSentimentChannelState,
@@ -192,6 +194,7 @@ class _ChimeMeetingEmbedWeb extends StatefulWidget {
   final int sentimentCaptureIntervalMs;
   final VoidCallback? onEndCallRequested;
   final void Function(String transcript)? onTranscriptSample;
+  final void Function(String status, String? detail)? onTranscriptStatus;
   final void Function(double averageLevel, double speechRatio, double variability)?
   onVoiceMetricsSample;
   final void Function(String imageBase64)? onVideoSample;
@@ -210,6 +213,7 @@ class _ChimeMeetingEmbedWeb extends StatefulWidget {
     required this.sentimentCaptureIntervalMs,
     required this.onEndCallRequested,
     required this.onTranscriptSample,
+    required this.onTranscriptStatus,
     required this.onVoiceMetricsSample,
     required this.onVideoSample,
     required this.onSentimentChannelState,
@@ -270,6 +274,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         final level = data['level'] ?? 'info';
         final message = data['message'] ?? '';
         debugPrint('[CareConnect][Chime][$level] $message');
+        _emitTranscriptStatusFromLog(level.toString(), message.toString());
 
         if (!mounted) return;
         if (data['action'] == 'end-call-request') {
@@ -278,7 +283,33 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         }
 
         if (data['action'] == 'sentiment-transcript') {
-          // Transcript sentiment is intentionally disabled in voice/video-only mode.
+          final rawPayload = data['payload'];
+          Map<String, dynamic> payload = const {};
+          if (rawPayload is Map<String, dynamic>) {
+            payload = rawPayload;
+          } else if (rawPayload is Map) {
+            payload = rawPayload.map((k, v) => MapEntry(k.toString(), v));
+          } else if (rawPayload is String && rawPayload.trim().isNotEmpty) {
+            try {
+              final decoded = jsonDecode(rawPayload);
+              if (decoded is Map) {
+                payload = decoded.map((k, v) => MapEntry(k.toString(), v));
+              }
+            } catch (_) {}
+          }
+          final transcript = (payload['text'] ?? '').toString().trim();
+          if (transcript.isNotEmpty) {
+            debugPrint(
+              '[CareConnect][Transcript][web] received len=${transcript.length}',
+            );
+            final source = (payload['source'] ?? '').toString().toLowerCase();
+            if (source.contains('speech')) {
+              widget.onTranscriptStatus?.call('FALLBACK', 'Speech recognition');
+            } else {
+              widget.onTranscriptStatus?.call('CONNECTED', 'Live transcript');
+            }
+            widget.onTranscriptSample?.call(transcript);
+          }
           return;
         }
 
@@ -474,6 +505,31 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
     super.dispose();
   }
 
+  void _emitTranscriptStatusFromLog(String level, String message) {
+    if (message.isEmpty || widget.onTranscriptStatus == null) {
+      return;
+    }
+    final lower = message.toLowerCase();
+    if (lower.contains('chime transcript capture subscribed')) {
+      widget.onTranscriptStatus!.call('AWAITING', 'Subscribed, waiting for transcript');
+      return;
+    }
+    if (lower.contains('speech transcription capture started')) {
+      widget.onTranscriptStatus!.call('FALLBACK', 'Speech recognition');
+      return;
+    }
+    if (lower.contains('speechrecognition api unavailable') ||
+        lower.contains('speech recognition error: not-allowed') ||
+        lower.contains('speech recognition error: service-not-allowed')) {
+      widget.onTranscriptStatus!.call('BLOCKED', 'Microphone or browser blocked');
+      return;
+    }
+    if (level.toLowerCase() == 'warn' &&
+        lower.contains('no usable transcript text captured')) {
+      widget.onTranscriptStatus!.call('FALLBACK', 'No live transcript text');
+    }
+  }
+
   String _buildMeetingHtml(String configJson) {
     return '''
 <!doctype html>
@@ -649,6 +705,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         let sentimentVideoCtx = null;
         let speechRecognizer = null;
         let speechRestartTimer = null;
+        let speechPermissionDenied = false;
         let lastTranscriptSignature = '';
         let lastTranscriptAt = 0;
         let chimeTranscriptHandler = null;
@@ -766,7 +823,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         }
 
         function startChimeTranscriptCapture() {
-          if (!shouldAutoSentimentCapture || isAudioMuted || !config.audioEnabled) {
+          if (!shouldAutoSentimentCapture) {
             return false;
           }
           if (!audioVideo || typeof audioVideo.realtimeSubscribeToTranscriptEvent !== 'function') {
@@ -775,9 +832,6 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           stopChimeTranscriptCapture();
           chimeTranscriptHandler = (transcriptEvent) => {
-            if (isAudioMuted) {
-              return;
-            }
             const text = extractTranscriptTextFromChimeEvent(transcriptEvent);
             if (text.length > 0) {
               emitTranscriptSample(text, 'chime-transcript');
@@ -1256,10 +1310,6 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         }
 
         function emitTranscriptSample(rawText, source) {
-          if (isAudioMuted) {
-            return;
-          }
-
           const text = String(rawText || '').trim();
           if (text.length < 8) {
             return;
@@ -1402,7 +1452,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           if (!shouldAutoSentimentCapture) {
             return;
           }
-          if (isAudioMuted) {
+          if (speechPermissionDenied) {
             return;
           }
           if (chimeTranscriptActive) {
@@ -1421,10 +1471,6 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           speechRecognizer.lang = config.speechLocale || navigator.language || 'en-US';
 
           speechRecognizer.onresult = (event) => {
-            if (isAudioMuted) {
-              return;
-            }
-
             let transcript = '';
             for (let i = event.resultIndex; i < event.results.length; i += 1) {
               const result = event.results[i];
@@ -1438,7 +1484,12 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           };
 
           speechRecognizer.onerror = (event) => {
-            report('warn', 'Speech recognition error: ' + String(event && event.error ? event.error : 'unknown'));
+            const errorCode = String(event && event.error ? event.error : 'unknown');
+            report('warn', 'Speech recognition error: ' + errorCode);
+            if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+              speechPermissionDenied = true;
+              stopSpeechRecognitionCapture();
+            }
           };
 
           speechRecognizer.onend = () => {
@@ -1657,8 +1708,14 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         }
 
         async function restartTextSentimentCapture(reason) {
-          emitSentimentChannelState('text', true, reason || 'disabled-by-config');
-          return false;
+          const chimeStarted = startChimeTranscriptCapture();
+          if (!chimeStarted) {
+            startSpeechRecognitionCapture();
+            emitSentimentChannelState('text', false, reason || 'speech-fallback-started');
+            return true;
+          }
+          emitSentimentChannelState('text', false, reason || 'channel-restart');
+          return true;
         }
 
         async function restartVoiceSentimentCapture(reason) {
@@ -1706,10 +1763,14 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             return;
           }
 
+          const chimeTranscriptStarted = startChimeTranscriptCapture();
+          if (!chimeTranscriptStarted) {
+            startSpeechRecognitionCapture();
+          }
           startChimeVoiceMetricsCapture();
 
           startVideoSentimentCapture();
-          emitSentimentChannelState('text', true, 'disabled-by-config');
+          emitSentimentChannelState('text', false, 'capture-started');
         }
 
         function iconSvg(name) {

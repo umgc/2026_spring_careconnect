@@ -22,13 +22,19 @@ import '../services/call_notification_service.dart';
 /// pointing to the Chime meeting URL, which works on both mobile and web.
 class VideoCallService {
   static const Duration _sentimentStaleThreshold = Duration(seconds: 45);
+  static const int _maxBufferedTranscriptSegments = 120;
+  static const int _maxTranscriptChars = 1200;
+  static const Duration _transcriptFlushInterval = Duration(seconds: 4);
 
   bool _isInitialized = false;
   bool _isInCall = false;
   bool _isPatientSentimentSource = false;
   String? _currentCallId;
   String? _otherPartyId;
+  Map<String, dynamic>? _callContextMetadata;
   String? _jwtToken;
+  DateTime? _callStartedAt;
+  int _lastTranscriptEndMs = 0;
 
   // Chime meeting credentials returned by the backend
   Map<String, dynamic>? _meetingCredentials;
@@ -40,6 +46,9 @@ class VideoCallService {
 
   // Sentiment posting timer — sends analysis data every 15 seconds
   Timer? _sentimentTimer;
+  Timer? _transcriptFlushTimer;
+  bool _transcriptFlushInProgress = false;
+  final List<_BufferedTranscriptSegment> _pendingTranscriptSegments = [];
 
   // Stream for sentiment updates received via WebSocket
   StreamSubscription? _wsSubscription;
@@ -102,24 +111,37 @@ class VideoCallService {
     required String otherPartyId,
     required bool isVideoEnabled,
     required bool isAudioEnabled,
+    Map<String, dynamic>? callContextMetadata,
   }) async {
     if (!_isInitialized) throw Exception('VideoCallService not initialized');
 
     _currentCallId = callId;
     _otherPartyId = otherPartyId;
+    _callContextMetadata = callContextMetadata == null
+        ? null
+        : Map<String, dynamic>.from(callContextMetadata);
     _isInCall = true;
+    _callStartedAt = DateTime.now();
+    _lastTranscriptEndMs = 0;
     _aggregatedSentiment.clear();
+    _pendingTranscriptSegments.clear();
     _seedAwaitingSentimentState();
+    _startTranscriptFlushTimer();
 
     debugPrint('📹 Joining Chime call: $callId');
 
     try {
+      final requestBody =
+          (_callContextMetadata == null || _callContextMetadata!.isEmpty)
+          ? null
+          : jsonEncode(_callContextMetadata);
       final response = await http.post(
         Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$callId/join'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
         },
+        body: requestBody,
       );
 
       if (response.statusCode != 200) {
@@ -148,6 +170,10 @@ class VideoCallService {
       );
     } catch (e) {
       _isInCall = false;
+      _callStartedAt = null;
+      _lastTranscriptEndMs = 0;
+      _callContextMetadata = null;
+      _stopTranscriptFlushTimer();
       debugPrint('❌ Failed to join Chime call: $e');
       rethrow;
     }
@@ -167,6 +193,12 @@ class VideoCallService {
     debugPrint('📴 Ending call: $callId');
 
     _sentimentTimer?.cancel();
+    await _flushPendingTranscriptSegments(
+      callIdOverride: callId,
+      maxAttempts: 3,
+      respectInCallState: false,
+    );
+    _stopTranscriptFlushTimer();
 
     final otherPartyId = _otherPartyId?.trim();
     if (otherPartyId != null && otherPartyId.isNotEmpty) {
@@ -184,7 +216,10 @@ class VideoCallService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
         },
-        body: jsonEncode({'otherPartyId': _otherPartyId}),
+        body: jsonEncode({
+          'otherPartyId': _otherPartyId,
+          ...?_callContextMetadata,
+        }),
       );
     } catch (e) {
       debugPrint('⚠️ Error notifying backend of call end: $e');
@@ -193,8 +228,12 @@ class VideoCallService {
     _isInCall = false;
     _currentCallId = null;
     _otherPartyId = null;
+    _callContextMetadata = null;
+    _callStartedAt = null;
+    _lastTranscriptEndMs = 0;
     _meetingCredentials = null;
     _aggregatedSentiment.clear();
+    _pendingTranscriptSegments.clear();
     CallNotificationService.clearActiveCall(callId);
     _onCallEnded?.call();
   }
@@ -237,6 +276,48 @@ class VideoCallService {
       debugPrint('⚠️ Text sentiment error: $e');
       return false;
     }
+  }
+
+  Future<bool> sendTranscriptSegment({
+    required String text,
+    String? speakerLabel,
+    int? startMs,
+    int? endMs,
+    String? source,
+  }) async {
+    if (!_isInCall || _currentCallId == null) {
+      return false;
+    }
+
+    var trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return false;
+    }
+    if (trimmed.length > _maxTranscriptChars) {
+      trimmed = trimmed.substring(0, _maxTranscriptChars);
+    }
+    final resolvedEndMs = _resolveTranscriptEndMs(endMs);
+    final resolvedStartMs =
+        _resolveTranscriptStartMs(trimmed, startMs, resolvedEndMs);
+    if (resolvedEndMs != null && resolvedEndMs > _lastTranscriptEndMs) {
+      _lastTranscriptEndMs = resolvedEndMs;
+    }
+
+    _enqueueTranscriptSegment(
+      _BufferedTranscriptSegment(
+        callId: _currentCallId!,
+        speakerLabel: speakerLabel ?? 'PATIENT',
+        text: trimmed,
+        startMs: resolvedStartMs,
+        endMs: resolvedEndMs,
+        source: source ?? 'chime-transcript',
+      ),
+    );
+    debugPrint(
+      '[CareConnect][Transcript] buffered len=${trimmed.length} queue=${_pendingTranscriptSegments.length}',
+    );
+    unawaited(_flushPendingTranscriptSegments());
+    return true;
   }
 
   Future<bool> sendVoiceMetricsForAnalysis({
@@ -359,6 +440,18 @@ class VideoCallService {
     _sentimentTimer?.cancel();
   }
 
+  void _startTranscriptFlushTimer() {
+    _stopTranscriptFlushTimer();
+    _transcriptFlushTimer = Timer.periodic(_transcriptFlushInterval, (_) {
+      unawaited(_flushPendingTranscriptSegments());
+    });
+  }
+
+  void _stopTranscriptFlushTimer() {
+    _transcriptFlushTimer?.cancel();
+    _transcriptFlushTimer = null;
+  }
+
   Future<void> _postCombinedSentiment() async {}
 
   void _handleRemoteCallEnd() {
@@ -366,13 +459,107 @@ class VideoCallService {
     debugPrint('📴 Remote party ended the call');
     _sentimentTimer?.cancel();
     final callId = _currentCallId;
+    unawaited(_flushPendingTranscriptSegments(
+      callIdOverride: callId,
+      maxAttempts: 2,
+      respectInCallState: false,
+    ));
+    _stopTranscriptFlushTimer();
     _isInCall = false;
     _currentCallId = null;
     _otherPartyId = null;
+    _callContextMetadata = null;
+    _callStartedAt = null;
+    _lastTranscriptEndMs = 0;
     _meetingCredentials = null;
     _aggregatedSentiment.clear();
     CallNotificationService.clearActiveCall(callId);
     _onCallEnded?.call();
+  }
+
+  void _enqueueTranscriptSegment(_BufferedTranscriptSegment segment) {
+    _pendingTranscriptSegments.add(segment);
+    if (_pendingTranscriptSegments.length > _maxBufferedTranscriptSegments) {
+      _pendingTranscriptSegments.removeAt(0);
+    }
+  }
+
+  Future<void> _flushPendingTranscriptSegments({
+    String? callIdOverride,
+    int maxAttempts = 1,
+    bool respectInCallState = true,
+  }) async {
+    if (_transcriptFlushInProgress) {
+      return;
+    }
+    if (_pendingTranscriptSegments.isEmpty) {
+      return;
+    }
+    if (_jwtToken == null || _jwtToken!.isEmpty) {
+      return;
+    }
+    if (respectInCallState && !_isInCall) {
+      return;
+    }
+
+    final activeCallId = callIdOverride ?? _currentCallId;
+    if (activeCallId == null || activeCallId.trim().isEmpty) {
+      return;
+    }
+
+    _transcriptFlushInProgress = true;
+    try {
+      var attempts = 0;
+      while (_pendingTranscriptSegments.isNotEmpty && attempts < maxAttempts) {
+        attempts += 1;
+        final segment = _pendingTranscriptSegments.first;
+        if (segment.callId != activeCallId) {
+          _pendingTranscriptSegments.removeAt(0);
+          continue;
+        }
+
+        try {
+          final response = await http
+              .post(
+                Uri.parse(
+                  '${EnvironmentConfig.baseUrl}/api/v3/calls/${segment.callId}/transcript/segments',
+                ),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $_jwtToken',
+                },
+                body: jsonEncode({
+                  'speakerLabel': segment.speakerLabel,
+                  'text': segment.text,
+                  'startMs': segment.startMs,
+                  'endMs': segment.endMs,
+                  'source': segment.source,
+                }),
+              )
+              .timeout(const Duration(seconds: 8));
+
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            _pendingTranscriptSegments.removeAt(0);
+            attempts = 0;
+            continue;
+          }
+
+          debugPrint(
+            '⚠️ Transcript upload failed: status=${response.statusCode} callId=${segment.callId}',
+          );
+
+          if (response.statusCode == 400) {
+            _pendingTranscriptSegments.removeAt(0);
+            continue;
+          }
+          break;
+        } catch (_) {
+          break;
+        }
+      }
+    } finally {
+      _transcriptFlushInProgress = false;
+    }
   }
 
   Map<String, dynamic> _mergeSentimentUpdate(Map<String, dynamic> event) {
@@ -677,6 +864,59 @@ class VideoCallService {
     return mapped;
   }
 
+  int? _resolveTranscriptEndMs(int? endMs) {
+    if (endMs != null) {
+      return endMs < 0 ? 0 : endMs;
+    }
+    if (_callStartedAt == null) {
+      return null;
+    }
+    final elapsed = DateTime.now().difference(_callStartedAt!).inMilliseconds;
+    final resolved = elapsed < 0 ? 0 : elapsed;
+    return resolved;
+  }
+
+  int? _resolveTranscriptStartMs(String text, int? startMs, int? resolvedEndMs) {
+    if (startMs != null) {
+      return startMs < 0 ? 0 : startMs;
+    }
+    if (resolvedEndMs == null) {
+      return null;
+    }
+
+    final estimatedDurationMs = _estimateTranscriptDurationMs(text);
+    var resolvedStart = resolvedEndMs - estimatedDurationMs;
+    if (resolvedStart < 0) {
+      resolvedStart = 0;
+    }
+
+    // Keep ordering stable if client retries or buffering reorders segments.
+    final minOrderedStart = _lastTranscriptEndMs - 1500;
+    if (resolvedStart < minOrderedStart) {
+      resolvedStart = minOrderedStart < 0 ? 0 : minOrderedStart;
+    }
+    return resolvedStart;
+  }
+
+  int _estimateTranscriptDurationMs(String text) {
+    final words = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .length;
+    if (words <= 0) {
+      return 1200;
+    }
+    final estimated = words * 420; // ~143 words-per-minute speaking pace.
+    if (estimated < 1200) {
+      return 1200;
+    }
+    if (estimated > 9000) {
+      return 9000;
+    }
+    return estimated;
+  }
+
   bool get isInCall => _isInCall;
   String? get currentCallId => _currentCallId;
   Map<String, dynamic>? get meetingCredentials => _meetingCredentials;
@@ -687,13 +927,38 @@ class VideoCallService {
 
   void dispose() {
     _sentimentTimer?.cancel();
+    _stopTranscriptFlushTimer();
     _wsSubscription?.cancel();
     _aggregatedSentiment.clear();
+    _pendingTranscriptSegments.clear();
     _onCallDeclined = null;
     _isPatientSentimentSource = false;
     _isInitialized = false;
     _isInCall = false;
+    _currentCallId = null;
+    _otherPartyId = null;
+    _callContextMetadata = null;
+    _callStartedAt = null;
+    _lastTranscriptEndMs = 0;
   }
+}
+
+class _BufferedTranscriptSegment {
+  final String callId;
+  final String speakerLabel;
+  final String text;
+  final int? startMs;
+  final int? endMs;
+  final String source;
+
+  const _BufferedTranscriptSegment({
+    required this.callId,
+    required this.speakerLabel,
+    required this.text,
+    required this.startMs,
+    required this.endMs,
+    required this.source,
+  });
 }
 
 // ================================================================

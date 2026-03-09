@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 class CommunicationHistoryCard extends StatelessWidget {
@@ -64,76 +66,91 @@ class CommunicationHistoryCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            ...summaries.take(8).map((summary) {
-              final finalBadgeText = _buildFinalBadgeText(summary);
-              final isInteractive = onCallTap != null;
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 440),
+              child: Scrollbar(
+                thumbVisibility: summaries.length > 5,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  primary: false,
+                  itemCount: summaries.length,
+                  itemBuilder: (context, index) {
+                    final summary = summaries[index];
+                    final finalBadgeText = _buildFinalBadgeText(summary);
+                    final isInteractive = onCallTap != null;
 
-              return ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.call, color: cs.primary),
-                onTap: onCallTap == null ? null : () => onCallTap!(summary.callId),
-                title: Text(
-                  _formatCallTitle(summary.callId),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                subtitle: Text(
-                  '${_formatDate(summary.lastOccurredAt)} • '
-                  '${summary.callOutcome} • '
-                  '${summary.sentimentEvents} sentiment samples',
-                ),
-                trailing: isInteractive
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          if (finalBadgeText != null)
-                            Text(
-                              finalBadgeText,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: _colorForLabel(
-                                  context,
-                                  summary.finalSentimentLabel,
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.call, color: cs.primary),
+                      onTap: onCallTap == null
+                          ? null
+                          : () => onCallTap!(summary.callId),
+                      title: Text(
+                        _formatCallTitle(summary.callId),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${_formatDate(summary.lastOccurredAt)} - '
+                        '${summary.callOutcome} - '
+                        '${summary.isCareTeamCall ? 'Care-team call' : '${summary.sentimentEvents} sentiment samples'}',
+                      ),
+                      trailing: isInteractive
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (finalBadgeText != null)
+                                  Text(
+                                    finalBadgeText,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: _colorForLabel(
+                                        context,
+                                        summary.finalSentimentLabel,
+                                      ),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'View details',
+                                      style:
+                                          theme.textTheme.labelSmall?.copyWith(
+                                        color: cs.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      size: 16,
+                                      color: cs.primary,
+                                    ),
+                                  ],
                                 ),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'View details',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: cs.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(width: 2),
-                              Icon(
-                                Icons.chevron_right,
-                                size: 16,
-                                color: cs.primary,
-                              ),
-                            ],
-                          ),
-                        ],
-                      )
-                    : (finalBadgeText == null
-                        ? null
-                        : Text(
-                            finalBadgeText,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: _colorForLabel(
-                                context,
-                                summary.finalSentimentLabel,
-                              ),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )),
-              );
-            }),
+                              ],
+                            )
+                          : (finalBadgeText == null
+                              ? null
+                              : Text(
+                                  finalBadgeText,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: _colorForLabel(
+                                      context,
+                                      summary.finalSentimentLabel,
+                                    ),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )),
+                    );
+                  },
+                ),
+              ),
+            ),
           ],
         ],
       ),
@@ -151,6 +168,9 @@ class CommunicationHistoryCard extends StatelessWidget {
       final eventType = (event['eventType'] ?? '').toString().toUpperCase();
       final sentimentLabel = (event['sentimentLabel'] ?? '').toString().trim();
       final sentimentScore = (event['sentimentScore'] as num?)?.toDouble();
+      final metadata = _extractJsonMap(event['metadataJson']);
+      final callKind = (metadata['callKind'] ?? '').toString().trim().toUpperCase();
+      final isCareTeamCall = callKind == 'CARE_TEAM';
 
       final existing = byCallId[rawCallId];
       if (existing == null) {
@@ -160,23 +180,26 @@ class CommunicationHistoryCard extends StatelessWidget {
           totalEvents: 1,
           sentimentEvents: eventType.startsWith('SENTIMENT_') ? 1 : 0,
           lastSentimentLabel: sentimentLabel.isEmpty ? null : sentimentLabel,
-          finalSentimentLabel: eventType == 'SENTIMENT_FINAL' && sentimentLabel.isNotEmpty
-              ? sentimentLabel
-              : null,
-          finalSentimentScore: eventType == 'SENTIMENT_FINAL' ? sentimentScore : null,
+          finalSentimentLabel:
+              eventType == 'SENTIMENT_FINAL' && sentimentLabel.isNotEmpty
+                  ? sentimentLabel
+                  : null,
+          finalSentimentScore:
+              eventType == 'SENTIMENT_FINAL' ? sentimentScore : null,
           callOutcome: _resolveCallOutcomeFromEvent(eventType, null),
+          isCareTeamCall: isCareTeamCall,
         );
       } else {
-        final hasFinal = existing.finalSentimentLabel != null ||
-            existing.finalSentimentScore != null;
+        final hasFinal =
+            existing.finalSentimentLabel != null || existing.finalSentimentScore != null;
         byCallId[rawCallId] = _CallSummary(
           callId: existing.callId,
           lastOccurredAt: occurredAt.isAfter(existing.lastOccurredAt)
               ? occurredAt
               : existing.lastOccurredAt,
           totalEvents: existing.totalEvents + 1,
-          sentimentEvents: existing.sentimentEvents +
-              (eventType.startsWith('SENTIMENT_') ? 1 : 0),
+          sentimentEvents:
+              existing.sentimentEvents + (eventType.startsWith('SENTIMENT_') ? 1 : 0),
           lastSentimentLabel: sentimentLabel.isNotEmpty
               ? sentimentLabel
               : existing.lastSentimentLabel,
@@ -189,6 +212,7 @@ class CommunicationHistoryCard extends StatelessWidget {
               ? existing.finalSentimentScore
               : (eventType == 'SENTIMENT_FINAL' ? sentimentScore : null),
           callOutcome: _resolveCallOutcomeFromEvent(eventType, existing.callOutcome),
+          isCareTeamCall: existing.isCareTeamCall || isCareTeamCall,
         );
       }
     }
@@ -198,7 +222,32 @@ class CommunicationHistoryCard extends StatelessWidget {
     return summaries;
   }
 
+  Map<String, dynamic> _extractJsonMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+        if (decoded is Map) {
+          return decoded.map(
+            (key, item) => MapEntry(key.toString(), item),
+          );
+        }
+      } catch (_) {
+        return const <String, dynamic>{};
+      }
+    }
+    return const <String, dynamic>{};
+  }
+
   String? _buildFinalBadgeText(_CallSummary summary) {
+    if (summary.isCareTeamCall) {
+      return null;
+    }
     if (summary.finalSentimentScore == null &&
         (summary.finalSentimentLabel == null ||
             summary.finalSentimentLabel!.isEmpty)) {
@@ -207,7 +256,7 @@ class CommunicationHistoryCard extends StatelessWidget {
 
     final scoreText = summary.finalSentimentScore == null
         ? null
-      : '${(summary.finalSentimentScore! * 100).toStringAsFixed(1)}%';
+        : '${(summary.finalSentimentScore! * 100).toStringAsFixed(1)}%';
     final labelText = summary.finalSentimentLabel;
 
     if (scoreText != null && labelText != null && labelText.isNotEmpty) {
@@ -264,10 +313,27 @@ class CommunicationHistoryCard extends StatelessWidget {
   }
 
   String _formatCallTitle(String callId) {
-    if (callId.length <= 24) {
-      return 'Call $callId';
+    final normalized = callId.trim();
+    if (normalized.isEmpty) {
+      return 'Telehealth call';
     }
-    return 'Call ${callId.substring(0, 24)}…';
+
+    // Keep SDK/vendor-specific identifiers out of user-facing UI.
+    final cleaned = normalized
+        .replaceFirst(
+          RegExp(
+            r'^(chime|twilio|agora|vonage)[_-]call[_-]?',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceFirst(RegExp(r'^[a-z]+[_-]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+
+    if (cleaned.length >= 4) {
+      return 'Telehealth call #${cleaned.substring(cleaned.length - 4)}';
+    }
+    return 'Telehealth call';
   }
 }
 
@@ -280,6 +346,7 @@ class _CallSummary {
   final String? finalSentimentLabel;
   final double? finalSentimentScore;
   final String callOutcome;
+  final bool isCareTeamCall;
 
   const _CallSummary({
     required this.callId,
@@ -290,5 +357,6 @@ class _CallSummary {
     required this.finalSentimentLabel,
     required this.finalSentimentScore,
     required this.callOutcome,
+    required this.isCareTeamCall,
   });
 }

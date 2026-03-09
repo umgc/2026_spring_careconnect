@@ -31,6 +31,8 @@ import '../model/message_dto.dart';
     bool _initialLoading = true;
     Timer? _pollingTimer;
     bool _initialized = false;
+    bool _videoCallAllowed = true;
+    String? _videoCallBlockedReason;
 
     @override
     void didChangeDependencies() {
@@ -51,6 +53,74 @@ import '../model/message_dto.dart';
 
         _initialized = true;
       }
+    }
+
+    Future<void> _refreshVideoCallPermission() async {
+      final currentUser = Provider.of<UserProvider>(context, listen: false).user;
+      if (currentUser == null || _currentUserId == null) {
+        return;
+      }
+
+      final canCall = await ApiService.canInitiateVideoCall(
+        currentUserId: _currentUserId!,
+        currentUserRole: currentUser.role,
+        caregiverId: currentUser.caregiverId,
+        targetUserId: widget.peerUserId,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _videoCallAllowed = canCall;
+        _videoCallBlockedReason = canCall
+            ? null
+            : (currentUser.role == 'PATIENT'
+                  ? 'Video calling is disabled by your caregiver or no active link exists.'
+                  : 'You can only call assigned patients/caregivers in your care circle.');
+      });
+    }
+
+    Future<void> _handleVideoCallTap() async {
+      final currentUser = Provider.of<UserProvider>(
+        context,
+        listen: false,
+      ).user;
+
+      if (currentUser == null || _currentUserId == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User not logged in')),
+        );
+        return;
+      }
+
+      await _refreshVideoCallPermission();
+      if (!mounted) return;
+
+      if (!_videoCallAllowed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _videoCallBlockedReason ??
+                  'Video calling is currently unavailable.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final callId = 'chime_call_${DateTime.now().millisecondsSinceEpoch}';
+      context.push(
+        '/video-call-chime'
+        '?userId=$_currentUserId'
+        '&recipientId=${widget.peerUserId}'
+        '&userRole=${Uri.encodeComponent(currentUser.role)}'
+        '&userName=${Uri.encodeComponent(currentUser.name ?? 'User')}'
+        '&recipientName=${Uri.encodeComponent(widget.peerName)}'
+        '&initiator=true'
+        '&video=true'
+        '&audio=true'
+        '&callId=$callId',
+      );
     }
 
     void _startPolling() {
@@ -169,55 +239,12 @@ import '../model/message_dto.dart';
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.videocam),
+              icon: Icon(
+                Icons.videocam,
+                color: null,
+              ),
               tooltip: 'Start video call',
-              onPressed: () async {
-                final currentUser = Provider.of<UserProvider>(
-                  context,
-                  listen: false,
-                ).user;
-
-                if (currentUser == null || _currentUserId == null) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('User not logged in')),
-                  );
-                  return;
-                }
-
-                final canCall = await ApiService.canInitiateVideoCall(
-                  currentUserId: _currentUserId!,
-                  currentUserRole: currentUser.role,
-                  caregiverId: currentUser.caregiverId,
-                  targetUserId: widget.peerUserId,
-                );
-
-                if (!mounted) return;
-
-                if (!canCall) {
-                  final message = currentUser.role == 'PATIENT'
-                      ? 'You can only call your assigned caregivers.'
-                      : 'You can only call assigned patients or caregivers in your assigned patients\' circles.';
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(message)),
-                  );
-                  return;
-                }
-
-                final callId = 'chime_call_${DateTime.now().millisecondsSinceEpoch}';
-                context.push(
-                  '/video-call-chime'
-                  '?userId=$_currentUserId'
-                  '&recipientId=${widget.peerUserId}'
-                  '&userRole=${Uri.encodeComponent(currentUser.role)}'
-                  '&userName=${Uri.encodeComponent(currentUser.name ?? 'User')}'
-                  '&recipientName=${Uri.encodeComponent(widget.peerName)}'
-                  '&initiator=true'
-                  '&video=true'
-                  '&audio=true'
-                  '&callId=$callId',
-                );
-              },
+              onPressed: _handleVideoCallTap,
             ),
           ],
         ),

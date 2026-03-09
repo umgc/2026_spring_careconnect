@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../config/theme/sentiment_colors.dart';
 
 /// SentimentDashboardWidget — live emotional analysis panel during video calls.
 ///
@@ -395,12 +396,14 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
                 color: _statusColor(
                   overallStatus,
                   overallDisplayScore,
+                  isDark: isDark,
                 ).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: _statusColor(
                     overallStatus,
                     overallDisplayScore,
+                    isDark: isDark,
                   ).withValues(alpha: 0.4),
                 ),
               ),
@@ -412,7 +415,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.8,
-                  color: _statusColor(overallStatus, overallDisplayScore),
+                  color: _statusColor(overallStatus, overallDisplayScore, isDark: isDark),
                 ),
               ),
             )
@@ -477,7 +480,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
         : (status == 'QUIET'
           ? 'No speech detected in this window.'
           : 'Listening for a stable signal...'));
-    final color = _statusColor(status, score);
+    final color = _statusColor(status, score, isDark: isDark);
     final cardBg = isDark ? const Color(0xFF252540) : Colors.white;
 
     return GestureDetector(
@@ -607,7 +610,7 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
     final score = _smoothedOverallScore();
     final status = _overallStatus();
     final hasUsableSample = status == 'COMPLETED' || status == 'DEGRADED';
-    final color = _statusColor(status, score);
+    final color = _statusColor(status, score, isDark: isDark);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -749,27 +752,8 @@ class _SentimentDashboardWidgetState extends State<SentimentDashboardWidget>
   // COLOR HELPER
   // ================================================================
 
-  static Color _scoreColor(double score) {
-    if (score >= 0.60) return const Color(0xFF2ECC71); // green — calm
-    if (score >= 0.35) {
-      return const Color(0xFFF39C12); // amber — anxious
-    }
-    return const Color(0xFFE74C3C); // red — distressed
-  }
-
-  static Color _statusColor(String status, double score) {
-    switch (status.toUpperCase()) {
-      case 'AWAITING':
-        return const Color(0xFF95A5A6);
-      case 'QUIET':
-        return const Color(0xFF5D6D7E);
-      case 'DEGRADED':
-        return const Color(0xFFF39C12);
-      case 'COMPLETED':
-      default:
-        return _scoreColor(score);
-    }
-  }
+  static Color _statusColor(String status, double score, {bool isDark = false}) =>
+      SentimentColors.forStatus(status, score, isDark: isDark);
 }
 
 // ================================================================
@@ -798,7 +782,7 @@ class _SentimentDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = _channelColor(channel);
+    final color = SentimentColors.forChannel(channel, isDark: isDark);
 
     return Scaffold(
       backgroundColor: isDark
@@ -951,9 +935,9 @@ class _SentimentDetailScreen extends StatelessWidget {
 
   Widget _buildLegend(bool isDark) {
     final items = [
-      (_channelColor('POSITIVE_COLOR'), 'Calm (>=60%)'),
-      (const Color(0xFFF39C12), 'Anxious (35-60%)'),
-      (const Color(0xFFE74C3C), 'Distressed (<35%)'),
+      (SentimentColors.forScore(0.8, isDark: isDark), 'Calm (>=60%)'),
+      (SentimentColors.forScore(0.5, isDark: isDark), 'Anxious (35-60%)'),
+      (SentimentColors.forScore(0.2, isDark: isDark), 'Distressed (<35%)'),
     ];
 
     return Wrap(
@@ -982,20 +966,6 @@ class _SentimentDetailScreen extends StatelessWidget {
     );
   }
 
-  static Color _channelColor(String channel) {
-    switch (channel) {
-      case 'TEXT':
-        return const Color(0xFF3498DB);
-      case 'VOICE':
-        return const Color(0xFF9B59B6);
-      case 'VIDEO':
-        return const Color(0xFF1ABC9C);
-      case 'POSITIVE_COLOR':
-        return const Color(0xFF2ECC71);
-      default:
-        return const Color(0xFF3498DB);
-    }
-  }
 }
 
 // ================================================================
@@ -1032,6 +1002,7 @@ class _SentimentLineChart extends StatelessWidget {
               ? Colors.white12
               : Colors.black.withValues(alpha: 0.08),
           labelColor: isDark ? Colors.white38 : Colors.black38,
+          isDark: isDark,
         ),
         child: const SizedBox.expand(),
       ),
@@ -1044,12 +1015,14 @@ class _LineChartPainter extends CustomPainter {
   final Color lineColor;
   final Color gridColor;
   final Color labelColor;
+  final bool isDark;
 
   _LineChartPainter({
     required this.points,
     required this.lineColor,
     required this.gridColor,
     required this.labelColor,
+    required this.isDark,
   });
 
   @override
@@ -1097,9 +1070,10 @@ class _LineChartPainter extends CustomPainter {
       );
     }
 
-    fillZone(0.0, 0.45, const Color(0xFF2ECC71));
-    fillZone(0.45, 0.65, const Color(0xFFF39C12));
-    fillZone(0.65, 1.0, const Color(0xFFE74C3C));
+    // Zones: y=0 is top (score=1.0), calm threshold=0.60→y=0.40, anxious=0.35→y=0.65
+    fillZone(0.0, 0.40, SentimentColors.forScore(0.8, isDark: isDark));
+    fillZone(0.40, 0.65, SentimentColors.forScore(0.5, isDark: isDark));
+    fillZone(0.65, 1.0, SentimentColors.forScore(0.2, isDark: isDark));
 
     // Data line
     final linePaint = Paint()
@@ -1120,7 +1094,7 @@ class _LineChartPainter extends CustomPainter {
     // Data points
     final dotPaint = Paint()..color = lineColor;
     final dotBorder = Paint()
-      ..color = Colors.white
+      ..color = isDark ? const Color(0xFF1A1A2E) : Colors.white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
 
@@ -1133,7 +1107,8 @@ class _LineChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_LineChartPainter old) => old.points != points;
+  bool shouldRepaint(_LineChartPainter old) =>
+      old.points != points || old.isDark != isDark;
 }
 
 // ================================================================

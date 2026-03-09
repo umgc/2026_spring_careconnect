@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -325,6 +326,76 @@ public class BedrockSentimentService {
         } catch (Exception ex) {
             log.warn("Final overall Bedrock analysis failed for callId {}: {}", callId, ex.getMessage());
             return localFinalOverall(text, voice, video, callId);
+        }
+    }
+
+    public Map<String, Object> summarizeTranscript(
+            String callId,
+            String transcript,
+            Map<String, SentimentResult> channelResults
+    ) {
+        String transcriptInput = transcript == null ? "" : transcript.trim();
+        if (transcriptInput.isBlank()) {
+            return localTranscriptSummary(Map.of());
+        }
+
+        SentimentResult voice = safeChannelResult(channelResults, "VOICE", callId);
+        SentimentResult video = safeChannelResult(channelResults, "VIDEO", callId);
+        SentimentResult combined = safeChannelResult(channelResults, "COMBINED", callId);
+
+        if (!isBedrockAvailable()) {
+            return localTranscriptSummary(Map.of(
+                    "voiceLabel", voice.label(),
+                    "videoLabel", video.label(),
+                    "overallLabel", combined.label()
+            ));
+        }
+
+        String prompt = """
+            You are a HIPAA-safe clinical call summarizer for a caregiver dashboard.
+            Summarize the transcript as structured JSON only.
+
+            Call transcript:
+            %s
+
+            Sentiment context:
+            - voiceLabel: %s, voiceScore: %s
+            - videoLabel: %s, videoScore: %s
+            - overallLabel: %s, overallScore: %s
+
+            Return ONLY valid JSON in this exact shape:
+            {
+              "headline": "short title, max 8 words",
+              "overallAssessment": "1-2 concise clinical sentences",
+              "keyConcerns": ["item1", "item2"],
+              "recommendedActions": ["action1", "action2"],
+              "followUpQuestions": ["question1", "question2"]
+            }
+            """.formatted(
+                transcriptInput,
+                voice.label(), voice.score(),
+                video.label(), video.score(),
+                combined.label(), combined.score()
+        );
+
+        try {
+            String responseBody = invokeNovaModel(prompt, null, null);
+            Map<String, Object> parsed = parseSummaryResponse(responseBody);
+            if (parsed.isEmpty()) {
+                return localTranscriptSummary(Map.of(
+                        "voiceLabel", voice.label(),
+                        "videoLabel", video.label(),
+                        "overallLabel", combined.label()
+                ));
+            }
+            return parsed;
+        } catch (Exception ex) {
+            log.warn("Bedrock transcript summary failed for callId {}: {}", callId, ex.getMessage());
+            return localTranscriptSummary(Map.of(
+                    "voiceLabel", voice.label(),
+                    "videoLabel", video.label(),
+                    "overallLabel", combined.label()
+            ));
         }
     }
 
@@ -792,6 +863,78 @@ public class BedrockSentimentService {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private Map<String, Object> parseSummaryResponse(String responseBody) {
+        try {
+            JsonNode root = objectMapper.readTree(responseBody);
+            JsonNode summaryNode = root;
+            if (!root.has("headline")) {
+                String contentText = extractModelContentText(root);
+                if (contentText == null || contentText.isBlank()) {
+                    return Map.of();
+                }
+                String cleaned = stripCodeFences(contentText);
+                String embeddedJson = extractFirstJsonObject(cleaned);
+                if (embeddedJson == null || embeddedJson.isBlank()) {
+                    return Map.of();
+                }
+                summaryNode = objectMapper.readTree(embeddedJson);
+            }
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("headline", safeSummaryText(summaryNode.path("headline").asText("Call Summary"), 80));
+            out.put("overallAssessment",
+                    safeSummaryText(summaryNode.path("overallAssessment").asText("Clinical summary not available."), 280));
+            out.put("keyConcerns", safeStringList(summaryNode.path("keyConcerns")));
+            out.put("recommendedActions", safeStringList(summaryNode.path("recommendedActions")));
+            out.put("followUpQuestions", safeStringList(summaryNode.path("followUpQuestions")));
+            return out;
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+
+    private Map<String, Object> localTranscriptSummary(Map<String, Object> context) {
+        String overallLabel = context.get("overallLabel") == null
+                ? "ANXIOUS"
+                : String.valueOf(context.get("overallLabel"));
+        return Map.of(
+                "headline", "Call Summary",
+                "overallAssessment", "Automated Bedrock summary unavailable. Review transcript timeline directly.",
+                "keyConcerns", List.of("Overall sentiment: " + overallLabel),
+                "recommendedActions", List.of("Review full transcript and sentiment timeline."),
+                "followUpQuestions", List.of("Any symptom changes since this call?")
+        );
+    }
+
+    private List<String> safeStringList(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return List.of();
+        }
+
+        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        for (JsonNode item : node) {
+            String text = safeSummaryText(item.asText(""), 140);
+            if (!text.isBlank()) {
+                out.add(text);
+            }
+            if (out.size() >= 6) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private String safeSummaryText(String text, int maxLen) {
+        if (text == null) {
+            return "";
+        }
+        String cleaned = text.replaceAll("\\s+", " ").trim();
+        if (cleaned.length() <= maxLen) {
+            return cleaned;
+        }
+        return cleaned.substring(0, maxLen);
     }
 
     private String scoreToLabel(double score) {

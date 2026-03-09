@@ -5,7 +5,7 @@
     "enable_fallback": true,
     "cache_version": "v1.0.0"
   },
-  "renderer": "canvaskit",
+  "renderer": "auto",
   "performance": {
     "preload_fonts": true,
     "optimize_startup": true,

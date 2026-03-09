@@ -24,6 +24,7 @@ class HybridVideoCallWidget extends StatefulWidget {
   final String userId;
   final String callId;
   final String? recipientId;
+  final String? recipientRole;
   final String? userRole;
   final bool isVideoEnabled;
   final bool isAudioEnabled;
@@ -34,6 +35,8 @@ class HybridVideoCallWidget extends StatefulWidget {
   final String? recipientEmail;
   final String? recipientPhone;
   final String? recipientName;
+  final String? callKind;
+  final List<int>? contextPatientUserIds;
   final String? returnPatientDetailsId;
   final bool forcePatientDetailsOnExit;
   final bool returnAsCaregiver;
@@ -43,6 +46,7 @@ class HybridVideoCallWidget extends StatefulWidget {
     required this.userId,
     required this.callId,
     this.recipientId,
+    this.recipientRole,
     this.userRole,
     this.isVideoEnabled = true,
     this.isAudioEnabled = true,
@@ -53,6 +57,8 @@ class HybridVideoCallWidget extends StatefulWidget {
     this.recipientEmail,
     this.recipientPhone,
     this.recipientName,
+    this.callKind,
+    this.contextPatientUserIds,
     this.returnPatientDetailsId,
     this.forcePatientDetailsOnExit = false,
     this.returnAsCaregiver = false,
@@ -84,6 +90,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   bool _sentimentPanelExpanded = true;
   bool _isCaregiverView = false;
   bool _isPatientView = false;
+  bool _isCareTeamCall = false;
   bool _showCallRejectedSummary = false;
   String _rejectionSummaryText = 'The recipient declined the call.';
   bool _isRetryingRejectedCall = false;
@@ -104,6 +111,10 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   int _videoFailureStreak = 0;
   DateTime? _lastVoiceRestartAt;
   DateTime? _lastVideoRestartAt;
+  DateTime? _lastTranscriptSentAt;
+  String? _lastTranscriptSample;
+  String _transcriptCaptureStatus = 'AWAITING';
+  String _transcriptCaptureDetail = 'Waiting for transcript';
 
   // Latest sentiment data — updated via WebSocket push
   Map<String, dynamic> _sentimentData = {};
@@ -183,12 +194,13 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
       final role = await _resolveCurrentRole();
       final isCaregiver = role?.toUpperCase() == 'CAREGIVER';
       final isPatient = role?.toUpperCase() == 'PATIENT';
-      _videoCallService.setPatientSentimentSourceEnabled(isPatient);
+      _isCareTeamCall = (widget.callKind ?? '').trim().toUpperCase() == 'CARE_TEAM';
+      _videoCallService.setPatientSentimentSourceEnabled(isPatient && !_isCareTeamCall);
       if (!mounted) return;
       setState(() {
         _isCaregiverView = isCaregiver;
         _isPatientView = isPatient;
-        if (!isCaregiver) {
+        if (!isCaregiver || _isCareTeamCall) {
           _sentimentPanelExpanded = false;
         }
       });
@@ -199,15 +211,23 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   Future<void> _initializeCall() async {
     try {
+      if (mounted) {
+        setState(() {
+          _transcriptCaptureStatus = 'AWAITING';
+          _transcriptCaptureDetail = 'Waiting for transcript';
+        });
+      }
+
       final role = await _resolveCurrentRole();
       final isCaregiverRole = role?.toUpperCase() == 'CAREGIVER';
       final isPatientRole = role?.toUpperCase() == 'PATIENT';
+      _isCareTeamCall = (widget.callKind ?? '').trim().toUpperCase() == 'CARE_TEAM';
 
       if (mounted) {
         setState(() {
           _isCaregiverView = isCaregiverRole;
           _isPatientView = isPatientRole;
-          if (!isCaregiverRole) {
+          if (!isCaregiverRole || _isCareTeamCall) {
             _sentimentPanelExpanded = false;
           }
         });
@@ -220,7 +240,7 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
       await _videoCallService.initialize(
         userId: widget.userId,
         jwtToken: jwtToken,
-        enablePatientSentimentCapture: isPatientRole,
+        enablePatientSentimentCapture: isPatientRole && !_isCareTeamCall,
         onCallEnded: () {
           if (_showCallRejectedSummary) return;
           _exitCallScreen();
@@ -252,9 +272,17 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         otherPartyId: widget.recipientId ?? '',
         isVideoEnabled: widget.isVideoEnabled,
         isAudioEnabled: widget.isAudioEnabled,
+        callContextMetadata: {
+          'callKind': (widget.callKind ?? 'general').trim().toUpperCase(),
+          if (widget.contextPatientUserIds != null &&
+              widget.contextPatientUserIds!.isNotEmpty)
+            'contextPatientUserIds': widget.contextPatientUserIds,
+        },
       );
 
-      _videoCallService.setPatientSentimentSourceEnabled(isPatientRole);
+      _videoCallService.setPatientSentimentSourceEnabled(
+        isPatientRole && !_isCareTeamCall,
+      );
 
       if (widget.isInitiator && !_hasSentInitialInvitation) {
         final recipientId = widget.recipientId?.trim();
@@ -263,15 +291,19 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         }
 
         final currentRole = (role ?? '').toUpperCase();
-        final recipientRole = currentRole == 'CAREGIVER'
+        String recipientRole = (widget.recipientRole ?? '').trim().toUpperCase();
+        if (recipientRole != 'PATIENT' && recipientRole != 'CAREGIVER') {
+          recipientRole = currentRole == 'CAREGIVER'
             ? 'PATIENT'
             : 'CAREGIVER';
+        }
 
         final invitationSent = await CallNotificationService.sendCallInvitation(
           recipientId: recipientId,
           recipientRole: recipientRole,
           callId: widget.callId,
           isVideoCall: widget.isVideoEnabled,
+          callType: _isCareTeamCall ? 'care-team' : 'general',
         );
 
         if (!invitationSent) {
@@ -333,10 +365,66 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   }
 
   Future<void> _handleTranscriptSample(String transcript) async {
-    // Transcript-driven sentiment is intentionally disabled for demo reliability.
-    if (transcript.isNotEmpty) {
-      debugPrint('[CareConnect][Sentiment][text] transcript received but ignored (voice/video-only mode)');
+    if (_isCareTeamCall) {
+      if (mounted && _transcriptCaptureStatus != 'DISABLED') {
+        setState(() {
+          _transcriptCaptureStatus = 'DISABLED';
+          _transcriptCaptureDetail = 'Sentiment disabled for care-team calls';
+        });
+      }
+      return;
     }
+
+    if (_callSession == null) {
+      return;
+    }
+
+    final trimmed = transcript.trim();
+    if (trimmed.length < 2) {
+      return;
+    }
+    if (mounted && _transcriptCaptureStatus != 'CONNECTED') {
+      setState(() {
+        _transcriptCaptureStatus = 'CONNECTED';
+        _transcriptCaptureDetail = 'Live transcript';
+      });
+    }
+    debugPrint(
+      '[CareConnect][Transcript] sample accepted len=${trimmed.length} role=${_isPatientView ? 'PATIENT' : (_isCaregiverView ? 'CAREGIVER' : 'PARTICIPANT')}',
+    );
+
+    final now = DateTime.now();
+    final sentRecently = _lastTranscriptSentAt != null &&
+        now.difference(_lastTranscriptSentAt!) < const Duration(seconds: 3);
+    if (sentRecently && _lastTranscriptSample == trimmed) {
+      return;
+    }
+
+    final uploaded = await _videoCallService.sendTranscriptSegment(
+      text: trimmed,
+      speakerLabel: _isPatientView
+          ? 'PATIENT'
+          : (_isCaregiverView ? 'CAREGIVER' : 'PARTICIPANT'),
+      source: 'chime-transcript',
+    );
+
+    if (uploaded) {
+      _lastTranscriptSentAt = now;
+      _lastTranscriptSample = trimmed;
+    }
+  }
+
+  void _handleTranscriptStatus(String status, String? detail) {
+    final normalized = status.trim().toUpperCase();
+    if (normalized.isEmpty || !mounted) {
+      return;
+    }
+    setState(() {
+      _transcriptCaptureStatus = normalized;
+      if (detail != null && detail.trim().isNotEmpty) {
+        _transcriptCaptureDetail = detail.trim();
+      }
+    });
   }
 
   Future<void> _handleChannelFailure(String channel) async {
@@ -718,7 +806,16 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
         // Video call area — takes remaining space above sentiment panel
         Expanded(
           flex: (_isCaregiverView && _sentimentPanelExpanded) ? 6 : 10,
-          child: _buildChimeView(),
+          child: Stack(
+            children: [
+              Positioned.fill(child: _buildChimeView()),
+              Positioned(
+                bottom: 12,
+                right: 12,
+                child: _buildTranscriptStatusBadge(),
+              ),
+            ],
+          ),
         ),
 
         _buildCallControlsBar(),
@@ -915,8 +1012,9 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   Widget _buildChimeView() {
     if (_callSession == null) return const SizedBox.shrink();
 
-    // Strict guard: sentiment capture must only run for resolved patient role.
-    final shouldEnableSentimentCapture = _isPatientView;
+    // Keep transcript capture always enabled once meeting is active so it does
+    // not depend on async role-resolution timing during screen init.
+    final shouldEnableSentimentCapture = true;
 
     final mediaPlacement = _callSession!.mediaPlacement;
     final hasMediaEndpoints = mediaPlacement.values.whereType<String>().any(
@@ -944,7 +1042,8 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
             if (!mounted) return;
             await _endCallAndExit();
           },
-          onTranscriptSample: null,
+          onTranscriptSample: _handleTranscriptSample,
+          onTranscriptStatus: _handleTranscriptStatus,
           onVoiceMetricsSample: _handleVoiceMetricsSample,
           onVideoSample: _handleVideoSample,
           onSentimentChannelState: (channel, muted) {
@@ -994,30 +1093,71 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
             ),
           ),
         ),
-        // Chime badge
-        Positioned(
-          top: 12,
-          right: 12,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.videocam, color: Colors.white70, size: 14),
-                SizedBox(width: 4),
-                Text(
-                  'AWS Chime',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
+    );
+  }
+
+  Widget _buildTranscriptStatusBadge() {
+    Color badgeColor;
+    IconData icon;
+    String label;
+
+    switch (_transcriptCaptureStatus) {
+      case 'CONNECTED':
+        badgeColor = Colors.green.shade700;
+        icon = Icons.subtitles;
+        label = 'Transcript connected';
+        break;
+      case 'FALLBACK':
+        badgeColor = Colors.orange.shade700;
+        icon = Icons.settings_backup_restore;
+        label = 'Transcript fallback';
+        break;
+      case 'BLOCKED':
+        badgeColor = Colors.red.shade700;
+        icon = Icons.block;
+        label = 'Transcript blocked';
+        break;
+      default:
+        badgeColor = Colors.blueGrey.shade600;
+        icon = Icons.hourglass_bottom;
+        label = 'Transcript waiting';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 14),
+          const SizedBox(width: 6),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                _transcriptCaptureDetail,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

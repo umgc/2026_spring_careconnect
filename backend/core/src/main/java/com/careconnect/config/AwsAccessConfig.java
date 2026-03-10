@@ -8,8 +8,12 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.chimesdkmeetings.ChimeSdkMeetingsClient;
+import software.amazon.awssdk.services.chimesdkmediapipelines.ChimeSdkMediaPipelinesClient;
+import software.amazon.awssdk.services.iam.IamClient;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.ssm.SsmClient;
+import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.textract.TextractClient;
 
 @Configuration
@@ -64,6 +68,39 @@ public class AwsAccessConfig {
     public BedrockRuntimeClient bedrockRuntimeClient() {
         return BedrockRuntimeClient.builder()
                 .region(defaultAwsRegion())
+                .credentialsProvider(awsCredentialsProvider())
+                .build();
+    }
+
+    @Bean
+    public ChimeSdkMediaPipelinesClient chimeSdkMediaPipelinesClient() {
+        return ChimeSdkMediaPipelinesClient.builder()
+                .region(defaultAwsRegion())
+                .credentialsProvider(awsCredentialsProvider())
+                .build();
+    }
+
+    @Bean
+    public StsClient stsClient() {
+        return StsClient.builder()
+                .region(defaultAwsRegion())
+                .credentialsProvider(awsCredentialsProvider())
+                .build();
+    }
+
+    @Bean
+    public S3Presigner s3Presigner() {
+        return S3Presigner.builder()
+                .region(defaultAwsRegion())
+                .credentialsProvider(awsCredentialsProvider())
+                .build();
+    }
+
+    @Bean
+    public IamClient iamClient() {
+        // IAM is a global service — must use us-east-1 regardless of deployment region
+        return IamClient.builder()
+                .region(Region.US_EAST_1)
                 .credentialsProvider(awsCredentialsProvider())
                 .build();
     }

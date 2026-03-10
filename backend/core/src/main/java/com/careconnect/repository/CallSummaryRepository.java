@@ -7,4 +7,6 @@ import java.util.Optional;
 
 public interface CallSummaryRepository extends JpaRepository<CallSummary, Long> {
     Optional<CallSummary> findTopByCallIdOrderByGeneratedAtDesc(String callId);
+
+    long deleteByCallId(String callId);
 }

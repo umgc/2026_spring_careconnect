@@ -4,6 +4,7 @@ import com.careconnect.model.CallTranscriptSegment;
 import com.careconnect.repository.CallTranscriptSegmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -11,6 +12,7 @@ import java.util.HashSet;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -147,6 +149,24 @@ public class CallTranscriptService {
 
     public boolean isArchived(String callId) {
         return callTranscriptArchiveService.isArchived(callId);
+    }
+
+    @Transactional
+    public Map<String, Long> purgeForCall(String callId) {
+        String normalizedCallId = trim(callId);
+        if (normalizedCallId == null) {
+            return java.util.Map.of(
+                    "deletedTranscriptSegments", 0L,
+                    "deletedTranscriptArchives", 0L
+            );
+        }
+
+        long deletedSegments = callTranscriptSegmentRepository.deleteByCallId(normalizedCallId);
+        long deletedArchives = callTranscriptArchiveService.purgeArchiveForCall(normalizedCallId);
+        return java.util.Map.of(
+                "deletedTranscriptSegments", deletedSegments,
+                "deletedTranscriptArchives", deletedArchives
+        );
     }
 
     private List<CallTranscriptSegment> mergeSegments(

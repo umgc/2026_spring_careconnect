@@ -12,9 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
@@ -224,6 +226,43 @@ public class CallTelemetryService {
         return callTelemetryEventRepository.deleteByCallId(normalizedCallId);
     }
 
+    public PatientCallHistoryMatch findCallHistoryForPatient(Long patientUserId) {
+        if (patientUserId == null) {
+            return new PatientCallHistoryMatch(List.of(), Set.of());
+        }
+
+        List<CallTelemetryEvent> matchedEvents = callTelemetryEventRepository.findAll().stream()
+                .filter(event -> eventMatchesPatientHistory(event, patientUserId))
+                .toList();
+
+        Set<String> callIds = matchedEvents.stream()
+                .map(CallTelemetryEvent::getCallId)
+                .map(this::trim)
+                .filter(value -> value != null)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        return new PatientCallHistoryMatch(matchedEvents, callIds);
+    }
+
+    @Transactional
+    public long deleteTelemetryEvents(Collection<CallTelemetryEvent> events) {
+        if (events == null || events.isEmpty()) {
+            return 0;
+        }
+
+        List<Long> ids = events.stream()
+                .map(CallTelemetryEvent::getId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return 0;
+        }
+
+        callTelemetryEventRepository.deleteAllByIdInBatch(ids);
+        return ids.size();
+    }
+
     private Map<String, Object> sanitizePayload(Map<String, Object> payload) {
         if (payload == null || payload.isEmpty()) {
             return Map.of();
@@ -299,6 +338,72 @@ public class CallTelemetryService {
     private String defaultStatus(String status) {
         String normalized = trim(status);
         return normalized == null ? "SUCCESS" : normalized;
+    }
+
+    private boolean eventMatchesPatientHistory(CallTelemetryEvent event, Long patientUserId) {
+        if (event == null || patientUserId == null) {
+            return false;
+        }
+        if (patientUserId.equals(event.getActorUserId()) || patientUserId.equals(event.getTargetUserId())) {
+            return true;
+        }
+
+        Map<String, Object> metadata = parseJsonMap(event.getMetadataJson());
+        if (containsPatientContext(metadata.get("contextPatientUserIds"), patientUserId)) {
+            return true;
+        }
+        Long singleContextId = toLong(metadata.get("contextPatientUserId"));
+        return patientUserId.equals(singleContextId);
+    }
+
+    private boolean containsPatientContext(Object rawValue, Long patientUserId) {
+        if (!(rawValue instanceof List<?> values) || patientUserId == null) {
+            return false;
+        }
+        for (Object value : values) {
+            if (patientUserId.equals(toLong(value))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Map<String, Object> parseJsonMap(String rawJson) {
+        String normalized = trim(rawJson);
+        if (normalized == null) {
+            return Map.of();
+        }
+        try {
+            Object decoded = objectMapper.readValue(normalized, Object.class);
+            if (decoded instanceof Map<?, ?> map) {
+                Map<String, Object> result = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    String key = entry.getKey() == null ? "" : entry.getKey().toString();
+                    if (!key.isBlank()) {
+                        result.put(key, entry.getValue());
+                    }
+                }
+                return result;
+            }
+        } catch (Exception ex) {
+            log.debug("Failed to parse telemetry metadata JSON: {}", ex.getMessage());
+        }
+        return Map.of();
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        String normalized = value == null ? null : trim(value.toString());
+        if (normalized == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(normalized);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private Map<String, Object> summarizeCall(String callId, List<CallTelemetryEvent> allEvents) {
@@ -475,5 +580,11 @@ public class CallTelemetryService {
             return 1.0;
         }
         return value;
+    }
+
+    public record PatientCallHistoryMatch(
+            List<CallTelemetryEvent> events,
+            Set<String> callIds
+    ) {
     }
 }

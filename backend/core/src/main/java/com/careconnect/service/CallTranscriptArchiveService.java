@@ -2,6 +2,7 @@ package com.careconnect.service;
 
 import com.careconnect.model.CallTranscriptArchive;
 import com.careconnect.model.CallTranscriptSegment;
+import com.careconnect.repository.CallRecordingRepository;
 import com.careconnect.repository.CallTranscriptArchiveRepository;
 import com.careconnect.repository.CallTranscriptSegmentRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -11,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
@@ -32,6 +34,7 @@ public class CallTranscriptArchiveService {
 
     private final CallTranscriptArchiveRepository archiveRepository;
     private final CallTranscriptSegmentRepository segmentRepository;
+    private final CallRecordingRepository callRecordingRepository;
     private final ObjectMapper objectMapper;
 
     @Autowired(required = false)
@@ -186,11 +189,18 @@ public class CallTranscriptArchiveService {
     private String buildStorageKey(String callId) {
         LocalDateTime now = LocalDateTime.now();
         String safeCallId = callId.replaceAll("[^A-Za-z0-9_\\-]", "_");
-        return "calls/transcripts/" +
-                KEY_DATE.format(now) + "/" +
-                safeCallId + "/transcript_" +
+        String fileName = "transcript_" +
                 KEY_TS.format(now) + "_" +
                 UUID.randomUUID().toString().substring(0, 8) + ".json";
+
+        return callRecordingRepository.findTopByCallIdOrderByStartedAtDesc(callId)
+                .map(recording -> recording.getS3Prefix())
+                .filter(prefix -> prefix != null && !prefix.isBlank())
+                .map(prefix -> prefix + "transcripts/" + fileName)
+                .orElseGet(() -> "recordings/" +
+                        safeCallId + "/" +
+                        KEY_TS.format(now) + "/transcripts/" +
+                        fileName);
     }
 
     private String buildParticipantUserIds(List<CallTranscriptSegment> segments) {
@@ -247,6 +257,36 @@ public class CallTranscriptArchiveService {
         }
         String trimmed = callId.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    @Transactional
+    public long purgeArchiveForCall(String callId) {
+        String normalizedCallId = normalize(callId);
+        if (normalizedCallId == null) {
+            return 0;
+        }
+
+        List<CallTranscriptArchive> archives = archiveRepository.findByCallIdOrderByArchivedAtDesc(normalizedCallId);
+        if (archives.isEmpty()) {
+            return 0;
+        }
+
+        if (s3StorageService != null) {
+            for (CallTranscriptArchive archive : archives) {
+                String storageKey = archive.getStorageKey();
+                if (storageKey == null || storageKey.isBlank()) {
+                    continue;
+                }
+                try {
+                    s3StorageService.deleteFile(storageKey);
+                } catch (Exception ex) {
+                    log.warn("Failed to delete archived transcript object for callId {} key {}: {}",
+                            normalizedCallId, storageKey, ex.getMessage());
+                }
+            }
+        }
+
+        return archiveRepository.deleteByCallId(normalizedCallId);
     }
 
     private record ArchivedTranscriptSegment(

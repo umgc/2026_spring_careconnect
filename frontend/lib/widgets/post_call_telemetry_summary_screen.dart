@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config/theme/sentiment_colors.dart';
 import '../services/api_service.dart';
@@ -43,6 +44,8 @@ class _PostCallTelemetrySummaryScreenState
   List<Map<String, dynamic>> _callTelemetry = const [];
   Map<String, dynamic>? _callSummary;
   List<Map<String, dynamic>> _transcriptSegments = const [];
+  Map<String, dynamic>? _recording;
+  bool _loadingPlaybackUrl = false;
   _TimelineChannel _selectedChannel = _TimelineChannel.all;
   DateTime? _selectedSentimentAt;
   double? _selectedSentimentMinute;
@@ -95,22 +98,50 @@ class _PostCallTelemetrySummaryScreenState
     }
   }
 
+  Future<void> _loadPlaybackUrl() async {
+    if (_loadingPlaybackUrl) return;
+    setState(() => _loadingPlaybackUrl = true);
+    final url = await ApiService.getCallRecordingPlaybackUrl(widget.callId);
+    if (!mounted) return;
+    setState(() => _loadingPlaybackUrl = false);
+    if (url == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Recording not ready yet — try again in a moment.'),
+        ),
+      );
+      return;
+    }
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open recording URL.')),
+      );
+    }
+  }
+
   Future<void> _loadTelemetry() async {
     setState(() => _loading = true);
     final results = await Future.wait([
       ApiService.getCallTelemetry(widget.callId),
       ApiService.getCallSummary(widget.callId),
       ApiService.getCallTranscriptSegments(widget.callId),
+      ApiService.getCallRecording(widget.callId),
     ]);
     final callEvents = (results[0] as List<Map<String, dynamic>>);
     final callSummary = results[1] as Map<String, dynamic>?;
     final transcriptSegments = (results[2] as List<Map<String, dynamic>>);
+    final recording = results[3] as Map<String, dynamic>?;
     final sorted = _sortByOccurredAtAsc(callEvents);
     if (!mounted) return;
     setState(() {
       _callTelemetry = sorted;
       _callSummary = callSummary;
       _transcriptSegments = transcriptSegments;
+      _recording = recording;
       _selectedSentimentAt = null;
       _selectedSentimentMinute = null;
       _selectedSentimentScore = null;
@@ -736,6 +767,10 @@ class _PostCallTelemetrySummaryScreenState
                       onSendMessage: widget.onSendMessage,
                     ),
                     const SizedBox(height: 16),
+                    if (_recording != null) ...[
+                      _buildRecordingCard(isDark),
+                      const SizedBox(height: 16),
+                    ],
                     Text(
                       'Sentiment Trend',
                       style: theme.textTheme.titleMedium,
@@ -747,6 +782,186 @@ class _PostCallTelemetrySummaryScreenState
                   ],
                 ),
               ),
+      ),
+    );
+  }
+
+  // ── Recording card ────────────────────────────────────────────────
+
+  Widget _buildRecordingCard(bool isDark) {
+    final rec = _recording!;
+    final status = (rec['status'] as String? ?? '').toUpperCase();
+    final concatenationStatus =
+        (rec['concatenationStatus'] as String? ?? '').toUpperCase();
+    final durationSec = rec['durationSeconds'] as int?;
+    final startedAt = rec['startedAt'] as String?;
+    final playbackReady = rec['playbackReady'] == true;
+    final errorMessage = (rec['errorMessage'] as String?)?.trim();
+
+    String durationText = '--';
+    if (durationSec != null) {
+      final m = durationSec ~/ 60;
+      final s = (durationSec % 60).toString().padLeft(2, '0');
+      durationText = '$m:$s';
+    }
+
+    String startedText = '--';
+    if (startedAt != null) {
+      final dt = DateTime.tryParse(startedAt)?.toLocal();
+      if (dt != null) {
+        startedText =
+            '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
+            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    }
+
+    final hasNoRecording =
+        status == 'NO_RECORDING' ||
+        status == 'NOT_FOUND' ||
+        status.isEmpty;
+    final isCapturing = status == 'STARTED' || status == 'CAPTURING';
+    final isReady = status == 'STOPPED';
+    final statusColor = hasNoRecording
+        ? Colors.blueGrey.shade600
+        : isReady
+            ? Colors.green.shade700
+            : isCapturing
+                ? Colors.orange.shade700
+                : Colors.grey;
+    final availabilityLabel = switch (concatenationStatus) {
+      _ when hasNoRecording => 'NOT RECORDED',
+      'READY' => 'VIDEO READY',
+      'FAILED' => 'STITCH FAILED',
+      'PROCESSING' => 'STITCHING',
+      _ when playbackReady => 'VIDEO READY',
+      _ when isReady => 'PROCESSING',
+      _ when isCapturing => 'CAPTURING',
+      _ => 'UNAVAILABLE',
+    };
+    final availabilityColor = switch (availabilityLabel) {
+      'VIDEO READY' => Colors.green.shade700,
+      'STITCH FAILED' => Colors.red.shade700,
+      'STITCHING' || 'PROCESSING' => Colors.orange.shade700,
+      'NOT RECORDED' || 'UNAVAILABLE' => Colors.blueGrey.shade600,
+      _ => Colors.blueGrey.shade600,
+    };
+    final availabilityMessage = switch (availabilityLabel) {
+      'VIDEO READY' => 'The stitched call video is ready to play.',
+      'STITCH FAILED' => errorMessage?.isNotEmpty == true
+          ? errorMessage!
+          : 'Video stitching did not complete successfully.',
+      'STITCHING' || 'PROCESSING' =>
+        'The final video is still processing. Pull to refresh in about 1-2 minutes.',
+      'NOT RECORDED' =>
+        'Recording was not started for this call, so no playback is available.',
+      'UNAVAILABLE' =>
+        'Recording is not available for this call.',
+      _ => 'Recording is still in progress.',
+    };
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.videocam_rounded, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Call Recording',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: availabilityColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: availabilityColor.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Text(
+                    availabilityLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: availabilityColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _RecordingMetaChip(
+                  icon: Icons.access_time,
+                  label: 'Duration',
+                  value: durationText,
+                ),
+                const SizedBox(width: 12),
+                _RecordingMetaChip(
+                  icon: Icons.calendar_today,
+                  label: 'Recorded',
+                  value: startedText,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: availabilityColor.withValues(alpha: isDark ? 0.16 : 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: availabilityColor.withValues(alpha: 0.20),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: availabilityColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      availabilityMessage,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (!playbackReady || _loadingPlaybackUrl)
+                    ? null
+                    : _loadPlaybackUrl,
+                icon: _loadingPlaybackUrl
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.play_circle_outline, size: 18),
+                label: Text(
+                  _loadingPlaybackUrl ? 'Loading...' : 'Play Recording',
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2210,6 +2425,47 @@ class _LegendChip extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Text(label),
+      ],
+    );
+  }
+}
+
+class _RecordingMetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _RecordingMetaChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: isDark ? Colors.white54 : Colors.black45),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.white54 : Colors.black45,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }

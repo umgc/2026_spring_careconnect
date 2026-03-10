@@ -185,7 +185,10 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
       '&initiator=true'
       '&video=true'
       '&audio=true'
-      '&callId=$callId',
+      '&callId=$callId'
+      '&returnPatientDetailsId=${Uri.encodeComponent(widget.patientId)}'
+      '&forcePatientDetailsOnExit=true'
+      '&returnAsCaregiver=${widget.isCaregiver ? 'true' : 'false'}',
     );
 
     if (!mounted) return;
@@ -903,16 +906,12 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
       return;
     }
 
-    final callIds = _callHistoryEvents
-        .map((event) => (event['callId'] ?? '').toString().trim())
-        .where((callId) => callId.isNotEmpty)
-        .toSet()
-        .toList();
+    final patientUserId = _callHistoryPatientUserId;
 
-    if (callIds.isEmpty) {
+    if (patientUserId <= 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No call history available to delete.')),
+        const SnackBar(content: Text('No patient call history is available to delete.')),
       );
       return;
     }
@@ -923,7 +922,7 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
           builder: (dialogContext) => AlertDialog(
             title: const Text('Delete Call History (Dev Only)'),
             content: Text(
-              'Delete telemetry history for ${callIds.length} call(s) for this patient? This is only for local/dev mode.',
+              'Delete all call history tied to this patient, including telemetry rows that feed the Call History tile, plus summaries, transcripts, archives, recording records, and recording files? This is only for local/dev mode.',
             ),
             actions: [
               TextButton(
@@ -948,26 +947,42 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
     });
 
     var deletedEvents = 0;
-    var failedCalls = 0;
-    String? firstFailureMessage;
+    var deletedSummaries = 0;
+    var deletedTranscriptSegments = 0;
+    var deletedTranscriptArchives = 0;
+    var deletedRecordingRows = 0;
+    var deletedRecordingObjects = 0;
+    var deletedCalls = 0;
 
     try {
-      for (final callId in callIds) {
-        try {
-          deletedEvents += await ApiService.deleteCallTelemetryDev(callId);
-        } catch (e) {
-          failedCalls++;
-          firstFailureMessage ??= e.toString();
-        }
-      }
+      final deleteResult = await ApiService.deletePatientCallHistoryDev(
+        patientUserId,
+      );
+      deletedEvents += (deleteResult['deletedEvents'] as num?)?.toInt() ?? 0;
+      deletedCalls += (deleteResult['deletedCalls'] as num?)?.toInt() ?? 0;
+      deletedSummaries +=
+          (deleteResult['deletedSummaries'] as num?)?.toInt() ?? 0;
+      deletedTranscriptSegments +=
+          (deleteResult['deletedTranscriptSegments'] as num?)?.toInt() ?? 0;
+      deletedTranscriptArchives +=
+          (deleteResult['deletedTranscriptArchives'] as num?)?.toInt() ?? 0;
+      deletedRecordingRows +=
+          (deleteResult['deletedRecordingRows'] as num?)?.toInt() ?? 0;
+      deletedRecordingObjects +=
+          (deleteResult['deletedRecordingS3Objects'] as num?)?.toInt() ?? 0;
 
       if (!mounted) return;
       await _loadPatientData();
 
       if (!mounted) return;
-      final message = failedCalls == 0
-          ? 'Deleted $deletedEvents telemetry event(s) in dev mode.'
-          : 'Deleted $deletedEvents event(s); failed to delete $failedCalls call(s). ${firstFailureMessage ?? ''}';
+      final footprintNote =
+          ' Removed $deletedSummaries summary row(s), '
+          '$deletedTranscriptSegments transcript segment(s), '
+          '$deletedTranscriptArchives transcript archive(s), '
+          '$deletedRecordingRows recording row(s), and '
+          '$deletedRecordingObjects recording object(s).';
+      final message =
+          'Deleted $deletedEvents telemetry event(s) across $deletedCalls call(s) in dev mode.$footprintNote';
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));

@@ -9,6 +9,7 @@ import com.careconnect.service.ChimeService;
 import com.careconnect.service.CallTelemetryService;
 import com.careconnect.service.CallTranscriptService;
 import com.careconnect.service.CallSummaryService;
+import com.careconnect.service.CallRecordingService;
 import com.careconnect.service.CaregiverPatientLinkService;
 import com.careconnect.model.CallTelemetryEvent;
 
@@ -51,6 +52,7 @@ public class CallController {
     @Autowired private CallTelemetryService callTelemetryService;
     @Autowired private CallTranscriptService callTranscriptService;
     @Autowired private CallSummaryService callSummaryService;
+    @Autowired private CallRecordingService callRecordingService;
     @Autowired private CaregiverPatientLinkService caregiverPatientLinkService;
     @Autowired private UserRepository userRepository;
     @Autowired private Environment environment;
@@ -160,6 +162,7 @@ public class CallController {
             Map<String, Object> contextMetadata = extractCallContextMetadata(body);
             maybeRecordFinalOverallSentiment(callId, currentUser.getId(), parseUserId(otherPartyId));
             maybeGenerateAndStoreCallSummary(callId, currentUser.getId());
+            callRecordingService.stopRecording(callId);
             chimeService.endMeeting(callId);
             if (otherPartyId != null && !otherPartyId.isBlank()) {
                 callNotificationHandler.sendNotificationToUser(otherPartyId, Map.of(
@@ -711,20 +714,96 @@ public class CallController {
     }
 
     @DeleteMapping("/{callId}/telemetry")
-    @Operation(summary = "Delete stored call telemetry events (dev/local only)")
+    @Operation(summary = "Delete the full stored call footprint for a call (dev/local only)")
     public ResponseEntity<Map<String, Object>> deleteCallTelemetry(@PathVariable String callId) {
         ensureDevOrLocalMode();
 
         User currentUser = getCurrentUser();
         long deletedEvents = callTelemetryService.deleteTelemetryForCall(callId);
-        log.warn("Deleted {} telemetry events for call {} by user {} (dev/local mode)",
-                deletedEvents, callId, currentUser.getId());
+        long deletedSummaries = callSummaryService.deleteSummariesForCall(callId);
+        Map<String, Long> transcriptPurge = callTranscriptService.purgeForCall(callId);
+        Map<String, Object> recordingPurge = callRecordingService.purgeRecordingsForCall(callId);
 
-        return ResponseEntity.ok(Map.of(
-                "callId", callId,
-                "deletedEvents", deletedEvents,
-                "status", "deleted"
-        ));
+        long deletedTranscriptSegments =
+                (transcriptPurge.get("deletedTranscriptSegments") == null)
+                        ? 0L
+                        : transcriptPurge.get("deletedTranscriptSegments");
+        long deletedTranscriptArchives =
+                (transcriptPurge.get("deletedTranscriptArchives") == null)
+                        ? 0L
+                        : transcriptPurge.get("deletedTranscriptArchives");
+        long deletedRecordingRows =
+                (recordingPurge.get("deletedDbRows") instanceof Number n)
+                        ? n.longValue()
+                        : 0L;
+        long deletedRecordingObjects =
+                (recordingPurge.get("deletedS3Objects") instanceof Number n)
+                        ? n.longValue()
+                        : 0L;
+
+        log.warn("Deleted call footprint for call {} by user {} (dev/local mode): telemetry={}, summaries={}, transcriptSegments={}, transcriptArchives={}, recordingRows={}, recordingObjects={}",
+                callId, currentUser.getId(), deletedEvents, deletedSummaries, deletedTranscriptSegments,
+                deletedTranscriptArchives, deletedRecordingRows, deletedRecordingObjects);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("callId", callId);
+        response.put("deletedEvents", deletedEvents);
+        response.put("deletedSummaries", deletedSummaries);
+        response.put("deletedTranscriptSegments", deletedTranscriptSegments);
+        response.put("deletedTranscriptArchives", deletedTranscriptArchives);
+        response.put("deletedRecordingRows", deletedRecordingRows);
+        response.put("deletedRecordingS3Objects", deletedRecordingObjects);
+        response.put("status", "deleted");
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/patients/{patientUserId}/telemetry")
+    @Operation(summary = "Delete the full stored call footprint for a patient call history tile (dev/local only)")
+    public ResponseEntity<Map<String, Object>> deletePatientCallHistory(@PathVariable Long patientUserId) {
+        ensureDevOrLocalMode();
+
+        User currentUser = getCurrentUser();
+        CallTelemetryService.PatientCallHistoryMatch match = callTelemetryService.findCallHistoryForPatient(patientUserId);
+
+        long deletedSummaries = 0L;
+        long deletedTranscriptSegments = 0L;
+        long deletedTranscriptArchives = 0L;
+        long deletedRecordingRows = 0L;
+        long deletedRecordingObjects = 0L;
+
+        for (String callId : match.callIds()) {
+            deletedSummaries += callSummaryService.deleteSummariesForCall(callId);
+
+            Map<String, Long> transcriptPurge = callTranscriptService.purgeForCall(callId);
+            deletedTranscriptSegments += transcriptPurge.getOrDefault("deletedTranscriptSegments", 0L);
+            deletedTranscriptArchives += transcriptPurge.getOrDefault("deletedTranscriptArchives", 0L);
+
+            Map<String, Object> recordingPurge = callRecordingService.purgeRecordingsForCall(callId);
+            if (recordingPurge.get("deletedDbRows") instanceof Number deletedDbRows) {
+                deletedRecordingRows += deletedDbRows.longValue();
+            }
+            if (recordingPurge.get("deletedS3Objects") instanceof Number deletedS3Objects) {
+                deletedRecordingObjects += deletedS3Objects.longValue();
+            }
+        }
+
+        long deletedEvents = callTelemetryService.deleteTelemetryEvents(match.events());
+
+        log.warn("Deleted patient call history for patientUserId {} by user {} (dev/local mode): telemetry={}, calls={}, summaries={}, transcriptSegments={}, transcriptArchives={}, recordingRows={}, recordingObjects={}",
+                patientUserId, currentUser.getId(), deletedEvents, match.callIds().size(), deletedSummaries,
+                deletedTranscriptSegments, deletedTranscriptArchives, deletedRecordingRows, deletedRecordingObjects);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("patientUserId", patientUserId);
+        response.put("deletedEvents", deletedEvents);
+        response.put("deletedCalls", match.callIds().size());
+        response.put("deletedSummaries", deletedSummaries);
+        response.put("deletedTranscriptSegments", deletedTranscriptSegments);
+        response.put("deletedTranscriptArchives", deletedTranscriptArchives);
+        response.put("deletedRecordingRows", deletedRecordingRows);
+        response.put("deletedRecordingS3Objects", deletedRecordingObjects);
+        response.put("status", "deleted");
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/telemetry/my")
@@ -1094,6 +1173,119 @@ public class CallController {
         }
         return currentUser.getRole() == com.careconnect.security.Role.CAREGIVER
                 && caregiverPatientLinkService.hasAccessToPatient(currentUser.getId(), requestedUserId);
+    }
+
+    // ================================================================
+    // RECORDING ENDPOINTS
+    // ================================================================
+
+    @PostMapping("/{callId}/recording/start")
+    @Operation(summary = "Start recording a call via AWS Chime Media Capture Pipeline")
+    public ResponseEntity<Map<String, Object>> startRecording(@PathVariable String callId) {
+        User currentUser = getCurrentUser();
+        Map<String, Object> result = callRecordingService.startRecording(callId, currentUser.getId());
+        callTelemetryService.recordCallEvent(
+                callId,
+                "RECORDING_START",
+                currentUser.getId(),
+                null,
+                result.getOrDefault("status", "UNKNOWN").toString(),
+                Map.of("recordingEnabled", !result.containsKey("message") || !"DISABLED".equals(result.get("status"))),
+                result.containsKey("message") ? result.get("message").toString() : null
+        );
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{callId}/recording/stop")
+    @Operation(summary = "Stop the active recording pipeline for a call")
+    public ResponseEntity<Map<String, Object>> stopRecording(@PathVariable String callId) {
+        User currentUser = getCurrentUser();
+        Map<String, Object> result = callRecordingService.stopRecording(callId);
+        callTelemetryService.recordCallEvent(
+                callId,
+                "RECORDING_STOP",
+                currentUser.getId(),
+                null,
+                result.getOrDefault("status", "UNKNOWN").toString(),
+                Map.of(),
+                null
+        );
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/{callId}/recording")
+    @Operation(summary = "Get recording status and metadata for a call")
+    public ResponseEntity<Map<String, Object>> getRecordingStatus(@PathVariable String callId) {
+        User currentUser = getCurrentUser();
+        boolean isAdmin = currentUser.getRole() == com.careconnect.security.Role.ADMIN;
+        boolean isParticipant = isCallParticipant(callId, currentUser.getId());
+        boolean isCaregiver = currentUser.getRole() == com.careconnect.security.Role.CAREGIVER;
+        if (!isAdmin && !isParticipant && !isCaregiver) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        return ResponseEntity.ok(callRecordingService.getRecordingStatus(callId));
+    }
+
+    @GetMapping("/{callId}/recording/playback-url")
+    @Operation(summary = "Get a presigned S3 URL for recording playback (expires in 15 minutes)")
+    public ResponseEntity<Map<String, Object>> getRecordingPlaybackUrl(@PathVariable String callId) {
+        User currentUser = getCurrentUser();
+        boolean isAdmin = currentUser.getRole() == com.careconnect.security.Role.ADMIN;
+        boolean isCaregiver = currentUser.getRole() == com.careconnect.security.Role.CAREGIVER;
+        boolean isParticipant = isCallParticipant(callId, currentUser.getId());
+        if (!isAdmin && !isCaregiver && !isParticipant) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        callTelemetryService.recordCallEvent(
+                callId,
+                "RECORDING_PLAYBACK_URL_GENERATED",
+                currentUser.getId(),
+                null,
+                "SUCCESS",
+                Map.of("requestedByRole", currentUser.getRole().name()),
+                null
+        );
+        return ResponseEntity.ok(callRecordingService.generatePlaybackUrl(callId));
+    }
+
+    @GetMapping("/recordings")
+    @Operation(summary = "List all call recordings (admin and caregiver only)")
+    public ResponseEntity<List<Map<String, Object>>> listRecordings(
+            @RequestParam(required = false) Long userId) {
+        User currentUser = getCurrentUser();
+        boolean isAdmin = currentUser.getRole() == com.careconnect.security.Role.ADMIN;
+        boolean isCaregiver = currentUser.getRole() == com.careconnect.security.Role.CAREGIVER;
+        if (!isAdmin && !isCaregiver) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Only admins and caregivers can list recordings");
+        }
+        List<Map<String, Object>> recordings;
+        if (userId != null) {
+            recordings = callRecordingService.getRecordingsByUser(userId);
+        } else if (isAdmin) {
+            recordings = callRecordingService.getAllRecordings();
+        } else {
+            // Caregiver sees only recordings they initiated
+            recordings = callRecordingService.getRecordingsByUser(currentUser.getId());
+        }
+        return ResponseEntity.ok(recordings);
+    }
+
+    @PostMapping("/{callId}/recording/cleanup-raw")
+    @Operation(summary = "Delete raw recording artifacts after the stitched video is available (dev/local only)")
+    public ResponseEntity<Map<String, Object>> cleanupRawRecordingArtifacts(@PathVariable String callId) {
+        ensureDevOrLocalMode();
+        getCurrentUser();
+        return ResponseEntity.ok(callRecordingService.cleanupRawArtifactsForCall(callId));
+    }
+
+    @DeleteMapping("/recordings")
+    @Operation(summary = "Purge ALL recordings from S3 and DB (dev/local only — for test cleanup)")
+    public ResponseEntity<Map<String, Object>> purgeAllRecordings() {
+        ensureDevOrLocalMode();
+        User currentUser = getCurrentUser();
+        log.warn("Recording purge requested by user {} (dev/local mode)", currentUser.getId());
+        Map<String, Object> result = callRecordingService.purgeAllRecordings();
+        return ResponseEntity.ok(result);
     }
 
 }

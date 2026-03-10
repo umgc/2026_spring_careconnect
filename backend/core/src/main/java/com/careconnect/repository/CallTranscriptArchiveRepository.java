@@ -9,4 +9,8 @@ public interface CallTranscriptArchiveRepository extends JpaRepository<CallTrans
     Optional<CallTranscriptArchive> findTopByCallIdOrderByArchivedAtDesc(String callId);
 
     boolean existsByCallId(String callId);
+
+    java.util.List<CallTranscriptArchive> findByCallIdOrderByArchivedAtDesc(String callId);
+
+    long deleteByCallId(String callId);
 }

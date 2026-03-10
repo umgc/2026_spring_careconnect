@@ -25,6 +25,7 @@ class VideoCallService {
   static const int _maxBufferedTranscriptSegments = 120;
   static const int _maxTranscriptChars = 1200;
   static const Duration _transcriptFlushInterval = Duration(seconds: 4);
+  static final Set<String> _completedCallIds = <String>{};
 
   bool _isInitialized = false;
   bool _isInCall = false;
@@ -114,8 +115,12 @@ class VideoCallService {
     Map<String, dynamic>? callContextMetadata,
   }) async {
     if (!_isInitialized) throw Exception('VideoCallService not initialized');
+    final normalizedCallId = callId.trim();
+    if (_completedCallIds.contains(normalizedCallId)) {
+      throw Exception('This call has already ended.');
+    }
 
-    _currentCallId = callId;
+    _currentCallId = normalizedCallId;
     _otherPartyId = otherPartyId;
     _callContextMetadata = callContextMetadata == null
         ? null
@@ -128,7 +133,7 @@ class VideoCallService {
     _seedAwaitingSentimentState();
     _startTranscriptFlushTimer();
 
-    debugPrint('📹 Joining Chime call: $callId');
+    debugPrint('📹 Joining Chime call: $normalizedCallId');
 
     try {
       final requestBody =
@@ -136,7 +141,7 @@ class VideoCallService {
           ? null
           : jsonEncode(_callContextMetadata);
       final response = await http.post(
-        Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$callId/join'),
+        Uri.parse('${EnvironmentConfig.baseUrl}/api/v3/calls/$normalizedCallId/join'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_jwtToken',
@@ -157,7 +162,7 @@ class VideoCallService {
       // (transcript/voice/video). Do not send periodic empty combined payloads.
 
       return ChimeCallSession(
-        callId: callId,
+        callId: normalizedCallId,
         meetingId: _meetingCredentials!['meetingId'] as String,
         attendeeId: _meetingCredentials!['attendeeId'] as String,
         joinToken: _meetingCredentials!['joinToken'] as String,
@@ -190,7 +195,7 @@ class VideoCallService {
     }
 
     final callId = _currentCallId!;
-    debugPrint('📴 Ending call: $callId');
+      debugPrint('📴 Ending call: $callId');
 
     _sentimentTimer?.cancel();
     await _flushPendingTranscriptSegments(
@@ -234,6 +239,7 @@ class VideoCallService {
     _meetingCredentials = null;
     _aggregatedSentiment.clear();
     _pendingTranscriptSegments.clear();
+    _completedCallIds.add(callId);
     CallNotificationService.clearActiveCall(callId);
     _onCallEnded?.call();
   }
@@ -473,6 +479,9 @@ class VideoCallService {
     _lastTranscriptEndMs = 0;
     _meetingCredentials = null;
     _aggregatedSentiment.clear();
+    if (callId != null && callId.trim().isNotEmpty) {
+      _completedCallIds.add(callId.trim());
+    }
     CallNotificationService.clearActiveCall(callId);
     _onCallEnded?.call();
   }
@@ -941,6 +950,89 @@ class VideoCallService {
     _callStartedAt = null;
     _lastTranscriptEndMs = 0;
   }
+
+  // ================================================================
+  // RECORDING
+  // ================================================================
+
+  /// Starts server-side recording of [callId] via AWS Chime Media Capture
+  /// Pipeline. Returns the full response body or throws on error.
+  Future<Map<String, dynamic>> startRecording(String callId) async {
+    final response = await http.post(
+      Uri.parse(
+        '${EnvironmentConfig.baseUrl}/api/v3/calls/$callId/recording/start',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_jwtToken',
+      },
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(
+      'startRecording failed (${response.statusCode}): ${response.body}',
+    );
+  }
+
+  /// Stops an active recording for [callId]. Returns the final recording info
+  /// or throws on error.
+  Future<Map<String, dynamic>> stopRecording(String callId) async {
+    final response = await http.post(
+      Uri.parse(
+        '${EnvironmentConfig.baseUrl}/api/v3/calls/$callId/recording/stop',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_jwtToken',
+      },
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(
+      'stopRecording failed (${response.statusCode}): ${response.body}',
+    );
+  }
+
+  /// Returns the current recording status for [callId], or null if none.
+  Future<Map<String, dynamic>?> getRecordingStatus(String callId) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '${EnvironmentConfig.baseUrl}/api/v3/calls/$callId/recording',
+        ),
+        headers: {'Authorization': 'Bearer $_jwtToken'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      if (response.statusCode == 404) return null;
+    } catch (e) {
+      debugPrint('⚠️ getRecordingStatus error: $e');
+    }
+    return null;
+  }
+
+  /// Returns a time-limited presigned S3 URL for playback of [callId].
+  Future<String?> getRecordingPlaybackUrl(String callId) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '${EnvironmentConfig.baseUrl}/api/v3/calls/$callId/recording/playback-url',
+        ),
+        headers: {'Authorization': 'Bearer $_jwtToken'},
+      );
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        return body['url'] as String?;
+      }
+    } catch (e) {
+      debugPrint('⚠️ getRecordingPlaybackUrl error: $e');
+    }
+    return null;
+  }
+
 }
 
 class _BufferedTranscriptSegment {

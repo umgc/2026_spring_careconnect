@@ -791,6 +791,16 @@ final GoRouter appRouter = GoRouter(
           isInitiator: isInitiator,
           userName: state.uri.queryParameters['userName'],
           recipientName: state.uri.queryParameters['recipientName'],
+          returnPatientDetailsId:
+              state.uri.queryParameters['returnPatientDetailsId'],
+          forcePatientDetailsOnExit:
+              (state.uri.queryParameters['forcePatientDetailsOnExit'] ?? 'false')
+                      .toLowerCase() ==
+                  'true',
+          returnAsCaregiver:
+              (state.uri.queryParameters['returnAsCaregiver'] ?? 'false')
+                      .toLowerCase() ==
+                  'true',
         );
       },
     ),

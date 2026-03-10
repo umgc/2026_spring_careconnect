@@ -1,8 +1,9 @@
-# Team A Quickstart: Chime Video Calling + Bedrock Sentiment
+# Team A Quickstart: Chime Video Calling + Bedrock Sentiment + Call Recording
 
 This guide is for your current feature branch and focuses only on your scope:
 - Chime video call join/end flow
 - Bedrock sentiment APIs (text, voice, video, combined)
+- Call recording via AWS Chime Media Capture Pipelines → S3
 - Minimal navigation path to test quickly
 
 ## 1) Where to run from
@@ -41,6 +42,9 @@ For Chime + Bedrock feature path:
 - aws.bedrock.sentiment.model-id (optional override, default amazon.nova-pro-v1:0)
 - aws.bedrock.voice.model-id (optional override, default mistral.voxtral-small-24b-2507)
 
+To enable call recording (optional, off by default):
+- CARECONNECT_RECORDING_ENABLED=true
+
 Notes:
 - In ECS Fargate, use task role/IAM instead of static AWS keys.
 - Chime and Bedrock permissions must exist on the role.
@@ -77,8 +81,44 @@ Base: /api/v3/calls
 - POST /{callId}/sentiment/voice
 - POST /{callId}/sentiment/video
 - POST /{callId}/sentiment/combined
+- POST /{callId}/recording/start
+- POST /{callId}/recording/stop
+- GET  /{callId}/recording
+- GET  /{callId}/recording/playback-url
+- DELETE /recordings  (dev/local only — purges all recordings from S3 + DB)
 
-## 7) Fast troubleshooting
+## 7) Call recording setup
+
+Recording is OFF by default. To enable locally:
+
+1. Set CARECONNECT_RECORDING_ENABLED=true in your env or application-dev.properties.
+
+2. Add the following IAM permissions to your AWS dev user:
+
+   iam:CreateServiceLinkedRole
+     Resource: arn:aws:iam::*:role/aws-service-role/mediapipelines.chime.amazonaws.com/*
+
+   s3:CreateBucket, s3:PutBucketPolicy, s3:PutObject, s3:GetObject, s3:ListBucket, s3:DeleteObject
+     Resource: arn:aws:s3:::careconnect-recordings-*  (and :::careconnect-recordings-*/* for object actions)
+
+   chime:CreateMediaCapturePipeline, chime:DeleteMediaCapturePipeline, chime:GetMediaCapturePipeline
+     Resource: *
+
+3. Everything else is automatic:
+   - The S3 bucket (careconnect-recordings-{accountId}-{region}) is created at startup if absent.
+   - The Chime bucket policy is applied at startup on every run (idempotent).
+   - The IAM service-linked role AWSServiceRoleForAmazonChimeSDKMediaPipelines is created at
+     startup if absent, provided iam:CreateServiceLinkedRole is in your policy.
+
+   IF iam:CreateServiceLinkedRole cannot be added to your user policy, run this once manually
+   (any team member, any machine — one-time per AWS account):
+
+     aws iam create-service-linked-role --aws-service-name mediapipelines.chime.amazonaws.com
+
+4. To clean up test recordings after a session, tap "Delete Call History (Dev)" in the patient
+   details screen. This wipes all S3 objects under the recordings/ prefix AND all DB records.
+
+## 8) Fast troubleshooting
 
 If call screen opens but fails immediately:
 - Verify you are logged in (JWT exists in app storage).
@@ -92,7 +132,16 @@ If sentiment calls fail:
 If Chime join fails:
 - Check backend logs for chime:* permissions and region mismatch.
 
-## 8) ECS Fargate path (parallel, minimal coupling)
+If recording fails with "service-linked role" error:
+- Add iam:CreateServiceLinkedRole to your IAM user policy (see section 7 above), or
+- Run: aws iam create-service-linked-role --aws-service-name mediapipelines.chime.amazonaws.com
+- Restart the backend — it provisions the role at startup automatically.
+
+If recording fails with "bucket policy does not exist":
+- This should never happen after the startup provisioning was added.
+- If it does, restart the backend — policy is re-applied on every start.
+
+## 9) ECS Fargate path (parallel, minimal coupling)
 
 Terraform module added at:
 - terraform_aws/5_ecs_fargate

@@ -208,35 +208,40 @@ class PatientHeaderCard extends StatelessWidget {
                 const SizedBox(width: 12),
 
                 // RIGHT — actions + right-side meta
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      _CallActions(
-                        emergencyPhones: emergencyPhones,
-                        onStartVideoCall: onStartVideoCall,
-                        onCallEmergencyContacts: onCallEmergencyContacts,
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 380),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _CallActions(
+                            emergencyPhones: emergencyPhones,
+                            onStartVideoCall: onStartVideoCall,
+                            onCallEmergencyContacts: onCallEmergencyContacts,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Last Check-in: Today, 10:30 AM',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: cs.onSurface.withOpacity(.75),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Current Mood: $currentMoodEmoji $currentMoodLabel',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Last Check-in: Today, 10:30 AM',
-                        textAlign: TextAlign.right,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface.withOpacity(.75),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Current Mood: $currentMoodEmoji $currentMoodLabel',
-                        textAlign: TextAlign.right,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ],

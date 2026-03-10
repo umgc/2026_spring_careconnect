@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -178,5 +179,14 @@ public class CallSummaryService {
         }
         String trimmed = callId.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    @Transactional
+    public long deleteSummariesForCall(String callId) {
+        String normalizedCallId = normalize(callId);
+        if (normalizedCallId == null) {
+            return 0;
+        }
+        return callSummaryRepository.deleteByCallId(normalizedCallId);
     }
 }

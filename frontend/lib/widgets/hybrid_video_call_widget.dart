@@ -98,6 +98,13 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   bool _isSendingVideoSample = false;
   bool _isEndingCall = false;
   bool _isExitingCall = false;
+
+  // Recording
+  bool _isRecording = false;
+  bool _isTogglingRecording = false;
+  DateTime? _recordingStartedAt;
+  Timer? _recordingElapsedTimer;
+  Duration _recordingElapsed = Duration.zero;
   DateTime? _lastAudioSampleSentAt;
   DateTime? _lastVideoSampleSentAt;
   bool _localAudioEnabled = true;
@@ -340,8 +347,64 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
 
   @override
   void dispose() {
+    _recordingElapsedTimer?.cancel();
     _videoCallService.dispose();
     super.dispose();
+  }
+
+  // ================================================================
+  // RECORDING CONTROLS
+  // ================================================================
+
+  Future<void> _toggleRecording() async {
+    if (_isTogglingRecording) return;
+    setState(() => _isTogglingRecording = true);
+    try {
+      if (_isRecording) {
+        await _videoCallService.stopRecording(widget.callId);
+        _recordingElapsedTimer?.cancel();
+        setState(() {
+          _isRecording = false;
+          _recordingStartedAt = null;
+          _recordingElapsed = Duration.zero;
+        });
+      } else {
+        await _videoCallService.startRecording(widget.callId);
+        final started = DateTime.now();
+        _recordingElapsedTimer?.cancel();
+        _recordingElapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (!mounted) return;
+          setState(() {
+            _recordingElapsed = DateTime.now().difference(started);
+          });
+        });
+        setState(() {
+          _isRecording = true;
+          _recordingStartedAt = started;
+          _recordingElapsed = Duration.zero;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isRecording
+                ? 'Failed to stop recording.'
+                : 'Recording is unavailable right now. Check the recording setup.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isTogglingRecording = false);
+    }
+  }
+
+  String _formatRecordingElapsed() {
+    final s = _recordingElapsed.inSeconds;
+    final m = s ~/ 60;
+    final sec = (s % 60).toString().padLeft(2, '0');
+    return '$m:$sec';
   }
 
   Future<String?> _resolveCurrentRole() async {
@@ -729,8 +792,8 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     }
 
     if (!mounted) return;
-    if (Navigator.canPop(context)) {
-      Navigator.of(context).pop();
+    if (context.canPop()) {
+      context.pop();
       return;
     }
 
@@ -803,6 +866,9 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
   Widget _buildCallLayout() {
     return Column(
       children: [
+        // Recording consent banner — visible to all participants when active
+        if (_isRecording) _buildRecordingConsentBanner(),
+
         // Video call area — takes remaining space above sentiment panel
         Expanded(
           flex: (_isCaregiverView && _sentimentPanelExpanded) ? 6 : 10,
@@ -1161,6 +1227,31 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
     );
   }
 
+  Widget _buildRecordingConsentBanner() {
+    return Container(
+      width: double.infinity,
+      color: Colors.red.shade800.withValues(alpha: 0.92),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        children: [
+          // Blinking red dot
+          _BlinkingDot(),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Recording in progress — ${_formatRecordingElapsed()}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCallControlsBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -1195,6 +1286,30 @@ class _HybridVideoCallWidgetState extends State<HybridVideoCallWidget> {
             icon: const Icon(Icons.cameraswitch, color: Colors.white),
           ),
           const SizedBox(width: 8),
+          // Record / stop-recording button (caregiver only)
+          if (_isCaregiverView) ...[
+            _isTogglingRecording
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : IconButton(
+                    tooltip: _isRecording ? 'Stop recording' : 'Start recording',
+                    onPressed: _toggleRecording,
+                    icon: Icon(
+                      _isRecording
+                          ? Icons.stop_circle_outlined
+                          : Icons.fiber_manual_record,
+                      color: _isRecording ? Colors.redAccent : Colors.white70,
+                      size: 28,
+                    ),
+                  ),
+            const SizedBox(width: 8),
+          ],
           Container(
             decoration: const BoxDecoration(
               color: Colors.redAccent,
@@ -1323,6 +1438,43 @@ class _CallDurationTimerState extends State<_CallDurationTimer> {
           ),
         );
       },
+    );
+  }
+}
+
+// ================================================================
+// BLINKING DOT — used in the recording consent banner
+// ================================================================
+
+class _BlinkingDot extends StatefulWidget {
+  @override
+  State<_BlinkingDot> createState() => _BlinkingDotState();
+}
+
+class _BlinkingDotState extends State<_BlinkingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _ctrl,
+      child: const Icon(Icons.fiber_manual_record, color: Colors.white, size: 12),
     );
   }
 }

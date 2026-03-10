@@ -763,20 +763,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     : 'New data will not be stored locally for offline use.',
                 value: userProvider.offlineModeEnabled,
                 // loading: _loadingPersistence,
-                onChanged: (enabled) async{
+                onChanged: (enabled) async {
                   userProvider.setOfflineMode(enabled);
                   // BNS 7: Privacy-Preserving Observability and Telemetry.
-                  if (_telemetryEnabled){
-                  await Telemetry.event('offline_toggled', {
-                    'enabled': enabled,
-                  });
+                  if (_telemetryEnabled) {
+                    await Telemetry.event('offline_toggled', {
+                      'enabled': enabled,
+                    });
                   }
-
-
-
-
-
-
                 },
               ),
 

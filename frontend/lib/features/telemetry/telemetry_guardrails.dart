@@ -1,16 +1,15 @@
 /// Created 2/19/2026: Team B
 /// A security and data-integrity utility for sanitizing telemetry events.
 ///
-/// The [TelemetryGuardrails] class acts as a hard filter to ensure that no 
-/// sensitive Personal Identifiable Information (PII) or Protected Health 
-/// Information (PHI) is transmitted off-device. 
+/// The [TelemetryGuardrails] class acts as a hard filter to ensure that no
+/// sensitive Personal Identifiable Information (PII) or Protected Health
+/// Information (PHI) is transmitted off-device.
 ///
 /// It enforces compliance with the application's "Offline-Only" policy for:
 /// * **Symptom & Mood Tracking**
 /// * **Medication Logging**
 /// * **Electronic Visit Verification (EVV)**
 class TelemetryGuardrails {
-
   /// The "Master Whitelist" of event names allowed to be tracked.
   static const Set<String> allowedEvents = {
     'privacy_telemetry_toggle',
@@ -18,29 +17,38 @@ class TelemetryGuardrails {
     'button_tap',
     'error_network',
     'error_timeout',
+    'offline_toggled',
+    // Feature analytics (anonymous)
+    'feature.medications.view_all',
+    'feature.medications.view_active',
+    'feature.medications.view_pending',
+    'feature.medications.add',
+    'feature.medications.approve',
+    'feature.medications.delete_soft',
+    'feature.medications.delete_hard',
   };
 
   /// A "Blacklist" of property keys that are never allowed to leave the device.
   static const Set<String> blockedKeys = {
     'name',
-    'firstName',
-    'lastName',
+    'firstname',
+    'lastname',
     'email',
     'phone',
     'address',
     'dob',
-    'dateOfBirth',
+    'dateofbirth',
     'ssn',
     'mrn',
-    'patientId',
-    'providerId',
+    'patientid',
+    'providerid',
     'notes',
     'message',
     'symptom',
     'symptoms',
     'diagnosis',
     'medication',
-    'freeText',
+    'freetext',
   };
 
   /// Validates and cleanses an event and its properties before transmission.
@@ -49,10 +57,10 @@ class TelemetryGuardrails {
   /// 1. **Event Whitelisting**: Drops the event if [eventName] is not in [allowedEvents].
   /// 2. **Key Filtering**: Removes any key found in [blockedKeys].
   /// 3. **Type Restriction**: Only allows primitives ([String], [num], [bool]).
-  /// 4. **Length Heuristics**: Drops string values longer than 64 characters 
+  /// 4. **Length Heuristics**: Drops string values longer than 64 characters
   ///    to prevent "leakage" of free-text notes or descriptions.
   ///
-  /// Returns a sanitized [Map] of properties, or `null` if the entire 
+  /// Returns a sanitized [Map] of properties, or `null` if the entire
   /// event should be discarded.
   static Map<String, Object?>? sanitize(
     String eventName,
@@ -61,7 +69,7 @@ class TelemetryGuardrails {
     if (!allowedEvents.contains(eventName)) return null;
 
     final out = <String, Object?>{};
-    
+
     for (final entry in props.entries) {
       final k = entry.key;
 
@@ -70,7 +78,7 @@ class TelemetryGuardrails {
 
       final v = entry.value;
       if (v == null) continue;
-      
+
       // Ensure data is a simple primitive and fits length constraints
       if (v is String || v is num || v is bool) {
         if (v is String && v.length > 64) continue; // blocks most free-text
@@ -79,4 +87,4 @@ class TelemetryGuardrails {
     }
     return out;
   }
-}// end class TelemetryGuardrails
+} // end class TelemetryGuardrails

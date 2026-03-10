@@ -92,18 +92,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadTelemetrySettings() async {
     final optedOut = await TelemetrySettings.isOptedOut();
+
     if (!mounted) return;
 
     setState(() {
-      _telemetryEnabled = !optedOut; // ON unless opted out
+      _telemetryEnabled = !optedOut;
       _loadingTelemetry = false;
     });
 
-    // Only after we know the opt-out state:
     await _maybeShowTelemetryDefaultOnDialog();
 
-    // Optional: screen_view, now that state is known and dialog handled.
-    // This keeps it non-noisy and honors opt-out.
     if (!mounted) return;
     await Telemetry.event('screen_view', {'screen': 'settings'});
   }
@@ -111,13 +109,12 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _maybeShowTelemetryDefaultOnDialog() async {
     if (!mounted) return;
     if (_telemetryDialogShownThisSession) return;
+    if (!_telemetryEnabled) return;
 
     final seen = await TelemetrySettings.hasSeenDialog();
     if (!mounted) return;
-
     if (seen) return;
 
-    if (!mounted) return;
     setState(() => _telemetryDialogShownThisSession = true);
 
     final result = await showDialog<bool>(
@@ -146,11 +143,16 @@ class _SettingsPageState extends State<SettingsPage> {
 
     await TelemetrySettings.setHasSeenDialog(true);
 
-    // If user opted out in the dialog:
     if (result == false) {
       await TelemetrySettings.setOptedOut(true);
+
       if (!mounted) return;
       setState(() => _telemetryEnabled = false);
+    } else if (result == true) {
+      await TelemetrySettings.setOptedOut(false);
+
+      if (!mounted) return;
+      setState(() => _telemetryEnabled = true);
     }
   }
 
@@ -508,7 +510,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    
     final t = AppLocalizations.of(context)!;
     final userProvider = Provider.of<UserProvider>(context);
     final user = userProvider.user;
@@ -682,11 +683,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 onChanged: (enabled) async {
                   if (_loadingTelemetry) return;
 
-                  // Capture context-dependent objects BEFORE async gaps
                   final messenger = ScaffoldMessenger.of(context);
                   final errorColor = Theme.of(context).colorScheme.error;
 
-                  // Confirm before changing state
                   final allowed = enabled
                       ? await _confirmOptIn()
                       : await _confirmOptOut();
@@ -703,8 +702,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       _loadingTelemetry = false;
                     });
 
-                    // Only log the toggle event if telemetry is enabled AFTER change.
-                    if (enabled) {
+                    if (_telemetryEnabled) {
                       await Telemetry.event('privacy_telemetry_toggle', {
                         'enabled': enabled,
                       });
@@ -765,13 +763,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     : 'New data will not be stored locally for offline use.',
                 value: userProvider.offlineModeEnabled,
                 // loading: _loadingPersistence,
-                onChanged: (enabled) {
+                onChanged: (enabled) async {
                   userProvider.setOfflineMode(enabled);
                   // BNS 7: Privacy-Preserving Observability and Telemetry.
-                  Telemetry.event('offline_toggled', {
-                    'enabled': enabled,
-                    'timestamp': DateTime.now().toIso8601String(),
-                  });
+                  if (_telemetryEnabled) {
+                    await Telemetry.event('offline_toggled', {
+                      'enabled': enabled,
+                    });
+                  }
                 },
               ),
 

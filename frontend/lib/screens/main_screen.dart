@@ -9,6 +9,7 @@ import '../config/navigation/bottom_nav_config.dart';
 import '../config/navigation/main_screen_config.dart';
 import '../services/local_db/connectivity_router_service.dart';
 import '../services/local_db/mood_storage_service.dart';
+import '../features/telemetry/telemetry.dart';
 
 /// Main screen of the application. This is where the user is navigated to
 /// after logging in. This contains the bottom nav bar and main screens
@@ -16,11 +17,7 @@ class MainScreen extends StatefulWidget {
   final int? initialTabIndex;
   final MainScreenConfig? config;
 
-  const MainScreen({
-    super.key,
-    this.initialTabIndex,
-    this.config,
-  });
+  const MainScreen({super.key, this.initialTabIndex, this.config});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -136,7 +133,9 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
     _syncStartDelayTimer?.cancel();
-    final queue = await _moodStorageService!.getPendingMoodQueue(userId: userId);
+    final queue = await _moodStorageService!.getPendingMoodQueue(
+      userId: userId,
+    );
     if (!mounted || queue.isEmpty) {
       return;
     }
@@ -270,9 +269,9 @@ class _MainScreenState extends State<MainScreen> {
 
       // Show message
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
 
         // Navigate to login
         context.go('/login');
@@ -291,9 +290,30 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  String? _telemetryScreenForNavItem(BottomNavItem item) {
+    final r = item.routeName.toLowerCase();
+    if (r == 'messages') return 'messages';
+    if (r == 'health') return 'health';
+
+    final k = item.labelKey?.toLowerCase();
+    if (k == 'nav_messages') return 'messages';
+    if (k == 'nav_health') return 'health';
+
+    return null;
+  }
+
   /// Handle bottom nav bar item tap.
   void _onItemTapped(int index) {
     final navItem = _navItems[index];
+
+    final screenName = _telemetryScreenForNavItem(navItem);
+    if (screenName != null && index != _selectedIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          await Telemetry.event('screen_view', {'screen': screenName});
+        } catch (_) {}
+      });
+    }
 
     // Check if onPress callback exists and call it
     if (navItem.onPress != null) {
@@ -333,13 +353,14 @@ class _MainScreenState extends State<MainScreen> {
       builder: (context, userProvider, child) {
         // Check if user data is missing or invalid
         final currentUser = userProvider.user;
-        if (widget.config == null && (currentUser == null || currentUser.role.isEmpty || currentUser.id <= 0)) {
+        if (widget.config == null &&
+            (currentUser == null ||
+                currentUser.role.isEmpty ||
+                currentUser.id <= 0)) {
           // Return a loading screen while redirecting
           _redirectToLoginWithMessage('Please log in again');
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
@@ -347,21 +368,25 @@ class _MainScreenState extends State<MainScreen> {
         final currentRole = currentUser?.role ?? '';
         final currentUserId = currentUser?.id ?? 0;
 
-        if (widget.config == null && (_config.userRole != currentRole || _config.userId != currentUserId)) {
+        if (widget.config == null &&
+            (_config.userRole != currentRole ||
+                _config.userId != currentUserId)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _initializeConfig();
             _initializeNavigation();
           });
         }
-        
         return Scaffold(
           backgroundColor: _config.backgroundColor,
-          appBar: _config.showAppBar ? AppBar(
-            title: Text(_config.appBarTitle ?? 'CareConnect'),
-            backgroundColor: _config.primaryColor ?? Theme.of(context).primaryColor,
-            foregroundColor: Colors.white,
-            actions: _config.appBarActions,
-          ) : null,
+          appBar: _config.showAppBar
+              ? AppBar(
+                  title: Text(_config.appBarTitle ?? 'CareConnect'),
+                  backgroundColor:
+                      _config.primaryColor ?? Theme.of(context).primaryColor,
+                  foregroundColor: Colors.white,
+                  actions: _config.appBarActions,
+                )
+              : null,
           // BNS 5: Global Banners (No Internet & Offline Mode)
           body: Column(
             children: [
@@ -372,7 +397,6 @@ class _MainScreenState extends State<MainScreen> {
                 _buildSyncCompleteBanner(theme)
               else if (_pendingMoodQueue.isNotEmpty)
                 _buildQueuedSyncBanner(theme)
-
               // BNS 5 offline mode Banner
               else if (!userProvider.offlineModeEnabled)
                 _buildGlobalOfflineBanner(context),
@@ -408,7 +432,10 @@ class _MainScreenState extends State<MainScreen> {
           const Expanded(
             child: Text(
               'No Internet Connection.',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -428,7 +455,10 @@ class _MainScreenState extends State<MainScreen> {
           Expanded(
             child: Text(
               'Sync complete',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -497,7 +527,10 @@ class _MainScreenState extends State<MainScreen> {
                       padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
                         'Queued Mood Sync Items',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     const Padding(
@@ -518,18 +551,22 @@ class _MainScreenState extends State<MainScreen> {
                                 final item = _pendingMoodQueue[index];
                                 final isSyncing =
                                     item.localId == _currentlySyncingMoodId;
-                                final isFailed = _failedMoodIds.contains(item.localId);
+                                final isFailed = _failedMoodIds.contains(
+                                  item.localId,
+                                );
                                 final status = isSyncing
                                     ? 'Syncing now'
                                     : isFailed
-                                        ? 'Failed (will retry)'
-                                        : 'Queued';
+                                    ? 'Failed (will retry)'
+                                    : 'Queued';
 
                                 return ListTile(
                                   leading: CircleAvatar(
                                     child: Text('${index + 1}'),
                                   ),
-                                  title: Text('Mood: ${item.label} (${item.score}/10)'),
+                                  title: Text(
+                                    'Mood: ${item.label} (${item.score}/10)',
+                                  ),
                                   subtitle: Text(
                                     'Created: ${_formatQueueTimestamp(item.createdAt)} \nStatus: $status',
                                   ),
@@ -555,7 +592,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _deleteQueuedMoodItem(MoodQueueItem item) async {
-    if (_moodStorageService == null || _currentlySyncingMoodId == item.localId) {
+    if (_moodStorageService == null ||
+        _currentlySyncingMoodId == item.localId) {
       return;
     }
     final removed = await _moodStorageService!.deleteQueuedMoodItem(
@@ -580,9 +618,9 @@ class _MainScreenState extends State<MainScreen> {
     final twoDigitMinute = local.minute.toString().padLeft(2, '0');
     return '$twoDigitMonth/$twoDigitDay ${local.year} $twoDigitHour:$twoDigitMinute';
   }
+
   /// Build the global offline mode warning banner
   Widget _buildGlobalOfflineBanner(BuildContext context) {
-    
     return MaterialBanner(
       elevation: 0,
       backgroundColor: Colors.amber.shade50,
@@ -599,19 +637,18 @@ class _MainScreenState extends State<MainScreen> {
         TextButton(
           onPressed: () => _onItemTapped(_navItems.length - 1),
           child: Icon(
-            Icons.settings, 
+            Icons.settings,
             color: Colors.amber.shade900,
             size: 24, // Matches the standard emoji scale
           ),
         ),
       ],
-
     );
   }
 
   /// Build the bottom navigation bar
   Widget _buildBottomNavigationBar() {
-   final t = AppLocalizations.of(context)!;
+    final t = AppLocalizations.of(context)!;
     return Container(
       decoration: BoxDecoration(
         boxShadow: [
@@ -627,7 +664,8 @@ class _MainScreenState extends State<MainScreen> {
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        selectedItemColor: _config.primaryColor ?? Theme.of(context).primaryColor,
+        selectedItemColor:
+            _config.primaryColor ?? Theme.of(context).primaryColor,
         unselectedItemColor: Colors.grey[600],
         selectedFontSize: 12,
         unselectedFontSize: 12,
@@ -636,7 +674,7 @@ class _MainScreenState extends State<MainScreen> {
           return BottomNavigationBarItem(
             icon: Icon(item.icon),
             activeIcon: Icon(item.activeIcon ?? item.icon),
-           label: item.localizedLabel(t),
+            label: item.localizedLabel(t),
           );
         }).toList(),
       ),
@@ -646,27 +684,23 @@ class _MainScreenState extends State<MainScreen> {
 
 /// Extension to provide easy navigation to specific tabs
 extension MainScreenNavigation on BuildContext {
-  void navigateToMainScreen({
-    int? tabIndex,
-    MainScreenConfig? config,
-  }) {
+  void navigateToMainScreen({int? tabIndex, MainScreenConfig? config}) {
     Navigator.of(this).pushReplacement(
       MaterialPageRoute(
-        builder: (context) => MainScreen(
-          initialTabIndex: tabIndex,
-          config: config,
-        ),
+        builder: (context) =>
+            MainScreen(initialTabIndex: tabIndex, config: config),
       ),
     );
   }
 
-  void navigateToMainScreenWithConfig(MainScreenConfig config, {int? tabIndex}) {
+  void navigateToMainScreenWithConfig(
+    MainScreenConfig config, {
+    int? tabIndex,
+  }) {
     Navigator.of(this).pushReplacement(
       MaterialPageRoute(
-        builder: (context) => MainScreen(
-          initialTabIndex: tabIndex,
-          config: config,
-        ),
+        builder: (context) =>
+            MainScreen(initialTabIndex: tabIndex, config: config),
       ),
     );
   }

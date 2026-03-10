@@ -1,10 +1,21 @@
+/// TODO: ARCHITECTURAL DEBT NOTICE
+/// Currently, the database uses a 'split-profile' strategy where core data is 
+/// fragmented across three tables: [users], [caregivers], and [patients].
+/// 
+/// ISSUE: This forces the frontend to perform multi-step fetches and complex 
+/// mapping logic because 'address' and 'contact' info live in role-specific 
+/// tables rather than a unified [address] table with a user_id foreign key.
+library;
+
 import 'dart:io';
+import 'dart:convert'; // Added for jsonDecode
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../widgets/app_bar_helper.dart';
 import '../widgets/common_drawer.dart';
+import '../services/api_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -76,8 +87,6 @@ class _ProfilePageState extends State<ProfilePage> {
       final user = userProvider.user;
 
       if (user != null) {
-        // TODO: Replace with actual API call for patient or caregiver
-        // For now, mock address fields for both roles
         Map<String, dynamic> profile = {
           'name': user.name,
           'email': user.email,
@@ -86,32 +95,49 @@ class _ProfilePageState extends State<ProfilePage> {
           'city': '',
           'state': '',
           'zipCode': '',
-          'country': '',
+          'country': 'USA',
           'specialization': '',
           'organization': '',
-          'licenseNumber': '',
+          'licenseNumber': '123456HARDCODED VALUE',
           'emergencyContact': '',
           'medicalNotes': '',
         };
 
-        // Example: If you fetch from getPatient or getCaregiver API, populate address fields here
-        // if (user.role.toUpperCase() == 'CAREGIVER') {
-        //   final caregiver = await ApiService.getCaregiver(user.id);
-        //   profile['address'] = caregiver.address;
-        //   profile['city'] = caregiver.city;
-        //   profile['state'] = caregiver.state;
-        //   profile['zipCode'] = caregiver.zipCode;
-        //   profile['country'] = caregiver.country;
-        //   // ...other fields
-        // } else if (user.role.toUpperCase() == 'PATIENT') {
-        //   final patient = await ApiService.getPatient(user.id);
-        //   profile['address'] = patient.address;
-        //   profile['city'] = patient.city;
-        //   profile['state'] = patient.state;
-        //   profile['zipCode'] = patient.zipCode;
-        //   profile['country'] = patient.country;
-        //   // ...other fields
-        // }
+        if (user.role.toUpperCase() == 'CAREGIVER' &&
+            user.caregiverId != null) {
+          final response = await ApiService.getCaregiverProfile(
+            user.caregiverId!,
+          );
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            final addr = data['address'] as Map<String, dynamic>?;
+            // update the profile map with the API response
+            profile['phone'] = data['phone'] ?? '';
+            profile['address'] = addr?['line1'] ?? '';
+            profile['city'] = addr?['city'] ?? '';
+            profile['state'] = addr?['state'] ?? '';
+            profile['zipCode'] = addr?['zip'] ?? '';
+            profile['specialization'] = data['caregiverType'] ?? '';
+          }
+        } else if (user.role.toUpperCase() == 'PATIENT' &&
+            user.patientId != null) {
+          final response = await ApiService.getPatientProfile(user.patientId!);
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            final addr = data['address'] as Map<String, dynamic>?;
+
+            profile['phone'] = data['phone'] ?? '';
+            profile['address'] = addr?['line1'] ?? '';
+            profile['city'] = addr?['city'] ?? '';
+            profile['state'] = addr?['state'] ?? '';
+            profile['zipCode'] = addr?['zip'] ?? '';
+
+            // Patient-specific fields (Mapping from your JSON keys)
+            profile['emergencyContact'] = data['emergencyContact'] ?? '';
+            profile['medicalNotes'] =
+                data['medicalConditions'] ?? data['notes'] ?? '';
+          }
+        }
 
         if (mounted) {
           setState(() {
@@ -144,8 +170,6 @@ class _ProfilePageState extends State<ProfilePage> {
       _stateController.text = _userProfile['state'] ?? '';
       _zipCodeController.text = _userProfile['zipCode'] ?? '';
       _countryController.text = _userProfile['country'] ?? '';
-
-      // Role-specific fields
       _specializationController.text = _userProfile['specialization'] ?? '';
       _organizationController.text = _userProfile['organization'] ?? '';
       _licenseController.text = _userProfile['licenseNumber'] ?? '';
@@ -167,32 +191,29 @@ class _ProfilePageState extends State<ProfilePage> {
       final user = userProvider.user;
 
       if (user != null) {
+        // Prepare the payload based on your API's nested address structure
         final profileData = {
-          'name': _nameController.text.trim(),
-          'email': _emailController.text.trim(),
+          'firstName': _nameController.text.split(' ').first,
+          'lastName': _nameController.text.contains(' ')
+              ? _nameController.text.split(' ').last
+              : '',
           'phone': _phoneController.text.trim(),
-          'address': _addressController.text.trim(),
-          'city': _cityController.text.trim(),
-          'state': _stateController.text.trim(),
-          'zipCode': _zipCodeController.text.trim(),
-          'country': _countryController.text.trim(),
-          if (user.role.toUpperCase() == 'CAREGIVER') ...{
-            'specialization': _specializationController.text.trim(),
-            'organization': _organizationController.text.trim(),
-            'licenseNumber': _licenseController.text.trim(),
+          'address': {
+            'line1': _addressController.text.trim(),
+            'city': _cityController.text.trim(),
+            'state': _stateController.text.trim(),
+            'zip': _zipCodeController.text.trim(),
           },
-          if (user.role.toUpperCase() == 'PATIENT') ...{
-            'emergencyContact': _emergencyContactController.text.trim(),
-            'medicalNotes': _medicalNotesController.text.trim(),
+          if (user.role.toUpperCase() == 'CAREGIVER') ...{
+            'caregiverType': _specializationController.text.trim(),
           },
         };
 
-        // Mock save for now - replace with actual API call
-        print('Saving profile data: $profileData');
+        // Call the update method (You'll likely need to add this to ApiService)
+        // await ApiService.updateCaregiverProfile(user.caregiverId!, profileData);
 
-        // Mock image upload
         if (_imageFile != null) {
-          print('Uploading profile picture: ${_imageFile!.path}');
+          // await ApiService.uploadProfileImage(user.id, _imageFile!);
         }
 
         setState(() {
@@ -201,13 +222,9 @@ class _ProfilePageState extends State<ProfilePage> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('✅ Profile updated successfully!'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
+          const SnackBar(content: Text('✅ Profile updated successfully!')),
         );
 
-        // Reload profile to get updated data
         await _loadUserProfile();
       }
     } catch (e) {
@@ -217,6 +234,8 @@ class _ProfilePageState extends State<ProfilePage> {
       });
     }
   }
+
+  // ... rest of your build methods remain the same ...
 
   Future<void> _pickImage() async {
     try {

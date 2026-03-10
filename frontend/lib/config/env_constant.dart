@@ -10,12 +10,7 @@ const String _agoraAppCertificate = String.fromEnvironment(
   'AGORA_APP_CERTIFICATE',
 );
 
-// This is the new, unified backend URL.
-// Set your local dev URL in defaultValue
-const String _backendBaseUrl = String.fromEnvironment(
-  'BACKEND_URL',
-  defaultValue: 'http://localhost:8080',
-);
+const String _backendBaseUrl = String.fromEnvironment('BACKEND_URL');
 
 const String _wsOverrideUrl = String.fromEnvironment('WEBSOCKET_SERVER_URL');
 const String _backendToken = String.fromEnvironment('CC_BACKEND_TOKEN');
@@ -100,12 +95,22 @@ String getWebSocketNotificationUrl() {
 ///
 /// This is now controlled by a single --dart-define=BACKEND_URL variable.
 String getBackendBaseUrl() {
-  // Normalize to avoid malformed URLs (leading/trailing spaces, trailing slash).
-  final normalized = _backendBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-  if (normalized.isEmpty) {
-    throw Exception('BACKEND_URL not set via --dart-define');
+  final configured = _backendBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+
+  if (configured.isNotEmpty) {
+    return configured;
   }
-  return normalized;
+
+  if (kIsWeb) {
+    return 'http://localhost:8080';
+  }
+
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.android:
+      return 'http://10.0.2.2:8080';
+    default:
+      return 'http://localhost:8080';
+  }
 }
 
 String getBackendToken() {

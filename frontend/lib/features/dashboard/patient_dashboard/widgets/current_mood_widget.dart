@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:care_connect_app/services/api_service.dart';
 import 'package:provider/provider.dart';
 import 'package:care_connect_app/providers/user_provider.dart';
+import 'package:care_connect_app/services/local_db/connectivity_router_service.dart';
+import 'package:care_connect_app/services/local_db/mood_storage_service.dart';
 
 
 /// Current Mood Widget
@@ -26,7 +29,14 @@ class CurrentMoodWidget extends StatefulWidget {
 class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
   late int currentMoodScore;
   late String currentMoodLabel;
+  late MoodStorageService _moodStorageService;
   List<Map<String, dynamic>> moodHistory = [];
+
+  @override
+  void dispose() {
+    unawaited(_moodStorageService.close());
+    super.dispose();
+  }
 
 
   @override
@@ -34,6 +44,14 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
     super.initState();
     currentMoodScore = widget.moodScore;
     currentMoodLabel = widget.moodLabel;
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    _moodStorageService = MoodStorageService(
+      connectivityRouter: ConnectivityRouterService(
+        isOnline: () async => userProvider.isDeviceOnline,
+      ),
+      currentUserIdProvider: () async => userProvider.user?.id,
+      canUseOfflineFallback: () async => userProvider.offlineModeEnabled,
+    );
     _loadMoodHistory();
   }
 
@@ -86,8 +104,10 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
         final user = Provider.of<UserProvider>(context, listen: false).user;
 
         try {
-          // Fetch moods from backend
-          final response = await ApiService.getMoodHistory(user?.id ?? 0);
+          // Read through storage service so online/offline routing is centralized.
+          final response = await _moodStorageService.getMoodHistory(
+            user?.id ?? 0,
+          );
           setState(() {
             moodHistory = response
                 .map<Map<String, dynamic>>((entry) => {
@@ -234,14 +254,24 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
                     ),
                     
                     onPressed: () async {
+                      final userProvider = Provider.of<UserProvider>(
+                        context,
+                        listen: false,
+                      );
+                      final messenger = ScaffoldMessenger.of(context);
+                      final errorColor = theme.colorScheme.error;
+
                       try {
-                        final user = Provider.of<UserProvider>(context, listen: false).user;
-                        await ApiService.saveMoodScore(
+                        final user = userProvider.user;
+                        await _moodStorageService.saveMood(
                           userId: user?.id ?? 0,
                           score: currentMoodScore,
                           label: currentMoodLabel,
                         );
 
+                        if (!mounted) {
+                          return;
+                        }
                         setState(() {
                           moodHistory.insert(0, {
                             'score': currentMoodScore,
@@ -252,17 +282,21 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
 
                         _checkForAlerts();
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Mood saved successfully'),
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              userProvider.isDeviceOnline
+                                      ? 'Mood saved successfully'
+                                      : 'No internet: mood saved locally',
+                            ),
                             duration: Duration(seconds: 2),
                           ),
                         );
                       } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text('Error saving mood: $e'),
-                            backgroundColor: theme.colorScheme.error,
+                            backgroundColor: errorColor,
                           ),
                         );
                       }

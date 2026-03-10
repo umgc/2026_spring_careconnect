@@ -43,6 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# Ignore local properties (contains your specific Android SDK path)
+/android/local.properties
+# Ignore Gradle cache
+/android/.gradle/
 
 # Security - Environment Variables and Secrets
 .env

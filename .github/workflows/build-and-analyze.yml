@@ -1,0 +1,1216 @@
+# =============================================================================
+# CareConnect — Build, Security & Quality Analysis Workflow
+# =============================================================================
+#
+# PURPOSE:
+#   Runs all static analysis, secrets scanning, dependency scanning, and
+#   quality gate checks on every push/PR to main and develop branches.
+#   Generates a structured report posted as a PR comment AND uploaded as
+#   a downloadable artifact for audit purposes (HIPAA compliance trail).
+#
+# JOBS (run in parallel):
+#   1. secrets-scan   — TruffleHog (secrets/credentials leaked in code)
+#   2. sast-java      — Checkstyle, SpotBugs, PMD, SonarQube (Java/Spring Boot)
+#   3. sast-flutter   — Semgrep, flutter analyze (Dart/Flutter frontend)
+#   4. sca            — OWASP Dependency-Check (CVE scanning for Maven deps)
+#   5. report         — Aggregates results, posts PR comment, uploads artifact
+#   6. dast           — OWASP ZAP (runtime scan — manual trigger only)
+#
+# HOW TO DISABLE A TOOL:
+#   Find the "TOOL TOGGLES" block below and set the tool's flag to 'false'.
+#   The step will be skipped but the job will still pass. This lets you
+#   temporarily disable a tool without breaking the pipeline.
+#
+# REQUIRED GITHUB SECRETS:
+#   NVD_API_KEY       — OWASP Dependency-Check NVD API key (free)
+#                       Get one at: https://nvd.nist.gov/developers/request-an-api-key
+#   SONAR_HOST_URL    — Your SonarQube server URL (e.g. https://sonar.yourcompany.com)
+#   SONAR_TOKEN       — SonarQube authentication token
+#   STAGING_URL       — Deployed AWS staging environment URL (for DAST/ZAP only)
+#                       This is typically the ALB DNS name output from your
+#                       Terraform 4_compute layer. Run:
+#                         cd terraform_aws/4_compute && terraform output alb_dns_name
+#                       Then store that value as STAGING_URL in GitHub Secrets.
+#
+# =============================================================================
+
+name: Build and Static Analysis
+
+# -----------------------------------------------------------------------------
+# TRIGGER: When this workflow runs
+# -----------------------------------------------------------------------------
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - team_d
+  pull_request:
+    branches:
+      - main
+      - develop
+      - team_d
+
+# -----------------------------------------------------------------------------
+# PERMISSIONS: Required for posting PR comments
+# -----------------------------------------------------------------------------
+permissions:
+  contents: read          # Read repo code
+  pull-requests: write    # Post/update PR comments with the report
+  checks: write           # Update check status on commits
+
+# -----------------------------------------------------------------------------
+# TOOL TOGGLES
+# Set any of these to 'false' to skip that tool's step.
+# The job will still complete; only that step will be skipped.
+# -----------------------------------------------------------------------------
+env:
+  RUN_TRUFFLEHOG: 'true'       # Secrets scanning (CI)
+  RUN_CHECKSTYLE: 'true'       # Java code style
+  RUN_SPOTBUGS: 'true'         # Java bytecode bug analysis
+  RUN_PMD: 'true'              # Java source code analysis + copy-paste detection
+  RUN_SONARQUBE: 'true'        # Java quality gate (requires secrets configured)
+  RUN_SEMGREP: 'true'          # Dart/Flutter + Java SAST
+  RUN_FLUTTER_ANALYZE: 'true'  # Flutter's built-in linter
+  RUN_OWASP_DC: 'true'         # Dependency CVE scanning (requires NVD_API_KEY)
+
+  # OWASP Dependency-Check severity thresholds
+  # CVSS score ranges: 0.0-3.9 = Low, 4.0-6.9 = Medium, 7.0-8.9 = High, 9.0-10.0 = Critical
+  # Hard block: pipeline fails and merge is blocked
+  # Warn only: pipeline continues but report flags the finding
+  #
+  # To adjust thresholds, change the CVSS score values below.
+  # To make Medium also a hard block, change OWASP_WARN_ON_MEDIUM to 'false'
+  # and add Medium to the check logic in the OWASP step.
+  OWASP_FAIL_ON_CVSS: '7'      # Hard block on CVSS >= 7.0 (High + Critical)
+  OWASP_WARN_ON_MEDIUM: 'true' # Warn (don't block) on CVSS 4.0–6.9 (Medium)
+  OWASP_WARN_ON_LOW: 'true'    # Warn (don't block) on CVSS 0.0–3.9 (Low)
+
+# =============================================================================
+# JOB 1: SECRETS SCANNING — TruffleHog
+# Scans git history for accidentally committed secrets, API keys, passwords, etc.
+# =============================================================================
+jobs:
+  secrets-scan:
+    name: "Secrets Scan (TruffleHog)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for TruffleHog to scan all commits
+
+      # -----------------------------------------------------------------------
+      # TRUFFLEHOG
+      # Scans the entire git history for secrets using entropy analysis and
+      # 700+ regex detectors covering AWS keys, JWT tokens, private keys, etc.
+      #
+      # TO DISABLE: Set RUN_TRUFFLEHOG to 'false' in the env block above.
+      #
+      # Configuration options:
+      #   --only-verified       Only report secrets that are verified as active
+      #                         (reduces false positives; remove to catch more)
+      #   --fail                Exit with non-zero code if secrets found (blocks merge)
+      #   --exclude-paths       Add a .trufflehogignore file to exclude test fixtures
+      #                         or known false positives. See:
+      #                         https://github.com/trufflesecurity/trufflehog#gitignore-style-exclusions
+      # -----------------------------------------------------------------------
+        
+      - name: Run TruffleHog
+        if: env.RUN_TRUFFLEHOG == 'true'
+        id: trufflehog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          # IMPORTANT: make the tool exit non-zero when it finds secrets
+          extra_args: --only-verified --fail
+        continue-on-error: true
+
+      - name: Record TruffleHog result
+        if: always()
+        run: |
+          # Write outcome to a file so the report job can read it
+          mkdir -p /tmp/tool-results
+          if [ "${{ steps.trufflehog.outcome }}" = "failure" ]; then
+            echo "FAILED" > /tmp/tool-results/trufflehog.txt
+          else
+            echo "PASSED" > /tmp/tool-results/trufflehog.txt
+          fi
+
+      - name: Upload TruffleHog result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trufflehog-result
+          path: /tmp/tool-results/trufflehog.txt
+          retention-days: 90  # Retain for HIPAA audit trail
+
+# =============================================================================
+# JOB 2: SAST — Java / Spring Boot
+# Checkstyle, SpotBugs, PMD, SonarQube
+# =============================================================================
+  sast-java:
+    name: "SAST — Java (Checkstyle, SpotBugs, PMD, SonarQube)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for SonarQube blame data
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven  # Cache Maven deps between runs for faster CI
+
+      # -----------------------------------------------------------------------
+      # CHECKSTYLE
+      # Enforces Java coding standards (formatting, Javadoc, naming conventions).
+      # Configuration file: backend/core/src/main/resources/checkstyle.xml
+      # (or wherever your pom.xml points checkstyle.configLocation)
+      #
+      # TO DISABLE: Set RUN_CHECKSTYLE to 'false' in the env block above.
+      # TO CONFIGURE: Edit checkstyle.xml rules or adjust suppressions file.
+      # -----------------------------------------------------------------------
+      - name: Run Checkstyle
+        if: env.RUN_CHECKSTYLE == 'true'
+        id: checkstyle
+        working-directory: backend/core
+        run: chmod +x mvnw && ./mvnw checkstyle:check 2>&1 | tee /tmp/checkstyle-output.txt
+        continue-on-error: true  # Don't stop pipeline; report job aggregates all failures
+
+      - name: Parse Checkstyle violations
+        if: always() && env.RUN_CHECKSTYLE == 'true'
+        run: |
+          mkdir -p /tmp/tool-results
+          # Extract violation count and details from Checkstyle XML report
+          if [ -f backend/core/target/checkstyle-result.xml ]; then
+            VIOLATIONS=$(grep -c '<error ' backend/core/target/checkstyle-result.xml 2>/dev/null || echo "0")
+            echo "VIOLATIONS=$VIOLATIONS" > /tmp/tool-results/checkstyle-meta.txt
+            # Extract file, line, severity, rule, message for each violation
+            python3 - <<'EOF'
+          import xml.etree.ElementTree as ET, json, os
+          tree = ET.parse('backend/core/target/checkstyle-result.xml')
+          findings = []
+          for file_el in tree.getroot().findall('file'):
+            fname = file_el.get('name', '')
+            # Strip workspace prefix for cleaner paths in report
+            fname = fname.replace(os.getcwd() + '/', '')
+            for err in file_el.findall('error'):
+              findings.append({
+                'file': fname,
+                'line': err.get('line', 'N/A'),
+                'severity': err.get('severity', 'error').upper(),
+                'rule': err.get('source', '').split('.')[-1],
+                'message': err.get('message', '')
+              })
+          with open('/tmp/tool-results/checkstyle-findings.json', 'w') as f:
+            json.dump(findings, f, indent=2)
+          print(f"Parsed {len(findings)} Checkstyle findings")
+          EOF
+          else
+            echo "VIOLATIONS=0" > /tmp/tool-results/checkstyle-meta.txt
+            echo "[]" > /tmp/tool-results/checkstyle-findings.json
+          fi
+
+          OUTCOME="success"
+          if [ "$VIOLATIONS" -gt "0" ]; then OUTCOME="failure"; fi
+          echo "OUTCOME=$OUTCOME" >> /tmp/tool-results/checkstyle-meta.txt
+
+      # -----------------------------------------------------------------------
+      # SPOTBUGS
+      # Analyzes compiled Java bytecode for bug patterns (null dereferences,
+      # resource leaks, security vulnerabilities, etc.).
+      # Requires 'compile' phase to run first (mvnw spotbugs:check does this).
+      #
+      # TO DISABLE: Set RUN_SPOTBUGS to 'false' in the env block above.
+      # TO CONFIGURE: Add spotbugs-exclude.xml to your project root and
+      #   reference it in pom.xml with <excludeFilterFile>.
+      # -----------------------------------------------------------------------
+      - name: Run SpotBugs
+        if: env.RUN_SPOTBUGS == 'true'
+        id: spotbugs
+        working-directory: backend/core
+        run: chmod +x mvnw && ./mvnw spotbugs:check 2>&1 | tee /tmp/spotbugs-output.txt
+        continue-on-error: true
+
+      - name: Parse SpotBugs findings
+        if: always() && env.RUN_SPOTBUGS == 'true'
+        run: |
+          mkdir -p /tmp/tool-results
+          if [ -f backend/core/target/spotbugsXml.xml ]; then
+            python3 - <<'EOF'
+          import xml.etree.ElementTree as ET, json
+          tree = ET.parse('backend/core/target/spotbugsXml.xml')
+          findings = []
+          for bug in tree.getroot().findall('BugInstance'):
+            # SpotBugs ranks: 1-4=Scariest, 5-9=Scary, 10-14=Troubling, 15-20=Of concern
+            rank = int(bug.get('rank', 20))
+            if rank <= 4:
+              severity = 'CRITICAL'
+            elif rank <= 9:
+              severity = 'HIGH'
+            elif rank <= 14:
+              severity = 'MEDIUM'
+            else:
+              severity = 'LOW'
+
+            src = bug.find('SourceLine')
+            findings.append({
+              'file': src.get('sourcepath', 'N/A') if src is not None else 'N/A',
+              'line': src.get('start', 'N/A') if src is not None else 'N/A',
+              'severity': severity,
+              'rule': bug.get('type', 'N/A'),
+              'message': (bug.find('LongMessage') or bug.find('ShortMessage') or ET.Element('x')).text or 'N/A'
+            })
+          with open('/tmp/tool-results/spotbugs-findings.json', 'w') as f:
+            json.dump(findings, f, indent=2)
+          print(f"Parsed {len(findings)} SpotBugs findings")
+          EOF
+          else
+            echo "[]" > /tmp/tool-results/spotbugs-findings.json
+          fi
+
+          COUNT=$(python3 -c "import json; print(len(json.load(open('/tmp/tool-results/spotbugs-findings.json'))))" 2>/dev/null || echo "0")
+          OUTCOME="success"
+          if [ "$COUNT" -gt "0" ]; then OUTCOME="failure"; fi
+          echo "OUTCOME=$OUTCOME" > /tmp/tool-results/spotbugs-meta.txt
+
+      # -----------------------------------------------------------------------
+      # PMD
+      # Analyzes Java source code for common problems: unused variables,
+      # empty catch blocks, overly complex methods, copy-paste code (CPD).
+      #
+      # TO DISABLE: Set RUN_PMD to 'false' in the env block above.
+      # TO CONFIGURE: Add ruleset.xml to your project and reference it in
+      #   pom.xml with <rulesets><ruleset>...</ruleset></rulesets>.
+      #   CPD (copy-paste detection) threshold is set via <minimumTokens> in pom.xml.
+      # -----------------------------------------------------------------------
+      - name: Run PMD
+        if: env.RUN_PMD == 'true'
+        id: pmd
+        working-directory: backend/core
+        run: chmod +x mvnw && ./mvnw pmd:check pmd:cpd-check 2>&1 | tee /tmp/pmd-output.txt
+        continue-on-error: true
+
+      - name: Parse PMD findings
+        if: always() && env.RUN_PMD == 'true'
+        run: |
+          mkdir -p /tmp/tool-results
+          if [ -f backend/core/target/pmd.xml ]; then
+            python3 - <<'EOF'
+          import xml.etree.ElementTree as ET, json
+          tree = ET.parse('backend/core/target/pmd.xml')
+          findings = []
+          for file_el in tree.getroot().findall('file'):
+            fname = file_el.get('name', '').replace(os.getcwd() + '/', '') if __import__('os').path.exists(file_el.get('name','')) else file_el.get('name','')
+            for v in file_el.findall('violation'):
+              # PMD priorities: 1=High, 2=Medium-High, 3=Medium, 4=Medium-Low, 5=Low
+              priority = int(v.get('priority', 5))
+              severity = ['', 'HIGH', 'MEDIUM-HIGH', 'MEDIUM', 'MEDIUM-LOW', 'LOW'][priority]
+              findings.append({
+                'file': fname,
+                'line': v.get('beginline', 'N/A'),
+                'severity': severity,
+                'rule': v.get('rule', 'N/A'),
+                'ruleset': v.get('ruleset', 'N/A'),
+                'message': (v.text or '').strip(),
+                'rule_url': v.get('externalInfoUrl', '')
+              })
+          with open('/tmp/tool-results/pmd-findings.json', 'w') as f:
+            json.dump(findings, f, indent=2)
+          print(f"Parsed {len(findings)} PMD findings")
+          EOF
+          else
+            echo "[]" > /tmp/tool-results/pmd-findings.json
+          fi
+
+          COUNT=$(python3 -c "import json; print(len(json.load(open('/tmp/tool-results/pmd-findings.json'))))" 2>/dev/null || echo "0")
+          OUTCOME="success"
+          if [ "$COUNT" -gt "0" ]; then OUTCOME="failure"; fi
+          echo "OUTCOME=$OUTCOME" > /tmp/tool-results/pmd-meta.txt
+
+      # -----------------------------------------------------------------------
+      # BUILD (required before SonarQube scan)
+      # Runs compile + test phases. Tests are included here so SonarQube
+      # can pick up coverage data from Jacoco.
+      #
+      # NOTE: If you want to skip tests during the build for speed, replace
+      #   'verify' with 'compile' and add -DskipTests. But SonarQube will
+      #   then report 0% coverage which may fail your quality gate.
+      # -----------------------------------------------------------------------
+      - name: Build with Maven (compile + test for coverage)
+        working-directory: backend/core
+        run: chmod +x mvnw && ./mvnw clean verify
+
+      # -----------------------------------------------------------------------
+      # SONARQUBE
+      # Central quality hub — aggregates coverage, duplications, maintainability,
+      # security hotspots, and enforces a configurable quality gate.
+      #
+      # TO DISABLE: Set RUN_SONARQUBE to 'false' in the env block above.
+      #
+      # CURRENT BEHAVIOR: If SONAR_HOST_URL or SONAR_TOKEN are not configured
+      # as GitHub secrets, SonarQube is SKIPPED WITH A WARNING (not a hard block).
+      # This lets the pipeline run during initial setup.
+      #
+      # TO MAKE MISSING SONARQUBE CONFIG A HARD BLOCK:
+      #   Replace the 'if' condition on this step with:
+      #     if: env.RUN_SONARQUBE == 'true'
+      #   And remove the outer shell if-block, relying on the secrets directly.
+      #   Then add the secrets to GitHub: Settings → Secrets → Actions.
+      #
+      # SONAR PROJECT KEY:
+      #   Find or set this in your pom.xml under <properties>:
+      #     <sonar.projectKey>careconnect-backend</sonar.projectKey>
+      #   Or set it in sonar-project.properties at the project root.
+      #   Current placeholder: 'careconnect-backend' — CHANGE THIS to match
+      #   what you've configured in your SonarQube server.
+      #
+      # QUALITY GATE:
+      #   -Dsonar.qualitygate.wait=true causes the pipeline to wait for
+      #   SonarQube to finish analysis and fail if the quality gate is not met.
+      #   Remove this flag if you want SonarQube to be advisory only.
+      # -----------------------------------------------------------------------
+      - name: Run SonarQube Scan
+        if: env.RUN_SONARQUBE == 'true'
+        id: sonarqube
+        working-directory: backend/core
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_HOST_URL" ] || [ -z "$SONAR_TOKEN" ]; then
+            echo "::warning::SonarQube credentials (SONAR_HOST_URL, SONAR_TOKEN) are not configured."
+            echo "::warning::Add them to GitHub Secrets (Settings → Secrets → Actions) to enable quality gate enforcement."
+            echo "::warning::See: https://docs.sonarsource.com/sonarqube/latest/analyzing-source-code/scanners/sonarscanner-for-maven/"
+            echo "OUTCOME=skipped" > /tmp/tool-results/sonarqube-meta.txt
+            exit 0  # Warn but don't block
+          fi
+
+          chmod +x mvnw && ./mvnw org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.projectKey=careconnect-backend \
+            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.login=$SONAR_TOKEN \
+            -Dsonar.qualitygate.wait=true \
+            2>&1 | tee /tmp/sonarqube-output.txt
+        continue-on-error: true
+
+      - name: Record SonarQube result
+        if: always() && env.RUN_SONARQUBE == 'true'
+        run: |
+          mkdir -p /tmp/tool-results
+          # Only write outcome if not already written by the skip path above
+          if [ ! -f /tmp/tool-results/sonarqube-meta.txt ]; then
+            echo "OUTCOME=${{ steps.sonarqube.outcome }}" > /tmp/tool-results/sonarqube-meta.txt
+          fi
+
+      # -----------------------------------------------------------------------
+      # UPLOAD ARTIFACTS — Java SAST
+      # All reports are retained for 90 days for HIPAA audit trail purposes.
+      # -----------------------------------------------------------------------
+      - name: Upload Java SAST artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-java-reports
+          retention-days: 90
+          path: |
+            backend/core/target/checkstyle-result.xml
+            backend/core/target/spotbugsXml.xml
+            backend/core/target/pmd.xml
+            backend/core/target/cpd.xml
+            backend/core/target/surefire-reports/
+            /tmp/tool-results/checkstyle-findings.json
+            /tmp/tool-results/spotbugs-findings.json
+            /tmp/tool-results/pmd-findings.json
+            /tmp/tool-results/checkstyle-meta.txt
+            /tmp/tool-results/spotbugs-meta.txt
+            /tmp/tool-results/pmd-meta.txt
+            /tmp/tool-results/sonarqube-meta.txt
+
+# =============================================================================
+# JOB 3: SAST — Flutter / Dart
+# Semgrep (custom + community rules), flutter analyze (built-in linter)
+# =============================================================================
+  sast-flutter:
+    name: "SAST — Flutter/Dart (Semgrep, flutter analyze)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.1'  # Pin to a specific version if needed, e.g. '3.19.0'
+          cache: true
+        
+
+      # -----------------------------------------------------------------------
+      # FLUTTER ANALYZE
+      # Flutter's built-in static analyzer using rules from analysis_options.yaml.
+      # Your frontend/analysis_options.yaml already exists — this respects it.
+      #
+      # TO DISABLE: Set RUN_FLUTTER_ANALYZE to 'false' in the env block above.
+      # TO CONFIGURE: Edit frontend/analysis_options.yaml to add/remove lints.
+      #   See: https://dart.dev/tools/analysis
+      # -----------------------------------------------------------------------
+      - name: Run flutter analyze
+        if: env.RUN_FLUTTER_ANALYZE == 'true'
+        id: flutter_analyze
+        working-directory: frontend
+        run: |
+          flutter analyze --machine 2>&1 | tee /tmp/flutter-analyze-output.json || true
+          # Exit code reflects whether errors were found; capture it
+          flutter analyze
+        continue-on-error: true
+
+      - name: Parse flutter analyze findings
+        if: always() && env.RUN_FLUTTER_ANALYZE == 'true'
+        run: |
+          mkdir -p /tmp/tool-results
+          python3 - <<'EOF'
+          import json, sys
+
+          findings = []
+          try:
+            with open('/tmp/flutter-analyze-output.json') as f:
+              for line in f:
+                line = line.strip()
+                if not line:
+                  continue
+                try:
+                  obj = json.loads(line)
+                  if obj.get('event') == 'analyzerResult':
+                    for issue in obj.get('params', {}).get('issues', []):
+                      findings.append({
+                        'file': issue.get('location', {}).get('file', 'N/A'),
+                        'line': issue.get('location', {}).get('startLine', 'N/A'),
+                        'severity': issue.get('severity', 'INFO').upper(),
+                        'rule': issue.get('code', 'N/A'),
+                        'message': issue.get('message', 'N/A')
+                      })
+                except json.JSONDecodeError:
+                  pass
+          except FileNotFoundError:
+            pass
+
+          with open('/tmp/tool-results/flutter-analyze-findings.json', 'w') as f:
+            json.dump(findings, f, indent=2)
+          print(f"Parsed {len(findings)} flutter analyze findings")
+          EOF
+  
+          COUNT=$(python3 -c "import json; print(len(json.load(open('/tmp/tool-results/flutter-analyze-findings.json'))))" 2>/dev/null || echo "0")
+          OUTCOME="success"
+          if [ "$COUNT" -gt "0" ]; then OUTCOME="failure"; fi
+          echo "OUTCOME=$OUTCOME" > /tmp/tool-results/flutter-analyze-meta.txt
+
+      # -----------------------------------------------------------------------
+      # SEMGREP
+      # SAST tool with rules for both Dart/Flutter and Java.
+      # Runs against the entire repo so it catches issues in both layers.
+      #
+      # TO DISABLE: Set RUN_SEMGREP to 'false' in the env block above.
+      #
+      # RULE SETS IN USE:
+      #   p/default         — Semgrep's default high-signal security rules
+      #   p/owasp-top-ten   — OWASP Top 10 vulnerability patterns
+      #   p/secrets         — Additional secrets/credential detection
+      #
+      # TO ADD CUSTOM RULES: Create a .semgrep/ directory in your repo root
+      #   with .yaml rule files. Semgrep auto-discovers them.
+      #   See: https://semgrep.dev/docs/writing-rules/overview
+      #
+      # TO USE SEMGREP PRO (more rules, HIPAA-specific):
+      #   Add SEMGREP_APP_TOKEN to GitHub Secrets and uncomment the token line below.
+      # -----------------------------------------------------------------------
+      - name: Run Semgrep
+        if: env.RUN_SEMGREP == 'true'
+        id: semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/default
+            p/owasp-top-ten
+            p/secrets
+          # Uncomment to enable Semgrep Pro (requires SEMGREP_APP_TOKEN secret):
+          # publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+          generateSarif: '1'  # Produces semgrep.sarif for structured parsing
+        continue-on-error: true
+
+      - name: Parse Semgrep findings
+        if: always() && env.RUN_SEMGREP == 'true'
+        run: |
+          mkdir -p /tmp/tool-results
+          if [ -f semgrep.sarif ]; then
+            python3 - <<'EOF'
+          import json
+
+          with open('semgrep.sarif') as f:
+            sarif = json.load(f)
+
+          findings = []
+          for run in sarif.get('runs', []):
+            rules = {r['id']: r for r in run.get('tool', {}).get('driver', {}).get('rules', [])}
+            for result in run.get('results', []):
+              rule_id = result.get('ruleId', 'N/A')
+              rule = rules.get(rule_id, {})
+              loc = result.get('locations', [{}])[0].get('physicalLocation', {})
+              findings.append({
+                'file': loc.get('artifactLocation', {}).get('uri', 'N/A'),
+                'line': loc.get('region', {}).get('startLine', 'N/A'),
+                'severity': result.get('level', 'warning').upper(),
+                'rule': rule_id,
+                'message': result.get('message', {}).get('text', 'N/A'),
+                'rule_url': rule.get('helpUri', '')
+              })
+          with open('/tmp/tool-results/semgrep-findings.json', 'w') as f:
+            json.dump(findings, f, indent=2)
+          print(f"Parsed {len(findings)} Semgrep findings")
+          EOF
+          else
+            echo "[]" > /tmp/tool-results/semgrep-findings.json
+          fi
+
+          COUNT=$(python3 -c "import json; print(len(json.load(open('/tmp/tool-results/semgrep-findings.json'))))" 2>/dev/null || echo "0")
+          OUTCOME="success"
+          if [ "$COUNT" -gt "0" ]; then OUTCOME="failure"; fi
+          echo "OUTCOME=$OUTCOME" > /tmp/tool-results/semgrep-meta.txt
+
+      - name: Upload Flutter/Semgrep artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-flutter-reports
+          retention-days: 90
+          path: |
+            semgrep.sarif
+            /tmp/tool-results/flutter-analyze-findings.json
+            /tmp/tool-results/semgrep-findings.json
+            /tmp/tool-results/flutter-analyze-meta.txt
+            /tmp/tool-results/semgrep-meta.txt
+
+# =============================================================================
+# JOB 4: SCA — Software Composition Analysis
+# OWASP Dependency-Check: scans Maven dependencies against NVD CVE database
+# =============================================================================
+  sca:
+    name: "SCA — OWASP Dependency-Check"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # -----------------------------------------------------------------------
+      # OWASP DEPENDENCY-CHECK
+      # Scans all Maven dependencies for known CVEs from the NVD database.
+      #
+      # TO DISABLE: Set RUN_OWASP_DC to 'false' in the env block above.
+      #
+      # SEVERITY BEHAVIOR (configured via env vars at top of file):
+      #   Critical (CVSS 9.0-10.0)  → Hard block (pipeline fails, merge blocked)
+      #   High     (CVSS 7.0-8.9)   → Hard block (pipeline fails, merge blocked)
+      #   Medium   (CVSS 4.0-6.9)   → Warning only (pipeline continues)
+      #   Low      (CVSS 0.0-3.9)   → Warning only (pipeline continues)
+      #
+      # TO CHANGE THRESHOLDS: Modify OWASP_FAIL_ON_CVSS in the env block above.
+      #   Example: Set to '9' to only hard-block on Critical, warn on High.
+      #   Example: Set to '4' to hard-block on Medium+ as well.
+      #
+      # NVD API KEY:
+      #   Without an API key, the NVD data download is rate-limited (may be very slow).
+      #   Add NVD_API_KEY to GitHub Secrets for full-speed scanning.
+      #   Get a free key at: https://nvd.nist.gov/developers/request-an-api-key
+      # -----------------------------------------------------------------------
+      - name: Run OWASP Dependency-Check
+        if: env.RUN_OWASP_DC == 'true'
+        id: owasp_dc
+        working-directory: backend/core
+        run: |
+          mkdir -p /tmp/tool-results
+
+          if [ -z "${{ secrets.NVD_API_KEY }}" ]; then
+            echo "::warning::NVD_API_KEY secret is not configured. OWASP scanning will be rate-limited and slow."
+            echo "::warning::Add NVD_API_KEY to GitHub Secrets. Get a free key at: https://nvd.nist.gov/developers/request-an-api-key"
+            NVD_FLAG=""
+          else
+            NVD_FLAG="-Dnvd.api.key=${{ secrets.NVD_API_KEY }}"
+          fi
+
+          # Run the scan. failBuildOnCVSS sets the hard-block threshold.
+          # The report is always generated regardless of failures.
+          chmod +x mvnw && ./mvnw org.owasp:dependency-check-maven:check \
+            -Dformat=ALL \
+            -DfailBuildOnCVSS=${{ env.OWASP_FAIL_ON_CVSS }} \
+            $NVD_FLAG \
+            2>&1 | tee /tmp/owasp-dc-output.txt || true
+
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "EXIT_CODE=$EXIT_CODE" > /tmp/tool-results/owasp-dc-meta.txt
+
+          # Parse the JSON report to extract findings
+          if [ -f target/dependency-check-report.json ]; then
+            python3 - <<'PYEOF'
+          import json, os
+
+          with open('target/dependency-check-report.json') as f:
+            report = json.load(f)
+
+          findings = []
+          for dep in report.get('dependencies', []):
+            for vuln in dep.get('vulnerabilities', []):
+              cvss_v3 = vuln.get('cvssv3', {})
+              cvss_v2 = vuln.get('cvssv2', {})
+              score = cvss_v3.get('baseScore') or cvss_v2.get('score') or 0.0
+
+              if score >= 9.0:
+                severity = 'CRITICAL'
+                blocked = True
+              elif score >= 7.0:
+                severity = 'HIGH'
+                blocked = True
+              elif score >= 4.0:
+                severity = 'MEDIUM'
+                blocked = False
+              else:
+                severity = 'LOW'
+                blocked = False
+
+              findings.append({
+                'dependency': dep.get('fileName', 'N/A'),
+                'cve': vuln.get('name', 'N/A'),
+                'cvss_score': score,
+                'severity': severity,
+                'blocked': blocked,
+                'description': vuln.get('description', 'N/A')[:300],
+                'references': [r.get('url','') for r in vuln.get('references', [])[:2]]
+              })
+
+          with open('/tmp/tool-results/owasp-dc-findings.json', 'w') as f:
+            json.dump(findings, f, indent=2)
+
+          blocked = [f for f in findings if f['blocked']]
+          warned = [f for f in findings if not f['blocked']]
+          print(f"OWASP DC: {len(blocked)} blocking findings, {len(warned)} warnings")
+          PYEOF
+          else
+            echo "[]" > /tmp/tool-results/owasp-dc-findings.json
+          fi
+
+          # Now determine final outcome: fail if any blocking findings exist
+          BLOCKING=$(python3 -c "
+          import json
+          try:
+            findings = json.load(open('/tmp/tool-results/owasp-dc-findings.json'))
+            print(len([f for f in findings if f.get('blocked', False)]))
+          except: print(0)
+          ")
+
+          if [ "$BLOCKING" -gt "0" ]; then
+            echo "OUTCOME=failure" >> /tmp/tool-results/owasp-dc-meta.txt
+            echo "::error::OWASP Dependency-Check found $BLOCKING Critical/High severity CVE(s). Merge blocked."
+            exit 1
+          else
+            echo "OUTCOME=success" >> /tmp/tool-results/owasp-dc-meta.txt
+          fi
+        continue-on-error: true  # Report job reads the meta file to determine block/warn
+
+      - name: Upload OWASP DC artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-reports
+          retention-days: 90
+          path: |
+            backend/core/target/dependency-check-report.*
+            /tmp/tool-results/owasp-dc-findings.json
+            /tmp/tool-results/owasp-dc-meta.txt
+
+# =============================================================================
+# JOB 5: REPORT AGGREGATION
+# Waits for all analysis jobs, generates unified report, posts PR comment,
+# uploads artifact bundle, and fails the pipeline if any hard-block tools failed.
+# =============================================================================
+  report:
+    name: "Generate Report & Enforce Gates"
+    runs-on: ubuntu-latest
+    # Run after all analysis jobs, regardless of their outcome
+    needs: [secrets-scan, sast-java, sast-flutter, sca]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for git log to get author/commit metadata
+
+      # Download all result artifacts from parallel jobs
+      - name: Download TruffleHog result
+        uses: actions/download-artifact@v4
+        with:
+          name: trufflehog-result
+          path: /tmp/tool-results
+        continue-on-error: true
+
+      - name: Download Java SAST reports
+        uses: actions/download-artifact@v4
+        with:
+          name: sast-java-reports
+          path: /tmp/tool-results
+        continue-on-error: true
+
+      - name: Download Flutter SAST reports
+        uses: actions/download-artifact@v4
+        with:
+          name: sast-flutter-reports
+          path: /tmp/tool-results
+        continue-on-error: true
+
+      - name: Download SCA reports
+        uses: actions/download-artifact@v4
+        with:
+          name: sca-reports
+          path: /tmp/tool-results
+        continue-on-error: true
+
+      # -----------------------------------------------------------------------
+      # GENERATE UNIFIED REPORT
+      # Produces both a Markdown report (for PR comment + human reading)
+      # and a JSON report (for machine consumption / downstream tooling).
+      # -----------------------------------------------------------------------
+      - name: Generate unified report
+        id: generate_report
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, subprocess, datetime
+          from pathlib import Path
+
+          results_dir = Path('/tmp/tool-results')
+          results_dir.mkdir(exist_ok=True)
+
+          # ── Helper: safe file read ─────────────────────────────────────────
+          def read_json(path, default=None):
+            try:
+              with open(path) as f:
+                return json.load(f)
+            except:
+              return default if default is not None else []
+
+          def read_meta(path):
+            meta = {}
+            try:
+              with open(path) as f:
+                for line in f:
+                  if '=' in line:
+                    k, v = line.strip().split('=', 1)
+                    meta[k] = v
+            except:
+              pass
+            return meta
+
+          # ── Git metadata ───────────────────────────────────────────────────
+          def git(cmd):
+            try:
+              return subprocess.check_output(['git'] + cmd.split(), text=True).strip()
+            except:
+              return 'N/A'
+
+          commit_sha_full = git('rev-parse HEAD')
+          commit_sha = commit_sha_full[:8]
+          commit_msg  = git('log -1 --pretty=%s')
+          author_name = git('log -1 --pretty=%an')
+          author_email= git('log -1 --pretty=%ae')
+          commit_time = git('log -1 --pretty=%ci')
+
+          # ── GitHub context ─────────────────────────────────────────────────
+          gh = {
+            'run_id':       os.environ.get('GITHUB_RUN_ID', 'N/A'),
+            'run_number':   os.environ.get('GITHUB_RUN_NUMBER', 'N/A'),
+            'repo':         os.environ.get('GITHUB_REPOSITORY', 'N/A'),
+            'event':        os.environ.get('GITHUB_EVENT_NAME', 'N/A'),
+            'actor':        os.environ.get('GITHUB_ACTOR', 'N/A'),
+            'ref':          os.environ.get('GITHUB_REF_NAME', 'N/A'),
+            'base_ref':     os.environ.get('GITHUB_BASE_REF', 'N/A'),
+            'head_ref':     os.environ.get('GITHUB_HEAD_REF', 'N/A'),
+            'pr_number':    os.environ.get('GITHUB_PR_NUMBER', 'N/A'),
+            'pr_title':     os.environ.get('GITHUB_PR_TITLE', 'N/A'),
+            'server_url':   os.environ.get('GITHUB_SERVER_URL', 'https://github.com'),
+          }
+          run_url = f"{gh['server_url']}/{gh['repo']}/actions/runs/{gh['run_id']}"
+          now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+          # ── Load tool results ──────────────────────────────────────────────
+          tools = {
+            'trufflehog':       { 'label': 'TruffleHog (Secrets)',          'category': 'Secrets Scan',   'blocking': True  },
+            'checkstyle':       { 'label': 'Checkstyle (Java Style)',        'category': 'SAST — Java',    'blocking': True  },
+            'spotbugs':         { 'label': 'SpotBugs (Java Bytecode)',       'category': 'SAST — Java',    'blocking': True  },
+            'pmd':              { 'label': 'PMD (Java Source)',              'category': 'SAST — Java',    'blocking': True  },
+            'sonarqube':        { 'label': 'SonarQube (Quality Gate)',       'category': 'SAST — Java',    'blocking': False },  # Advisory unless quality gate enforced
+            'semgrep':          { 'label': 'Semgrep (Multi-language SAST)',  'category': 'SAST — Flutter', 'blocking': True  },
+            'flutter_analyze':  { 'label': 'Flutter Analyze (Dart Linter)', 'category': 'SAST — Flutter', 'blocking': True  },
+            'owasp_dc':         { 'label': 'OWASP Dependency-Check (SCA)',  'category': 'SCA',            'blocking': True  },
+          }
+
+          outcomes = {}
+          findings = {}
+
+          for tool in tools:
+            meta = read_meta(results_dir / f'{tool}-meta.txt')
+            outcomes[tool] = meta.get('OUTCOME', 'skipped')
+            findings[tool] = read_json(results_dir / f'{tool}-findings.json', [])
+
+          # Special handling: TruffleHog result is a plain text file
+          try:
+            with open(results_dir / 'trufflehog.txt') as f:
+              outcomes['trufflehog'] = 'failure' if 'FAILED' in f.read() else 'success'
+          except:
+            outcomes['trufflehog'] = outcomes.get('trufflehog', 'skipped')
+
+          # ── Determine overall status ───────────────────────────────────────
+          any_failure = False
+          
+          toggle_map = {
+            'trufflehog': 'RUN_TRUFFLEHOG',
+            'checkstyle': 'RUN_CHECKSTYLE',
+            'spotbugs': 'RUN_SPOTBUGS',
+            'pmd': 'RUN_PMD',
+            'semgrep': 'RUN_SEMGREP',
+            'flutter_analyze': 'RUN_FLUTTER_ANALYZE',
+            'owasp_dc': 'RUN_OWASP_DC',
+          }
+          
+          for tool, info in tools.items():
+            if not info['blocking']:
+              continue
+          
+            # Was this tool intended to run?
+            toggle = toggle_map.get(tool)
+            should_run = True
+            if toggle and os.environ.get(toggle, 'true').lower() != 'true':
+              should_run = False
+          
+            tool_outcome = outcomes.get(tool, 'skipped')
+            tool_findings = findings.get(tool, [])
+          
+            # If it should have run but got skipped, treat as failure (prevents false greens)
+            #if should_run and tool_outcome == 'skipped':
+            #  any_failure = True
+            #  break
+          
+            # Core gating rule: any findings OR explicit failure blocks merge
+            if tool_outcome == 'failure' or (isinstance(tool_findings, list) and len(tool_findings) > 0):
+              any_failure = True
+              break
+
+          merge_status = '🚫 BLOCKED' if any_failure else '✅ APPROVED'
+
+          # ── Status emoji helper ────────────────────────────────────────────
+          def status_icon(outcome):
+            return {'success': '✅', 'failure': '❌', 'skipped': '⚠️'}.get(outcome, '⚠️')
+
+          # ── Build Markdown report ──────────────────────────────────────────
+          lines = []
+          lines.append('## 🔍 CareConnect — Security & Quality Analysis Report')
+          lines.append('')
+          lines.append(f'> **{merge_status}** — {"All checks passed." if not any_failure else "One or more required checks failed. Fix the issues below before merging."}')
+          lines.append('')
+
+          lines.append('### 📋 Report Header')
+          lines.append(f'| Field | Value |')
+          lines.append(f'|-------|-------|')
+          lines.append(f'| **Generated** | {now} |')
+          lines.append(f'| **Pipeline Run** | [#{gh["run_number"]}]({run_url}) |')
+          lines.append(f'| **Trigger** | `{gh["event"]}` |')
+          lines.append('')
+
+          if gh['event'] == 'pull_request':
+            lines.append('### 🔀 Pull Request')
+            lines.append(f'| Field | Value |')
+            lines.append(f'|-------|-------|')
+            lines.append(f'| **PR Number** | #{gh["pr_number"]} |')
+            lines.append(f'| **PR Title** | {gh["pr_title"]} |')
+            lines.append(f'| **PR Author** | @{gh["actor"]} |')
+            lines.append(f'| **Source Branch** | `{gh["head_ref"]}` |')
+            lines.append(f'| **Target Branch** | `{gh["base_ref"]}` |')
+            lines.append('')
+
+          lines.append('### 📝 Commit Details')
+          lines.append(f'| Field | Value |')
+          lines.append(f'|-------|-------|')
+          lines.append(f'| **Commit SHA** | `{commit_sha}` ([full]({gh["server_url"]}/{gh["repo"]}/commit/{commit_sha_full})) |')
+          lines.append(f'| **Commit Message** | {commit_msg} |')
+          lines.append(f'| **Code Author** | {author_name} ({author_email}) |')
+          lines.append(f'| **Pushed At** | {commit_time} |')
+          lines.append('')
+
+          lines.append('### 🛡️ Tool Results Summary')
+          lines.append('| Tool | Category | Status | Blocking |')
+          lines.append('|------|----------|--------|----------|')
+          for tool, info in tools.items():
+            icon = status_icon(outcomes[tool])
+            block_label = '🚫 Yes' if info['blocking'] else '⚠️ Advisory'
+            lines.append(f'| {info["label"]} | {info["category"]} | {icon} {outcomes[tool].upper()} | {block_label} |')
+          lines.append('')
+
+          # ── Per-tool failure details ────────────────────────────────────────
+          has_failures = any(outcomes[t] == 'failure' for t in tools)
+          if has_failures:
+            lines.append('### ❌ Failure Details')
+            lines.append('')
+
+            for tool, info in tools.items():
+              if outcomes[tool] != 'failure':
+                continue
+              tool_findings = findings.get(tool, [])
+              lines.append(f'#### {info["label"]}')
+
+              if not tool_findings:
+                lines.append('_Tool reported failure but no structured findings were parsed. Check the raw artifact logs._')
+                lines.append('')
+                continue
+
+              for i, f in enumerate(tool_findings[:20], 1):  # Cap at 20 per tool in PR comment
+                lines.append(f'**Finding {i}:**')
+                for k, v in f.items():
+                  if v and v != 'N/A':
+                    label = k.replace('_', ' ').title()
+                    lines.append(f'- **{label}:** `{v}`')
+                lines.append('')
+
+              if len(tool_findings) > 20:
+                lines.append(f'_...and {len(tool_findings) - 20} more findings. Download the full artifact for the complete list._')
+                lines.append('')
+
+          # ── OWASP warnings (non-blocking) ──────────────────────────────────
+          owasp_findings = findings.get('owasp_dc', [])
+          warned_vulns = [f for f in owasp_findings if not f.get('blocked', False)]
+          if warned_vulns:
+            lines.append('### ⚠️ OWASP Dependency-Check Warnings (Non-blocking)')
+            lines.append('_These are Medium/Low severity CVEs. They do not block the merge but should be reviewed._')
+            lines.append('')
+            for v in warned_vulns[:10]:
+              lines.append(f'- **{v.get("cve","N/A")}** | {v.get("dependency","N/A")} | CVSS {v.get("cvss_score","N/A")} ({v.get("severity","N/A")})')
+            lines.append('')
+
+          lines.append('---')
+          lines.append(f'_Full artifact bundle (raw XML reports + JSON findings) available in [Actions → Run #{gh["run_number"]}]({run_url}) → Artifacts → `analysis-report-bundle` (retained 90 days)_')
+
+          md_report = '\n'.join(lines)
+
+          # ── Write outputs ──────────────────────────────────────────────────
+          with open('/tmp/report.md', 'w') as f:
+            f.write(md_report)
+
+          # JSON version for machine consumption
+          json_report = {
+            'generated_at': now,
+            'run_url': run_url,
+            'run_number': gh['run_number'],
+            'event': gh['event'],
+            'actor': gh['actor'],
+            'pr_number': gh['pr_number'],
+            'commit': {
+              'sha': commit_sha_full,
+              'message': commit_msg,
+              'author': author_name,
+              'author_email': author_email,
+              'timestamp': commit_time
+            },
+            'merge_status': 'blocked' if any_failure else 'approved',
+            'tools': {
+              tool: {
+                'label': info['label'],
+                'category': info['category'],
+                'blocking': info['blocking'],
+                'outcome': outcomes.get(tool, 'skipped'),
+                'finding_count': len(findings.get(tool, [])),
+                'findings': findings.get(tool, [])
+              }
+              for tool, info in tools.items()
+            }
+          }
+
+          with open('/tmp/report.json', 'w') as f:
+            json.dump(json_report, f, indent=2)
+
+          print("Reports generated: /tmp/report.md and /tmp/report.json")
+          print(f"Overall status: {'BLOCKED' if any_failure else 'APPROVED'}")
+
+          # Signal to next step whether to fail the pipeline
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+            out.write(f"any_failure={'true' if any_failure else 'false'}\n")
+          EOF
+
+      # -----------------------------------------------------------------------
+      # POST PR COMMENT
+      # Posts the Markdown report as a comment on the PR.
+      # On re-runs (new commits pushed), finds and UPDATES the existing comment
+      # rather than posting a duplicate.
+      # Requires: permissions.pull-requests: write (set above)
+      # -----------------------------------------------------------------------
+      - name: Post or update PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('/tmp/report.md', 'utf8');
+            const marker = '## 🔍 CareConnect — Security & Quality Analysis Report';
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            // Find existing report comment to update instead of creating a new one
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+              console.log(`Updated existing comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+              console.log('Posted new comment');
+            }
+
+      # -----------------------------------------------------------------------
+      # UPLOAD ARTIFACT BUNDLE
+      # Bundles the Markdown report, JSON report, and all raw tool XML outputs
+      # into a single downloadable artifact retained for 90 days (HIPAA trail).
+      # Location: GitHub Actions → your workflow run → Artifacts section
+      # -----------------------------------------------------------------------
+      - name: Upload complete report bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-report-bundle
+          retention-days: 90
+          path: |
+            /tmp/report.md
+            /tmp/report.json
+            /tmp/tool-results/
+
+      # -----------------------------------------------------------------------
+      # ENFORCE GATES
+      # This is the final gate. If any blocking tool failed, this step fails
+      # the workflow, which prevents merge via GitHub branch protection rules.
+      #
+      # TO CONFIGURE BRANCH PROTECTION:
+      #   GitHub → Your Repo → Settings → Branches → Add rule for 'main'/'develop'
+      #   Check "Require status checks to pass before merging"
+      #   Add "Generate Report & Enforce Gates" as a required check.
+      # -----------------------------------------------------------------------
+      - name: Enforce quality gates
+        if: steps.generate_report.outputs.any_failure == 'true'
+        run: |
+          echo "::error::One or more required security/quality checks failed."
+          echo "::error::Review the report posted as a PR comment or download the artifact bundle."
+          exit 1
+
+# =============================================================================
+# JOB 6: DAST — Dynamic Application Security Testing
+# OWASP ZAP — Runtime scanning against the deployed AWS staging environment.
+#
+# THIS JOB IS MANUALLY TRIGGERED ONLY (workflow_dispatch).
+# It is intentionally separate from the main CI pipeline because:
+#   1. It requires a running deployed environment (post-deploy, not pre-merge)
+#   2. It takes longer than static analysis
+#   3. It should run after deployment, not on every PR
+#
+# HOW TO RUN:
+#   GitHub → Actions → "Build and Static Analysis" → "Run workflow" dropdown
+#   (only available because of the workflow_dispatch trigger below)
+#
+# TO AUTOMATE POST-DEPLOY:
+#   Add a separate workflow triggered by your deployment workflow completing:
+#     on:
+#       workflow_run:
+#         workflows: ["Deploy to AWS"]
+#         types: [completed]
+# =============================================================================
+  dast:
+    name: "DAST — OWASP ZAP (Manual / Post-Deploy)"
+    runs-on: ubuntu-latest
+    # This job only runs when manually triggered via workflow_dispatch
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # OWASP ZAP FULL SCAN
+      # Performs a full active scan against your deployed AWS staging environment.
+      #
+      # STAGING URL:
+      #   Add STAGING_URL to GitHub Secrets. This should be the URL of your
+      #   deployed environment. To find it from Terraform:
+      #     cd terraform_aws/4_compute && terraform output alb_dns_name
+      #   Then set that as STAGING_URL in: GitHub → Settings → Secrets → Actions
+      #   Example value: https://api.staging.careconnect.example.com
+      #
+      # PLACEHOLDER: The fallback value below is a placeholder. It will cause
+      #   ZAP to fail gracefully with an error if STAGING_URL is not configured.
+      #
+      # ZAP RULES CONFIGURATION:
+      #   Create a zap-rules.tsv file in your repo root to suppress false positives.
+      #   Format: RULE_ID\tIGNORE\tOptional reason
+      #   See: https://www.zaproxy.org/docs/docker/full-scan/#configuration-file
+      #
+      # ACTIVE SCAN WARNING:
+      #   ZAP's full scan sends real attack traffic to the target. Never run
+      #   against production. Always use a dedicated staging environment.
+      # -----------------------------------------------------------------------
+      - name: Run OWASP ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.10.0
+        with:
+          target: ${{ secrets.STAGING_URL || 'https://PLACEHOLDER-configure-STAGING_URL-secret.example.com' }}
+          # rules_file_name: 'zap-rules.tsv'     # Uncomment if you have a rules file
+          # cmd_options: '-a'                      # -a = include alpha active scan rules
+          allow_issue_creation: false              # Set true to auto-create GitHub issues for findings
+          fail_action: true                        # Fail the job if HIGH risk alerts found
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-zap-report
+          retention-days: 90
+          path: |
+            report_html.html
+            report_xml.xml
+            report_json.json

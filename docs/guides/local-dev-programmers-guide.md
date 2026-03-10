@@ -120,8 +120,10 @@ Expected: `401` means backend is up.
 ```powershell
 Set-Location {{FRONTEND_DIR}}
 flutter pub get
-flutter run -d chrome --dart-define=BACKEND_URL=http://localhost:8081
+flutter run -d chrome --web-port=50030 --dart-define=BACKEND_URL=http://localhost:8081
 ```
+
+`--web-port=50030` matches the `APP_PORT` default used by the OAuth callback redirect URI. Omitting it will cause Google OAuth to fail on the wrong port.
 
 For production-aligned web media testing, host a Chime SDK file on the same origin
 and pass it explicitly:
@@ -251,6 +253,10 @@ WHERE caregiver_user_id=2 AND patient_user_id=1;
 
 - Flutter startup prints package/font warnings
   - Warnings like `flutter pub outdated` or missing Noto fallback fonts are typically non-blocking for local run and do not prevent backend/API call verification.
+
+- `flutter build web` fails with `Avoid non-constant invocations of IconData`
+  - Add `--no-tree-shake-icons` to the build command: `flutter build web --no-tree-shake-icons ...`
+  - This is not needed for `flutter run` (debug builds skip tree-shaking).
 
 ---
 

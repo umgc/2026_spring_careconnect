@@ -101,6 +101,9 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
         final List<dynamic> data = jsonDecode(response.body);
         final rows = data.whereType<Map<String, dynamic>>().toList();
         final moodByUserId = await _loadLatestMoodByPatientUserId(rows);
+
+        if (!mounted) return;
+
         final patients = rows
             .map((json) => _patientFromJson(json, moodByUserId))
             .toList();

@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
-class CommunicationHistoryCard extends StatelessWidget {
+class CommunicationHistoryCard extends StatefulWidget {
   final List<Map<String, dynamic>> events;
   final void Function(String callId)? onCallTap;
 
@@ -13,10 +13,24 @@ class CommunicationHistoryCard extends StatelessWidget {
   });
 
   @override
+  State<CommunicationHistoryCard> createState() =>
+      _CommunicationHistoryCardState();
+}
+
+class _CommunicationHistoryCardState extends State<CommunicationHistoryCard> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final summaries = _buildSummaries(events);
+    final summaries = _buildSummaries(widget.events);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -69,23 +83,25 @@ class CommunicationHistoryCard extends StatelessWidget {
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 440),
               child: Scrollbar(
+                controller: _scrollController,
                 thumbVisibility: summaries.length > 5,
                 child: ListView.builder(
+                  controller: _scrollController,
                   shrinkWrap: true,
                   primary: false,
                   itemCount: summaries.length,
                   itemBuilder: (context, index) {
                     final summary = summaries[index];
                     final finalBadgeText = _buildFinalBadgeText(summary);
-                    final isInteractive = onCallTap != null;
+                    final isInteractive = widget.onCallTap != null;
 
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.call, color: cs.primary),
-                      onTap: onCallTap == null
+                      onTap: widget.onCallTap == null
                           ? null
-                          : () => onCallTap!(summary.callId),
+                          : () => widget.onCallTap!(summary.callId),
                       title: Text(
                         _formatCallTitle(summary.callId),
                         style: theme.textTheme.bodyMedium?.copyWith(

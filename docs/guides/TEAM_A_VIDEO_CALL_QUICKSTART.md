@@ -50,9 +50,9 @@ Notes:
 Open a second terminal in frontend and run:
 
 flutter pub get
-flutter run -d chrome
+flutter run -d chrome --web-port=50030 --dart-define=BACKEND_URL=http://localhost:8081
 
-(Use your preferred device instead of chrome if needed.)
+(Use your preferred device instead of chrome if needed. Adjust the port to match your local backend.)
 
 ## 5) How to navigate the app (first time)
 

@@ -5,6 +5,7 @@ import '../../providers/user_provider.dart';
 import '../../features/profile/presentation/pages/profile_settings_page.dart';
 import '../../features/social/presentation/pages/chat_inbox_screen.dart';
 import '../../screens/patient_reports.dart';
+
 class PatientHomeTab extends StatelessWidget {
   const PatientHomeTab({super.key});
 
@@ -23,19 +24,12 @@ class PatientHealthTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Health'),
-       
-      ),
+      appBar: AppBar(title: const Text('Health')),
       body: const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.health_and_safety,
-              size: 80,
-              color: Color(0xFF14366E),
-            ),
+            Icon(Icons.health_and_safety, size: 80, color: Color(0xFF14366E)),
             SizedBox(height: 16),
             Text(
               'Health Tracking',
@@ -49,10 +43,7 @@ class PatientHealthTab extends StatelessWidget {
             Text(
               'Monitor your health metrics, medications, and wellness goals.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
           ],
         ),
@@ -76,9 +67,7 @@ class PatientMessagesTab extends StatelessWidget {
           backgroundColor: const Color(0xFF14366E),
           foregroundColor: Colors.white,
         ),
-        body: const Center(
-          child: Text('Please log in to view messages'),
-        ),
+        body: const Center(child: Text('Please log in to view messages')),
       );
     }
 

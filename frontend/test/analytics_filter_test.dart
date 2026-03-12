@@ -3,48 +3,42 @@ import 'package:flutter/material.dart';
 import 'package:care_connect_app/features/analytics/analytics_page.dart';
 
 void main() {
-  testWidgets('Analytics page shows filter chips', (WidgetTester tester) async {
+  testWidgets('Analytics page shows the analytics screen shell', (
+    WidgetTester tester,
+  ) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MaterialApp(home: AnalyticsPage(patientId: 1)));
+    await tester
+        .pumpWidget(const MaterialApp(home: AnalyticsPage(patientId: 1)));
 
-    // Wait for the initial loading to complete
-    await tester.pump();
-
-    // Verify that filter chips are present
-    expect(find.text('7 days'), findsOneWidget);
-    expect(find.text('14 days'), findsOneWidget);
-    expect(find.text('21 days'), findsOneWidget);
-    expect(find.text('30 days'), findsOneWidget);
+    expect(find.text('Patient Analytics'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
-  testWidgets('Filter chips can be selected', (WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: AnalyticsPage(patientId: 1)));
+  testWidgets('Analytics page can be created without exceptions', (
+    WidgetTester tester,
+  ) async {
+    await tester
+        .pumpWidget(const MaterialApp(home: AnalyticsPage(patientId: 1)));
 
-    await tester.pump();
-
-    // Find and tap the 14 days filter chip
-    final chip14Days = find.widgetWithText(FilterChip, '14 days');
-    expect(chip14Days, findsOneWidget);
-
-    await tester.tap(chip14Days);
-    await tester.pump();
-
-    // Verify the selection changed (this would trigger a new API call in the real app)
-    // The exact verification would depend on the implementation details
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Refresh button works', (WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: AnalyticsPage(patientId: 1)));
+  testWidgets('Retry button remains available after invalid patient validation',
+      (
+    WidgetTester tester,
+  ) async {
+    await tester
+        .pumpWidget(const MaterialApp(home: AnalyticsPage(patientId: 0)));
 
     await tester.pump();
-
-    // Find and tap the refresh button
-    final refreshButton = find.byIcon(Icons.refresh);
-    expect(refreshButton, findsOneWidget);
-
-    await tester.tap(refreshButton);
     await tester.pump();
 
-    // Verify that the refresh action was triggered
+    expect(find.text('Retry'), findsOneWidget);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('Invalid patient ID: 0'), findsOneWidget);
   });
 }

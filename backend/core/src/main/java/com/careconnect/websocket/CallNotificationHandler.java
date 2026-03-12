@@ -261,6 +261,22 @@ public class CallNotificationHandler extends TextWebSocketHandler {
             return;
         }
 
+        // CALL-017: patients may not call other patients
+        if (sender.getRole() == com.careconnect.security.Role.PATIENT
+                && recipient.getRole() == com.careconnect.security.Role.PATIENT) {
+            Map<String, Object> errorResponse = Map.of(
+                    "type", "call-invitation-failed",
+                    "callId", callId,
+                    "reason", "Patient-to-patient calls are not permitted",
+                    "recipientId", recipientId,
+                    "recipientRole", recipient.getRole().name(),
+                    "recipientName", getUserDisplayName(recipient)
+            );
+            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorResponse)));
+            return;
+        }
+
+        // CALL-016: patient must have an active link with the caregiver
         if (sender.getRole() == com.careconnect.security.Role.PATIENT
                 && recipient.getRole() == com.careconnect.security.Role.CAREGIVER) {
             boolean linked = caregiverPatientLinkService.hasAccessToPatient(

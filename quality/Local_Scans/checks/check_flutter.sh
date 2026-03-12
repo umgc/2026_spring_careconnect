@@ -50,8 +50,12 @@ echo "Running Flutter Analyze..."
   flutter analyze 2>&1
 ) > "${OUT}" || true
 
-# Count analyzer errors
-COUNT="$(grep -cE "^[[:space:]]*error[[:space:]]+[[:alnum:]_.]+" "${OUT}" || true)"
+# Count analyzer errors.
+# Supports current flutter format:
+#   error - message - file:line:col - rule
+# and older bullet format:
+#   error • message • file:line:col • rule
+COUNT="$(grep -cE "^[[:space:]]*error[[:space:]]*[-•][[:space:]]+" "${OUT}" || true)"
 
 if [ "${COUNT}" -eq 0 ]; then
   echo "Flutter Analyze passed. No errors found."

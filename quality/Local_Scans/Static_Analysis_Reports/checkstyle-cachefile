@@ -1,0 +1,12 @@
+#Thu Mar 12 19:31:55 EDT 2026
+C\:\\Users\\Corey\\OneDrive\\Desktop\\Swen670TeamDProject\\2026_spring_careconnect\\backend\\core\\src\\main\\java\\com\\careconnect\\dto\\PatientAIConfigDTO.java=1771093272704
+C\:\\Users\\Corey\\OneDrive\\Desktop\\Swen670TeamDProject\\2026_spring_careconnect\\backend\\core\\src\\main\\java\\com\\careconnect\\repository\\PatientAIConfigRepository.java=1771093272790
+C\:\\Users\\Corey\\OneDrive\\Desktop\\Swen670TeamDProject\\2026_spring_careconnect\\backend\\core\\src\\main\\java\\com\\careconnect\\util\\YOPmailHelper.java=1771093272851
+C\:\\Users\\Corey\\OneDrive\\Desktop\\Swen670TeamDProject\\2026_spring_careconnect\\backend\\core\\src\\main\\resources\\application-dev.properties=1771093272853
+C\:\\Users\\Corey\\OneDrive\\Desktop\\Swen670TeamDProject\\2026_spring_careconnect\\backend\\core\\src\\main\\resources\\application-prod.properties=1771093272853
+C\:\\Users\\Corey\\OneDrive\\Desktop\\Swen670TeamDProject\\2026_spring_careconnect\\backend\\core\\src\\main\\resources\\application-test.properties=1771093272854
+C\:\\Users\\Corey\\OneDrive\\Desktop\\Swen670TeamDProject\\2026_spring_careconnect\\backend\\core\\src\\main\\resources\\application.properties=1771093272855
+C\:\\Users\\Corey\\OneDrive\\Desktop\\Swen670TeamDProject\\2026_spring_careconnect\\backend\\core\\src\\main\\resources\\email-config-example.properties=1771093272866
+configuration*?=2882C7F49017F56ED5A5557BD8B298B93D04B826
+module-resource*?\:checkstyle-suppressions.xml=EFFE62E2A8A07C5CA585AB4997BFF7C22A30B5C8
+module-resource*?\:checkstyle-xpath-suppressions.xml=3B9862FC3659A28685929A44F284E904EA317EF1

@@ -45,20 +45,42 @@ def _strip_namespace(root: ET.Element) -> str:
 # ----------------------------------------------------------
 # Flutter Analyze
 # ----------------------------------------------------------
-# Matches lines like:
+# Flutter analyzer output varies by platform/terminal. Common formats:
 #   warning • message • lib/path/file.dart:10:5 • rule_code
-#      info • message • lib/path/file.dart:10:5 • rule_code
-#     error • message • lib/path/file.dart:10:5 • rule_code
-#
-# Note: the bullet character varies by platform/terminal encoding,
-# so \S+ is used instead of a literal • to match any separator.
-FLUTTER_ISSUE_RE = re.compile(
-    r"^\s*(error|warning|info|hint)\s+\S+\s+"
-    r"(.+?)\s+\S+\s+"
-    r"(.+?):(\d+):\d+\s+\S+\s+"
-    r"(\S+)\s*$",
-    re.IGNORECASE,
-)
+#   warning - message at lib/path/file.dart:10:5 - rule_code
+#   warning - message - lib/path/file.dart:10:5 - rule_code
+FLUTTER_ISSUE_PATTERNS = [
+    re.compile(
+        r"^\s*(error|warning|info|hint)\s*•\s*"
+        r"(.+?)\s*•\s*"
+        r"([^\s].*?):(\d+):\d+\s*•\s*"
+        r"(\S+)\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(error|warning|info|hint)\s*-\s*"
+        r"(.+?)\s+at\s+"
+        r"([^\s].*?):(\d+):\d+\s*-\s*"
+        r"(\S+)\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(error|warning|info|hint)\s*-\s*"
+        r"(.+?)\s*-\s*"
+        r"([^\s].*?):(\d+):\d+\s*-\s*"
+        r"(\S+)\s*$",
+        re.IGNORECASE,
+    ),
+]
+
+
+def _parse_flutter_line(line: str) -> tuple[str, str, str, str, str] | None:
+    """Parse one flutter analyze finding line across known output formats."""
+    for pattern in FLUTTER_ISSUE_PATTERNS:
+        match = pattern.match(line)
+        if match:
+            return match.groups()
+    return None
 
 
 def parse_flutter(path: Path) -> tuple[list, dict]:
@@ -87,10 +109,11 @@ def parse_flutter(path: Path) -> tuple[list, dict]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
         for line in text.splitlines():
-            match = FLUTTER_ISSUE_RE.match(line)
-            if not match:
+            parsed = _parse_flutter_line(line)
+            if not parsed:
                 continue
-            native, message, file_path, line_no, rule = match.groups()
+
+            native, message, file_path, line_no, rule = parsed
             sev = sev_map.get(native.lower(), "low")
             sev_counts[sev] += 1
             findings.append(
@@ -102,7 +125,7 @@ def parse_flutter(path: Path) -> tuple[list, dict]:
                     "message": message.strip(),
                 }
             )
-    except (OSError, UnicodeDecodeError, ValueError) as error:
+    except (OSError, ValueError) as error:
         print(
             f"[report-parsers] Warning: could not parse flutter_analyze.txt: {error}"
         )

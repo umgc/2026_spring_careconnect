@@ -2,6 +2,7 @@ package com.careconnect.config;
 
 import com.careconnect.websocket.CallNotificationHandler;
 import com.careconnect.websocket.CareConnectWebSocketHandler;
+import com.careconnect.websocket.ChatMessageWebSocketHandler;
 import com.careconnect.websocket.NotificationWebSocketHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +41,9 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Autowired
     private NotificationWebSocketHandler notificationWebSocketHandler;
 
+    @Autowired
+    private ChatMessageWebSocketHandler chatMessageWebSocketHandler;
+
     @Value("${careconnect.websocket.endpoint:/ws/careconnect}")
     private String careConnectEndpoint;
 
@@ -76,6 +80,10 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
         // Notification WebSocket endpoint (no SockJS fallback)
         registry.addHandler(notificationWebSocketHandler, "/ws/notifications")
+                .setAllowedOriginPatterns(originPatterns);
+
+        // Person-to-Person Chat — native WebSocket (no SockJS, Flutter uses ws:// directly)
+        registry.addHandler(chatMessageWebSocketHandler, "/ws/chat")
                 .setAllowedOriginPatterns(originPatterns);
 
         log.info("WebSocket handlers registered successfully in LOCAL mode");

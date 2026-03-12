@@ -201,4 +201,25 @@ public class CaregiverPatientLinkController {
         );
         return ResponseEntity.ok(response);
     }
+
+    // 12. Caregiver toggle: allow/disallow patient-initiated messaging for this link
+    @PostMapping("/{linkId}/patient-messaging")
+    public ResponseEntity<CaregiverPatientLinkResponse> setPatientMessaging(
+            @PathVariable Long linkId,
+            @RequestBody Map<String, Object> request
+    ) {
+        User currentUser = getCurrentUser();
+        Object enabledRaw = request.get("enabled");
+        boolean enabled = enabledRaw instanceof Boolean
+                ? (Boolean) enabledRaw
+                : Boolean.parseBoolean(String.valueOf(enabledRaw));
+
+        CaregiverPatientLinkResponse response = linkService.setPatientMessagingEnabled(
+                linkId,
+                enabled,
+                currentUser.getId(),
+                currentUser.getRole()
+        );
+        return ResponseEntity.ok(response);
+    }
 }

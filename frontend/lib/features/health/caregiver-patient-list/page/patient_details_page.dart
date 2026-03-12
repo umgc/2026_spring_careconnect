@@ -96,6 +96,8 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
   int? _caregiverLinkId;
   bool _patientInitiatedCallsEnabled = true;
   bool _isSavingPatientCallPolicy = false;
+  bool _patientMessagingEnabled = true;
+  bool _isSavingPatientMessagingPolicy = false;
 
   int _currentPain = 0;
   String _painLocation = 'Not provided';
@@ -757,8 +759,16 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
             ? true
             : enabledRaw.toString().toLowerCase() != 'false';
 
+    final msgRaw = link['patientMessagingEnabled'];
+    final messagingEnabled = msgRaw is bool
+        ? msgRaw
+        : msgRaw == null
+            ? true
+            : msgRaw.toString().toLowerCase() != 'false';
+
     _caregiverLinkId = linkId;
     _patientInitiatedCallsEnabled = enabled;
+    _patientMessagingEnabled = messagingEnabled;
   }
 
   Future<void> _togglePatientInitiatedCalls(bool enabled) async {
@@ -805,6 +815,50 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
     if (mounted) {
       setState(() {
         _isSavingPatientCallPolicy = false;
+      });
+    }
+  }
+
+  Future<void> _togglePatientMessaging(bool enabled) async {
+    final linkId = _caregiverLinkId;
+    if (linkId == null || _isSavingPatientMessagingPolicy) return;
+
+    setState(() {
+      _isSavingPatientMessagingPolicy = true;
+      _patientMessagingEnabled = enabled;
+    });
+
+    final success = await ApiService.setPatientMessagingEnabledForLink(
+      linkId: linkId,
+      enabled: enabled,
+    );
+
+    if (!mounted) return;
+
+    if (!success) {
+      setState(() {
+        _patientMessagingEnabled = !enabled;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to update patient messaging policy. Please retry.'),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            enabled
+                ? 'Patient messaging is enabled.'
+                : 'Patient messaging is disabled.',
+          ),
+        ),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSavingPatientMessagingPolicy = false;
       });
     }
   }
@@ -1230,6 +1284,29 @@ class _PatientDetailsPageState extends State<PatientDetailsPage> {
                                     onChanged: _isSavingPatientCallPolicy
                                         ? null
                                         : _togglePatientInitiatedCalls,
+                                  ),
+                                ),
+                              ),
+                            if (widget.isCaregiver && _caregiverLinkId != null)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                child: Card(
+                                  margin: EdgeInsets.zero,
+                                  child: SwitchListTile.adaptive(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 4,
+                                    ),
+                                    title: const Text('Allow Patient Messaging'),
+                                    subtitle: Text(
+                                      _patientMessagingEnabled
+                                          ? 'This patient can send messages to their care team.'
+                                          : 'Patient messaging is currently blocked.',
+                                    ),
+                                    value: _patientMessagingEnabled,
+                                    onChanged: _isSavingPatientMessagingPolicy
+                                        ? null
+                                        : _togglePatientMessaging,
                                   ),
                                 ),
                               ),

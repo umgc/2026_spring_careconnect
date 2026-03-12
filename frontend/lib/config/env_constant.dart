@@ -98,6 +98,11 @@ String getCallNotificationWebSocketUrl() {
   return '${_getUnifiedWebSocketBaseUrl()}/ws/calls-ws';
 }
 
+/// Returns the WebSocket URL for the real-time P2P chat service
+String getChatWebSocketUrl() {
+  return '${_getUnifiedWebSocketBaseUrl()}/ws/chat';
+}
+
 /// Returns the Backend Base URL
 ///
 /// This is now controlled by a single --dart-define=BACKEND_URL variable.

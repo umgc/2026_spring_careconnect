@@ -114,7 +114,10 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers("/", "/index.html", "/favicon.ico", "/static/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/v1/api/**", "/v2/api/**", "/v3/api/**", "/api/v3/calls/**", "/api/patient/**", "/api/ai/**").authenticated()
+                        .requestMatchers("/v1/api/**").authenticated()
+                        .requestMatchers("/v2/api/**").authenticated()
+                        .requestMatchers("/v3/api/**").authenticated()
+                        .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll()
                 )
                 .build();

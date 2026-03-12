@@ -1,7 +1,7 @@
 import 'package:care_connect_app/features/dashboard/caregiver-dashboard/pages/caregiver-dashboard.dart';
 import 'package:care_connect_app/features/health/caregiver-patient-list/page/caregiver-patient-list.dart';
 import 'package:care_connect_app/features/health/symptom-tracker/pages/symptom_allergies_tracker_screen.dart';
-import 'package:care_connect_app/features/social/in-app-chat/pages/message-list.dart';
+import 'package:care_connect_app/features/social/presentation/pages/chat_inbox_screen.dart';
 import 'package:care_connect_app/l10n/app_localizations.dart';
 import 'package:care_connect_app/widgets/menu/menu_page.dart';
 import 'package:flutter/material.dart';
@@ -120,7 +120,7 @@ class BottomNavConfig {
         icon: Icons.message_outlined,
         activeIcon: Icons.message,
         routeName: 'messages',
-        screen: MessagesListPage(),
+        screen: const ChatInboxScreen(),
       ),
       BottomNavItem(
         label: 'Menu',

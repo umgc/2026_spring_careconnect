@@ -13,6 +13,7 @@ public record CaregiverPatientLinkResponse(
     String status,
     String linkType,
     boolean patientVideoCallsEnabled,
+    boolean patientMessagingEnabled,
     LocalDateTime createdAt,
     LocalDateTime expiresAt,
     String notes,

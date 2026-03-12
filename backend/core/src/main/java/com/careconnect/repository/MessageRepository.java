@@ -1,7 +1,6 @@
 package com.careconnect.repository;
 
 import com.careconnect.model.Message;
-import jakarta.annotation.PostConstruct;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -10,10 +9,6 @@ import java.util.List;
 
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
-    @PostConstruct
-    public default void test() {
-        System.out.println("✅ MessageRepository initialized");
-    }
     // Get messages between two users, ordered by timestamp
     @Query("SELECT m FROM Message m " +
             "WHERE (m.senderId = :user1 AND m.receiverId = :user2) " +

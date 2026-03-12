@@ -26,6 +26,18 @@ public class Message {
     @Column(name = "is_read", nullable = false)
     private boolean isRead = false;
 
+    @Column(name = "attachment_id")
+    private Long attachmentId;
+
+    @Column(name = "attachment_name")
+    private String attachmentName;
+
+    @Column(name = "attachment_content_type")
+    private String attachmentContentType;
+
+    @Column(name = "attachment_size")
+    private Long attachmentSize;
+
     // Constructors
     public Message() {}
 
@@ -81,4 +93,16 @@ public class Message {
     public void setRead(boolean isRead) {
         this.isRead = isRead;
     }
+
+    public Long getAttachmentId() { return attachmentId; }
+    public void setAttachmentId(Long attachmentId) { this.attachmentId = attachmentId; }
+
+    public String getAttachmentName() { return attachmentName; }
+    public void setAttachmentName(String attachmentName) { this.attachmentName = attachmentName; }
+
+    public String getAttachmentContentType() { return attachmentContentType; }
+    public void setAttachmentContentType(String attachmentContentType) { this.attachmentContentType = attachmentContentType; }
+
+    public Long getAttachmentSize() { return attachmentSize; }
+    public void setAttachmentSize(Long attachmentSize) { this.attachmentSize = attachmentSize; }
 }

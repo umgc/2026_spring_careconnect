@@ -14,6 +14,9 @@ TC_LOGIN — PASS
 User authentication worked correctly and dashboard loaded successfully.
 
 TC_OFFLINE_TOGGLE — PASS  
+Offline persistence toggle enabled successfully.
+
+TC_OFFLINE_TOGGLE — PASS  
 Offline persistence toggle enabled successfully from the Settings page.
 
 TC_DATA_SAVE_ONLINE — PASS  
@@ -36,6 +39,8 @@ Frontend and backend terminals were monitored during testing. Only normal debug 
 ## Automated Local Database Tests
 
 Location:
+frontend/test/local_db/
+
 ---
 
 ## Automated Test Execution Result
@@ -43,6 +48,7 @@ Location:
 The automated tests were executed using the Flutter testing framework.
 
 Command used:
+
 
 Result:
 

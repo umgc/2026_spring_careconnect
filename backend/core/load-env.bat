@@ -6,6 +6,22 @@ REM ================================
 
 echo Loading CareConnect environment variables...
 
+REM Validate Java version (project requires JDK 17)
+where javac >nul 2>&1
+if errorlevel 1 (
+    echo Error: javac was not found on PATH.
+    echo Install JDK 17 and set JAVA_HOME/PATH, then retry.
+    exit /b 1
+)
+
+for /f "tokens=2 delims=. " %%v in ('javac -version 2^>^&1') do set "JAVA_MAJOR=%%v"
+if not "%JAVA_MAJOR%"=="17" (
+    echo Error: Detected JDK %JAVA_MAJOR%, but this project requires JDK 17.
+    javac -version
+    echo Please install/select JDK 17 and retry.
+    exit /b 1
+)
+
 REM Check if .env file exists
 if not exist ".env" (
     echo Error: .env file not found in current directory

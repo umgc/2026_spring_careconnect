@@ -17,6 +17,8 @@
     <description>Spring Boot REST API for CareConnect</description>
     <properties>
         <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <aws.sdk.version>2.31.75</aws.sdk.version>
         <!-- OWASP Dependency-Check: default to environment variable, override with -Dnvd.api.key=... -->
         <nvd.api.key>${env.NVD_API_KEY}</nvd.api.key>
@@ -468,6 +470,10 @@
                 </executions>
                 <configuration>
                     <failOnViolation>true</failOnViolation>
+<<<<<<< HEAD
+=======
+                    <targetJdk>17</targetJdk>
+>>>>>>> 1606cda1 (chat messaging feature and tests implemented)
                     <rulesets>
                         <ruleset>rulesets/java/quickstart.xml</ruleset>
                     </rulesets>

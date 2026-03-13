@@ -19,4 +19,12 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     // Optionally for inbox preview: last message per user
     @Query("SELECT m FROM Message m WHERE m.senderId = :userId OR m.receiverId = :userId ORDER BY m.timestamp DESC")
     List<Message> findAllUserMessages(@Param("userId") Long userId);
+
+        @Query("SELECT CASE WHEN COUNT(m) > 0 THEN true ELSE false END FROM Message m " +
+            "WHERE m.attachmentId = :attachmentId " +
+            "AND (m.senderId = :userId OR m.receiverId = :userId)")
+        boolean existsAttachmentInUserConversation(
+            @Param("attachmentId") Long attachmentId,
+            @Param("userId") Long userId
+        );
 }

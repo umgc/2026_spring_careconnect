@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CareConnect Team B - Aurora PostgreSQL Database Stack
+  Provisions the Aurora Serverless v2 (PostgreSQL 16.3) cluster.
+  Replaces terraform_aws/3_database/main.tf
+  REQ-SB-201-1 | AC-SB-INF-001 | UC-002
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  RDSMasterUsername:
+    Type: String
+    Default: cc_db_user
+    NoEcho: true
+    Description: Master username for Aurora cluster
+
+  MinCapacity:
+    Type: Number
+    Default: 0
+    Description: Minimum Aurora Serverless v2 capacity (ACUs)
+
+  MaxCapacity:
+    Type: Number
+    Default: 1
+    Description: Maximum Aurora Serverless v2 capacity (ACUs)
+
+Conditions:
+  IsProd: !Equals [!Ref Environment, prod]
+
+Resources:
+
+  CareConnectDBCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBClusterIdentifier: careconnect
+      Engine: aurora-postgresql
+      EngineVersion: "16.3"
+      DatabaseName: careconnect
+      MasterUsername: !Ref RDSMasterUsername
+      ManageMasterUserPassword: true
+      IAMDatabaseAuthenticationEnabled: true
+      DBSubnetGroupName:
+        Fn::ImportValue: !Sub "cc-networking-${Environment}-DBSubnetGroup"
+      VpcSecurityGroupIds:
+        - Fn::ImportValue: !Sub "cc-networking-${Environment}-RDSSG"
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: !Ref MinCapacity
+        MaxCapacity: !Ref MaxCapacity
+      DeletionProtection: !If [IsProd, true, false]
+      SkipFinalSnapshot: !If [IsProd, false, true]
+      StorageEncrypted: true
+      BackupRetentionPeriod: !If [IsProd, 7, 1]
+      EnableCloudwatchLogsExports:
+        - postgresql
+      Tags:
+        - Key: Project
+          Value: CareConnect
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  CareConnectDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref CareConnectDBCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+      Tags:
+        - Key: Project
+          Value: CareConnect
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  DBClusterEndpoint:
+    Value: !GetAtt CareConnectDBCluster.Endpoint.Address
+    Export:
+      Name: !Sub "cc-db-${Environment}-ClusterEndpoint"
+
+  DBClusterPort:
+    Value: !GetAtt CareConnectDBCluster.Endpoint.Port
+    Export:
+      Name: !Sub "cc-db-${Environment}-ClusterPort"
+
+  DBClusterIdentifier:
+    Value: !Ref CareConnectDBCluster
+    Export:
+      Name: !Sub "cc-db-${Environment}-ClusterId"
+
+  DBSecretArn:
+    Value: !GetAtt CareConnectDBCluster.MasterUserSecret.SecretArn
+    Export:
+      Name: !Sub "cc-db-${Environment}-SecretArn"

@@ -1,0 +1,332 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CareConnect Team B - Compute Stack
+  Provisions API Gateway, Lambda function, WebSocket API,
+  and Amplify frontend hosting.
+  Replaces terraform_aws/4_compute/main.tf
+  REQ-SB-201-1 | REQ-SB-301-1 | AC-SB-INF-001 | UC-002
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  BackendArtifactS3Key:
+    Type: String
+    Description: S3 key of the backend Lambda zip file (e.g. cc-backend-builds/backend.zip)
+
+  CorsAllowedList:
+    Type: String
+    Default: "http://localhost:*,http://127.0.0.1:*"
+    Description: Comma-separated list of allowed CORS origins
+
+  LambdaMemorySize:
+    Type: Number
+    Default: 2048
+    Description: Lambda memory in MB
+
+  LambdaTimeout:
+    Type: Number
+    Default: 30
+    Description: Lambda timeout in seconds
+
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365]
+    Description: CloudWatch log retention in days
+
+Conditions:
+  IsDevEnv: !Equals [!Ref Environment, dev]
+
+Resources:
+
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/cc_main_backend
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Project
+          Value: careconnect
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  ApiGwLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/api_gw/cc-main-api
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Project
+          Value: careconnect
+
+  MainHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: cc-main-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowCredentials: true
+        AllowHeaders:
+          - "*"
+        AllowMethods:
+          - "*"
+        AllowOrigins:
+          - "http://*"
+          - "https://*"
+        ExposeHeaders:
+          - "*"
+        MaxAge: 360
+      Tags:
+        Project: careconnect
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  MainHttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref MainHttpApi
+      StageName: $default
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiGwLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","sourceIp":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength"}'
+      Tags:
+        Project: careconnect
+
+  MainBackendLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: LambdaLogGroup
+    Properties:
+      FunctionName: cc_main_backend
+      Description: Main backend Lambda function for CareConnect
+      Handler: com.careconnect.CcLambdaHandler::handleRequest
+      Runtime: java17
+      Role:
+        Fn::ImportValue: !Sub "cc-iam-${Environment}-AppRoleArn"
+      MemorySize: !Ref LambdaMemorySize
+      Timeout: !Ref LambdaTimeout
+      Code:
+        S3Bucket:
+          Fn::ImportValue: !Sub "cc-iam-${Environment}-IacBucketName"
+        S3Key: !Ref BackendArtifactS3Key
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub "cc-networking-${Environment}-RDSSG"
+        SubnetIds:
+          - Fn::ImportValue: !Sub "cc-networking-${Environment}-PrivateSubnetA"
+          - Fn::ImportValue: !Sub "cc-networking-${Environment}-PrivateSubnetB"
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          AWS_S3_BUCKET:
+            Fn::ImportValue: !Sub "cc-iam-${Environment}-InternalS3Bucket"
+          CC_APP_ROLE:
+            Fn::ImportValue: !Sub "cc-iam-${Environment}-AppRoleArn"
+          BASE_URL: !Sub "https://${MainHttpApi}.execute-api.us-east-1.amazonaws.com"
+          CORS_ALLOWED_LIST: !Ref CorsAllowedList
+          DB_CLUSTER_ENDPOINT:
+            Fn::ImportValue: !Sub "cc-db-${Environment}-ClusterEndpoint"
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub "cc-db-${Environment}-SecretArn"
+          LOG_LEVEL: !If [IsDevEnv, DEBUG, INFO]
+          REQUEST_ID_HEADER: X-Request-ID
+          AWS_XRAY_TRACING_NAME: cc_main_backend
+          AWS_WEBSOCKET_API_GATEWAY_ENDPOINT: ""
+      LoggingConfig:
+        LogGroup: !Ref LambdaLogGroup
+        LogFormat: JSON
+      TracingConfig:
+        Mode: Active
+      Tags:
+        Name: cc_main_backend
+        Project: careconnect
+        Environment: !Ref Environment
+        ManagedBy: CloudFormation
+
+  HttpApiLambdaIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref MainHttpApi
+      Description: CC APP Lambda Integration
+      IntegrationType: AWS_PROXY
+      IntegrationMethod: POST
+      IntegrationUri: !Sub "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${MainBackendLambda.Arn}/invocations"
+      CredentialsArn:
+        Fn::ImportValue: !Sub "cc-iam-${Environment}-ApiGwRoleArn"
+      TimeoutInMillis: 30000
+      PayloadFormatVersion: "2.0"
+
+  HttpApiProxyRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref MainHttpApi
+      RouteKey: "ANY /{proxy+}"
+      Target: !Sub "integrations/${HttpApiLambdaIntegration}"
+
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: cc-websocket-api
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+      Tags:
+        Project: careconnect
+        Environment: !Ref Environment
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: prod
+      AutoDeploy: true
+
+  WsConnectLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MainBackendLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:us-east-1:${AWS::AccountId}:${WebSocketApi}/*/$connect"
+
+  WsDisconnectLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MainBackendLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:us-east-1:${AWS::AccountId}:${WebSocketApi}/*/$disconnect"
+
+  WsDefaultLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MainBackendLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:us-east-1:${AWS::AccountId}:${WebSocketApi}/*/$default"
+
+  WsConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${MainBackendLambda.Arn}/invocations"
+
+  WsDisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${MainBackendLambda.Arn}/invocations"
+
+  WsDefaultIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${MainBackendLambda.Arn}/invocations"
+
+  WsConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      Target: !Sub "integrations/${WsConnectIntegration}"
+
+  WsDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      Target: !Sub "integrations/${WsDisconnectIntegration}"
+
+  WsDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $default
+      Target: !Sub "integrations/${WsDefaultIntegration}"
+
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: !Sub "careconnect-${Environment}"
+      Platform: WEB
+      IAMServiceRole:
+        Fn::ImportValue: !Sub "cc-iam-${Environment}-AppRoleArn"
+      CustomRules:
+        - Source: "</^((?!\\.).)*$/>"
+          Target: /index.html
+          Status: "200"
+      EnvironmentVariables:
+        - Name: ENV
+          Value: !Ref Environment
+      Tags:
+        - Key: Project
+          Value: careconnect
+        - Key: Environment
+          Value: !Ref Environment
+
+  AmplifyBranch:
+    Type: AWS::Amplify::Branch
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      BranchName: !If [IsDevEnv, dev, main]
+      Stage: !If [IsDevEnv, DEVELOPMENT, PRODUCTION]
+
+  LambdaErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "cc-lambda-errors-${Environment}"
+      AlarmDescription: Alert when Lambda errors exceed threshold
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MainBackendLambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  HttpApiEndpoint:
+    Value: !Sub "https://${MainHttpApi}.execute-api.us-east-1.amazonaws.com"
+    Export:
+      Name: !Sub "cc-compute-${Environment}-HttpApiEndpoint"
+
+  HttpApiId:
+    Value: !Ref MainHttpApi
+    Export:
+      Name: !Sub "cc-compute-${Environment}-HttpApiId"
+
+  WebSocketApiEndpoint:
+    Value: !Sub "wss://${WebSocketApi}.execute-api.us-east-1.amazonaws.com/prod"
+    Export:
+      Name: !Sub "cc-compute-${Environment}-WsEndpoint"
+
+  WebSocketManagementEndpoint:
+    Value: !Sub "https://${WebSocketApi}.execute-api.us-east-1.amazonaws.com/prod"
+    Export:
+      Name: !Sub "cc-compute-${Environment}-WsMgmtEndpoint"
+
+  LambdaFunctionArn:
+    Value: !GetAtt MainBackendLambda.Arn
+    Export:
+      Name: !Sub "cc-compute-${Environment}-LambdaArn"
+
+  LambdaFunctionName:
+    Value: !Ref MainBackendLambda
+    Export:
+      Name: !Sub "cc-compute-${Environment}-LambdaName"
+
+  AmplifyAppUrl:
+    Value: !Sub "https://${AmplifyBranch.BranchName}.${AmplifyApp.DefaultDomain}"
+    Export:
+      Name: !Sub "cc-compute-${Environment}-AmplifyUrl"

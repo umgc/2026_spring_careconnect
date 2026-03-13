@@ -1,0 +1,152 @@
+name: CloudFormation Deploy
+
+on:
+  push:
+    branches:
+      - team_b
+    paths:
+      - "cloudformation/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  validate:
+    name: Validate CloudFormation Templates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate 01-networking
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://cloudformation/templates/01-networking.yaml
+          echo "01-networking.yaml is valid"
+
+      - name: Validate 02-iam-s3
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://cloudformation/templates/02-iam-s3.yaml
+          echo "02-iam-s3.yaml is valid"
+
+      - name: Validate 03-database
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://cloudformation/templates/03-database.yaml
+          echo "03-database.yaml is valid"
+
+      - name: Validate 04-compute
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://cloudformation/templates/04-compute.yaml
+          echo "04-compute.yaml is valid"
+
+      - name: Validate 05-observability
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://cloudformation/templates/05-observability.yaml
+          echo "05-observability.yaml is valid"
+
+  deploy:
+    name: Deploy CloudFormation Stacks
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set environment variable
+        run: |
+          ENV=${{ github.event.inputs.environment || 'dev' }}
+          echo "ENV=$ENV" >> $GITHUB_ENV
+
+      - name: Deploy 01 - Networking Stack
+        run: |
+          aws cloudformation deploy \
+            --template-file cloudformation/templates/01-networking.yaml \
+            --stack-name cc-networking-${{ env.ENV }} \
+            --parameter-overrides Environment=${{ env.ENV }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+          echo "Networking stack deployed"
+
+      - name: Deploy 02 - IAM and S3 Stack
+        run: |
+          aws cloudformation deploy \
+            --template-file cloudformation/templates/02-iam-s3.yaml \
+            --stack-name cc-iam-s3-${{ env.ENV }} \
+            --parameter-overrides \
+                Environment=${{ env.ENV }} \
+                DomainName=${{ secrets.DOMAIN_NAME }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+          echo "IAM and S3 stack deployed"
+
+      - name: Deploy 03 - Database Stack
+        run: |
+          aws cloudformation deploy \
+            --template-file cloudformation/templates/03-database.yaml \
+            --stack-name cc-database-${{ env.ENV }} \
+            --parameter-overrides \
+                Environment=${{ env.ENV }} \
+                RDSMasterUsername=${{ secrets.RDS_MASTER_USERNAME }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+          echo "Database stack deployed"
+
+      - name: Deploy 04 - Compute Stack
+        run: |
+          aws cloudformation deploy \
+            --template-file cloudformation/templates/04-compute.yaml \
+            --stack-name cc-compute-${{ env.ENV }} \
+            --parameter-overrides \
+                Environment=${{ env.ENV }} \
+                BackendArtifactS3Key=${{ secrets.BACKEND_ARTIFACT_S3_KEY }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+          echo "Compute stack deployed"
+
+      - name: Deploy 05 - Observability Stack
+        run: |
+          aws cloudformation deploy \
+            --template-file cloudformation/templates/05-observability.yaml \
+            --stack-name cc-observability-${{ env.ENV }} \
+            --parameter-overrides \
+                Environment=${{ env.ENV }} \
+                AlertEmail=${{ secrets.ALERT_EMAIL }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+          echo "Observability stack deployed"
+
+      - name: Deployment Complete
+        run: |
+          echo "All CloudFormation stacks deployed successfully"
+          echo "Environment: ${{ env.ENV }}"

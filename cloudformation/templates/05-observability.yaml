@@ -1,0 +1,313 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CareConnect Team B - Observability & Anonymous Analytics Stack (BNS-7)
+  Provisions CloudWatch dashboards, log metric filters, alarms,
+  X-Ray sampling rules, and a separate anonymous analytics pipeline.
+  REQ-SB-301 through REQ-SB-307 | REQ-SB-401 through REQ-SB-407
+  AC-SB-OBS-* | AC-SB-ANA-* | UC-003 | UC-004
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Optional email address for CloudWatch alarm notifications
+
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [30, 60, 90, 180, 365]
+    Description: Operational log retention in days (90 day minimum for HIPAA)
+
+  AnalyticsRetentionDays:
+    Type: Number
+    Default: 365
+    Description: Anonymous analytics data retention in days
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+
+Resources:
+
+  SyncEventLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /careconnect/sync-events
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Project
+          Value: careconnect
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: offline-sync-diagnostics
+
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /careconnect/application
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Project
+          Value: careconnect
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  AuditLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /careconnect/audit
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Project
+          Value: careconnect
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: audit-trail
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "cc-ops-alerts-${Environment}"
+      Subscription:
+        !If
+          - HasAlertEmail
+          - - Protocol: email
+              Endpoint: !Ref AlertEmail
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Project
+          Value: careconnect
+
+  LambdaErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: /aws/lambda/cc_main_backend
+      FilterPattern: '{ $.level = "ERROR" }'
+      MetricTransformations:
+        - MetricNamespace: CareConnect/Lambda
+          MetricName: ApplicationErrors
+          MetricValue: "1"
+          DefaultValue: 0
+
+  SyncFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: /careconnect/sync-events
+      FilterPattern: '{ $.status = "FAILED" }'
+      MetricTransformations:
+        - MetricNamespace: CareConnect/Sync
+          MetricName: SyncFailures
+          MetricValue: "1"
+          DefaultValue: 0
+
+  PhiLeakMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: /aws/lambda/cc_main_backend
+      FilterPattern: '"SSN" OR "DOB" OR "dateOfBirth" OR "socialSecurity" OR "phi_"'
+      MetricTransformations:
+        - MetricNamespace: CareConnect/Security
+          MetricName: PotentialPHIExposure
+          MetricValue: "1"
+          DefaultValue: 0
+
+  ApplicationErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "cc-app-errors-${Environment}"
+      AlarmDescription: CareConnect application error rate exceeded threshold
+      MetricName: ApplicationErrors
+      Namespace: CareConnect/Lambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  SyncFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "cc-sync-failures-${Environment}"
+      AlarmDescription: Offline sync failure rate exceeded threshold
+      MetricName: SyncFailures
+      Namespace: CareConnect/Sync
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  PhiLeakAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "cc-phi-leak-${Environment}"
+      AlarmDescription: "CRITICAL: Potential PHI detected in observability logs"
+      MetricName: PotentialPHIExposure
+      Namespace: CareConnect/Security
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  XRaySamplingRule:
+    Type: AWS::XRay::SamplingRule
+    Properties:
+      SamplingRule:
+        RuleName: CareConnectMain
+        ResourceARN: "*"
+        Priority: 1
+        FixedRate: 0.05
+        ReservoirSize: 5
+        ServiceName: cc_main_backend
+        ServiceType: AWS::Lambda::Function
+        Host: "*"
+        HTTPMethod: "*"
+        URLPath: "*"
+        Version: 1
+      Tags:
+        - Key: Project
+          Value: careconnect
+
+  AnalyticsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "cc-anonymous-analytics-${AWS::AccountId}-${Environment}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: AnalyticsRetention
+            Status: Enabled
+            ExpirationInDays: !Ref AnalyticsRetentionDays
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: careconnect
+        - Key: DataClassification
+          Value: anonymous-analytics
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  AnalyticsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /careconnect/analytics
+      RetentionInDays: !Ref AnalyticsRetentionDays
+      Tags:
+        - Key: Project
+          Value: careconnect
+        - Key: DataClassification
+          Value: anonymous-analytics
+        - Key: Environment
+          Value: !Ref Environment
+
+  FeatureUsageMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: /careconnect/analytics
+      FilterPattern: '{ $.eventType = "FEATURE_USED" }'
+      MetricTransformations:
+        - MetricNamespace: CareConnect/Analytics
+          MetricName: FeatureUsageCount
+          MetricValue: "1"
+          DefaultValue: 0
+
+  FeatureActivationMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: /careconnect/analytics
+      FilterPattern: '{ $.eventType = "FEATURE_ACTIVATED" }'
+      MetricTransformations:
+        - MetricNamespace: CareConnect/Analytics
+          MetricName: FeatureActivationCount
+          MetricValue: "1"
+          DefaultValue: 0
+
+  ObservabilityReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "cc-observability-readonly-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ObservabilityReadOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadCloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:ListMetrics
+                  - cloudwatch:GetDashboard
+                  - xray:GetTraceSummaries
+                  - xray:BatchGetTraces
+                Resource: "*"
+              - Sid: DenyAnalyticsAccess
+                Effect: Deny
+                Action: logs:*
+                Resource: !GetAtt AnalyticsLogGroup.Arn
+      Tags:
+        - Key: Project
+          Value: careconnect
+
+Outputs:
+  AppLogGroupName:
+    Value: !Ref AppLogGroup
+    Export:
+      Name: !Sub "cc-obs-${Environment}-AppLogGroup"
+
+  AuditLogGroupName:
+    Value: !Ref AuditLogGroup
+    Export:
+      Name: !Sub "cc-obs-${Environment}-AuditLogGroup"
+
+  AnalyticsBucketName:
+    Value: !Ref AnalyticsBucket
+    Export:
+      Name: !Sub "cc-obs-${Environment}-AnalyticsBucket"
+
+  AnalyticsLogGroupName:
+    Value: !Ref AnalyticsLogGroup
+    Export:
+      Name: !Sub "cc-obs-${Environment}-AnalyticsLogGroup"
+
+  AlarmTopicArn:
+    Value: !Ref AlarmTopic
+    Export:
+      Name: !Sub "cc-obs-${Environment}-AlarmTopic"

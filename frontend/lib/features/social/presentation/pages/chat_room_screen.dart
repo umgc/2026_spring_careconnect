@@ -25,16 +25,28 @@ import 'package:record/record.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../../providers/user_provider.dart';
+import '../model/chat_pending_queue_manager.dart';
 import '../model/message_dto.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final int peerUserId;
   final String peerName;
+  final Future<List<dynamic>> Function(
+      {required int user1, required int user2})? conversationLoader;
+  final Future<void> Function({
+    required int senderId,
+    required int receiverId,
+    required String content,
+  })? messageSender;
+  final bool enableAutoSync;
 
   const ChatRoomScreen({
     super.key,
     required this.peerUserId,
     required this.peerName,
+    this.conversationLoader,
+    this.messageSender,
+    this.enableAutoSync = true,
   });
 
   @override
@@ -46,6 +58,8 @@ enum _WsStatus { connecting, connected, disconnected }
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ChatPendingQueueManager _pendingQueueManager =
+      ChatPendingQueueManager();
 
   int? _currentUserId;
   List<MessageDto> messages = [];
@@ -84,6 +98,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   // Failed-send retry
   String? _failedMessage;
+  final List<MessageDto> _pendingMessages = <MessageDto>[];
+  final Set<int> _pendingInFlightIds = <int>{};
 
   // Attachment state
   bool _isUploading = false;
@@ -101,14 +117,91 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         return;
       }
       _currentUserId = user.id;
-      fetchConversation();
-      _refreshMessagingPermission();
-      _refreshVideoCallPermission();
-      _connectWebSocket();
-      _startPermissionRefresh();
+      _restorePendingMessagesFromCache();
+      _restorePendingMessagesFromDisk();
+      if (widget.enableAutoSync) {
+        fetchConversation();
+        _refreshMessagingPermission();
+        _refreshVideoCallPermission();
+        _startPolling();
+        _connectWebSocket();
+        _startPermissionRefresh();
+      } else {
+        isLoading = false;
+        _initialLoading = false;
+      }
       _controller.addListener(_handleComposerChanged);
       _initialized = true;
     }
+  }
+
+  String? _conversationCacheKey() {
+    final currentUserId = _currentUserId;
+    if (currentUserId == null) return null;
+    return _pendingQueueManager.conversationKey(
+      currentUserId: currentUserId,
+      peerUserId: widget.peerUserId,
+    );
+  }
+
+  void _persistPendingMessagesToCache() {
+    final key = _conversationCacheKey();
+    if (key == null) return;
+    _pendingQueueManager.persistToCache(key, _pendingMessages);
+  }
+
+  Future<void> _persistPendingMessagesToDisk() async {
+    final key = _conversationCacheKey();
+    if (key == null) return;
+    await _pendingQueueManager.persistToDisk(key, _pendingMessages);
+  }
+
+  Future<void> _restorePendingMessagesFromDisk() async {
+    final key = _conversationCacheKey();
+    if (key == null) return;
+    final restored = await _pendingQueueManager.restoreFromDisk(key);
+    if (restored.isEmpty) return;
+
+    if (!mounted) return;
+    setState(() {
+      final existingPendingIds = _pendingMessages.map((m) => m.id).toSet();
+      for (final pending in restored) {
+        if (!existingPendingIds.contains(pending.id)) {
+          _pendingMessages.add(pending);
+          existingPendingIds.add(pending.id);
+        }
+      }
+
+      final visibleIds = messages.map((m) => m.id).toSet();
+      for (final pending in _pendingMessages) {
+        if (!visibleIds.contains(pending.id)) {
+          messages.add(pending);
+        }
+      }
+      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    });
+
+    _persistPendingMessagesToCache();
+    _retryPendingMessages();
+  }
+
+  void _restorePendingMessagesFromCache() {
+    final key = _conversationCacheKey();
+    if (key == null) return;
+    final cached = _pendingQueueManager.restoreFromCache(key);
+    if (cached.isEmpty) return;
+
+    _pendingMessages
+      ..clear()
+      ..addAll(cached);
+
+    final existingIds = messages.map((m) => m.id).toSet();
+    for (final pending in cached) {
+      if (!existingIds.contains(pending.id)) {
+        messages.add(pending);
+      }
+    }
+    messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
   }
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
@@ -141,7 +234,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _markVisibleIncomingMessagesRead(messages);
       }
       _reconnectAttempts = 0;
-      _stopPolling();
+      _retryPendingMessages();
     } catch (e) {
       debugPrint('ChatWS connect error: $e');
       if (mounted) setState(() => _wsStatus = _WsStatus.disconnected);
@@ -168,7 +261,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             : int.tryParse(senderIdRaw?.toString() ?? '');
         final content = data['content'] as String? ?? '';
         final tsStr = data['timestamp'] as String?;
-        final ts = tsStr != null ? DateTime.tryParse(tsStr) ?? DateTime.now() : DateTime.now();
+        final ts = tsStr != null
+            ? DateTime.tryParse(tsStr) ?? DateTime.now()
+            : DateTime.now();
         final msgId = (data['messageId'] as num?)?.toInt() ?? 0;
 
         if (senderId == null) return;
@@ -249,7 +344,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void _startPolling() {
     if (_pollingTimer != null) return;
     _pollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (_currentUserId != null && mounted) fetchConversation(silent: true);
+      if (_currentUserId != null && mounted) {
+        fetchConversation(silent: true);
+        _retryPendingMessages();
+      }
     });
   }
 
@@ -274,23 +372,33 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (!silent && _initialLoading) setState(() => isLoading = true);
 
     try {
-      final data = await ApiService.getConversation(
-        user1: _currentUserId!,
-        user2: widget.peerUserId,
-      );
+      final data = await (widget.conversationLoader?.call(
+            user1: _currentUserId!,
+            user2: widget.peerUserId,
+          ) ??
+          ApiService.getConversation(
+            user1: _currentUserId!,
+            user2: widget.peerUserId,
+          ));
       final updated = data.map((json) => MessageDto.fromJson(json)).toList();
+      final merged = <MessageDto>[...updated, ..._pendingMessages]
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
       if (!listEquals(messages, updated)) {
         if (mounted) {
           setState(() {
-            messages = updated;
+            messages = merged;
             isLoading = false;
             _initialLoading = false;
           });
-          _markVisibleIncomingMessagesRead(updated);
+          _markVisibleIncomingMessagesRead(merged);
           _scrollToBottom();
         }
       } else if (_initialLoading) {
-        if (mounted) setState(() { isLoading = false; _initialLoading = false; });
+        if (mounted)
+          setState(() {
+            isLoading = false;
+            _initialLoading = false;
+          });
       }
     } catch (e) {
       if (!silent && mounted) {
@@ -298,7 +406,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           SnackBar(content: Text('Failed to load conversation: $e')),
         );
       }
-      if (mounted) setState(() { isLoading = false; _initialLoading = false; });
+      if (mounted)
+        setState(() {
+          isLoading = false;
+          _initialLoading = false;
+        });
     }
   }
 
@@ -308,58 +420,87 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final content = retryContent ?? _controller.text.trim();
     if (content.isEmpty || _currentUserId == null || !_messagingAllowed) return;
 
-    if (retryContent == null) _controller.clear();
-    if (mounted) setState(() => _failedMessage = null);
+    if (retryContent == null) {
+      _controller.clear();
+    }
+    if (mounted) {
+      setState(() {
+        _failedMessage = null;
+      });
+    }
     _sendTyping(false);
 
-    final optimistic = MessageDto(
+    final pendingMessage = MessageDto(
       id: -DateTime.now().millisecondsSinceEpoch,
       senderId: _currentUserId!,
       receiverId: widget.peerUserId,
       content: content,
       timestamp: DateTime.now(),
     );
+
     if (mounted) {
-      setState(() => messages.add(optimistic));
+      setState(() {
+        messages.add(pendingMessage);
+        _pendingMessages.add(pendingMessage);
+      });
       _scrollToBottom();
     }
+    _persistPendingMessagesToCache();
+    await _persistPendingMessagesToDisk();
 
-    bool sent = false;
+    await _trySendPendingMessage(pendingMessage);
+  }
 
-    if (_wsStatus == _WsStatus.connected && _wsChannel != null) {
-      try {
-        _wsSend({
-          'type': 'message',
-          'recipientId': widget.peerUserId.toString(),
-          'content': content,
-          'messageId': 'client_${DateTime.now().millisecondsSinceEpoch}',
-        });
-        sent = true;
-      } catch (_) {}
-    }
-
-    if (!sent) {
-      try {
-        await ApiService.sendMessage(
-          senderId: _currentUserId!,
-          receiverId: widget.peerUserId,
-          content: content,
-        );
-        sent = true;
-      } catch (_) {}
-    }
-
-    if (!sent) {
-      if (mounted) {
-        setState(() {
-          messages.removeWhere((m) => m.id == optimistic.id);
-          _failedMessage = content;
-        });
-      }
+  Future<void> _trySendPendingMessage(MessageDto pendingMessage) async {
+    if (_currentUserId == null ||
+        _pendingInFlightIds.contains(pendingMessage.id)) {
       return;
     }
 
+    _pendingInFlightIds.add(pendingMessage.id);
+
+    bool sent = false;
+    try {
+      await (widget.messageSender?.call(
+            senderId: _currentUserId!,
+            receiverId: widget.peerUserId,
+            content: pendingMessage.content,
+          ) ??
+          ApiService.sendMessage(
+            senderId: _currentUserId!,
+            receiverId: widget.peerUserId,
+            content: pendingMessage.content,
+          ));
+      sent = true;
+    } catch (_) {}
+
+    if (!sent) {
+      _pendingInFlightIds.remove(pendingMessage.id);
+      _persistPendingMessagesToCache();
+      await _persistPendingMessagesToDisk();
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _pendingMessages.removeWhere((m) => m.id == pendingMessage.id);
+        messages.removeWhere((m) => m.id == pendingMessage.id);
+      });
+    }
+    _persistPendingMessagesToCache();
+    await _persistPendingMessagesToDisk();
+    _pendingInFlightIds.remove(pendingMessage.id);
+
     await fetchConversation(silent: true);
+  }
+
+  Future<void> _retryPendingMessages() async {
+    if (_pendingMessages.isEmpty) return;
+
+    final queueSnapshot = List<MessageDto>.from(_pendingMessages);
+    for (final pending in queueSnapshot) {
+      await _trySendPendingMessage(pending);
+    }
   }
 
   // ── Attachments ────────────────────────────────────────────────────────────
@@ -369,7 +510,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _messagingBlockedReason ?? 'Messaging is disabled for this contact.',
+            _messagingBlockedReason ??
+                'Messaging is disabled for this contact.',
           ),
         ),
       );
@@ -402,7 +544,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
                 title: const Text('Camera / Photo Library'),
                 subtitle: const Text('Take a photo or choose from gallery'),
-                onTap: () { Navigator.pop(context); _pickImage(); },
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage();
+                },
               ),
               ListTile(
                 leading: const CircleAvatar(
@@ -411,7 +556,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
                 title: const Text('Audio Recording'),
                 subtitle: const Text('Record a voice message'),
-                onTap: () { Navigator.pop(context); _startAudioRecording(); },
+                onTap: () {
+                  Navigator.pop(context);
+                  _startAudioRecording();
+                },
               ),
               ListTile(
                 leading: const CircleAvatar(
@@ -420,7 +568,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
                 title: const Text('File'),
                 subtitle: const Text('PDF, document, or any file'),
-                onTap: () { Navigator.pop(context); _pickFile(); },
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickFile();
+                },
               ),
             ],
           ),
@@ -467,15 +618,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
     if (action == ImageSource.camera) {
       final camStatus = await Permission.camera.request();
-      if (camStatus.isPermanentlyDenied) { _showPermissionDenied('Camera'); return; }
+      if (camStatus.isPermanentlyDenied) {
+        _showPermissionDenied('Camera');
+        return;
+      }
     }
 
-    final XFile? picked = await picker.pickImage(source: action, imageQuality: 85);
+    final XFile? picked =
+        await picker.pickImage(source: action, imageQuality: 85);
     if (picked == null || !mounted) return;
 
     final bytes = await picked.readAsBytes();
     final mime = lookupMimeType(picked.name) ?? 'image/jpeg';
-    await _uploadAttachment(bytes: bytes, fileName: picked.name, mimeType: mime);
+    await _uploadAttachment(
+        bytes: bytes, fileName: picked.name, mimeType: mime);
   }
 
   Future<void> _pickFile() async {
@@ -495,7 +651,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Future<void> _startAudioRecording() async {
     final status = await Permission.microphone.request();
-    if (status.isPermanentlyDenied) { _showPermissionDenied('Microphone'); return; }
+    if (status.isPermanentlyDenied) {
+      _showPermissionDenied('Microphone');
+      return;
+    }
     if (status.isDenied) return;
 
     if (!mounted) return;
@@ -521,7 +680,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     await _uploadAttachment(bytes: bytes, fileName: name, mimeType: mime);
 
     // Clean up temp file
-    try { file.deleteSync(); } catch (_) {}
+    try {
+      file.deleteSync();
+    } catch (_) {}
   }
 
   Future<void> _uploadAttachment({
@@ -537,7 +698,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       final token = await AuthTokenManager.getJwtToken();
       if (token == null) throw Exception('Not authenticated');
 
-      final uri = Uri.parse('${getBackendBaseUrl()}/v1/api/messages/send-attachment');
+      final uri =
+          Uri.parse('${getBackendBaseUrl()}/v1/api/messages/send-attachment');
       final request = http.MultipartRequest('POST', uri);
       request.headers['Authorization'] = 'Bearer $token';
       request.fields['senderId'] = _currentUserId.toString();
@@ -549,7 +711,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         contentType: MediaType.parse(mimeType),
       ));
 
-      final streamed = await request.send().timeout(const Duration(seconds: 30));
+      final streamed =
+          await request.send().timeout(const Duration(seconds: 30));
       final response = await http.Response.fromStream(streamed);
 
       if (response.statusCode == 200) {
@@ -557,7 +720,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       } else if (response.statusCode == 403) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Messaging is not enabled for this contact.')),
+            const SnackBar(
+                content: Text('Messaging is not enabled for this contact.')),
           );
         }
       } else {
@@ -578,14 +742,39 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (msg.attachmentId == null) return;
     try {
       final token = await AuthTokenManager.getJwtToken();
-      if (token == null) return;
+      if (token == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Please sign in again to download attachments.')),
+          );
+        }
+        return;
+      }
 
       final uri = Uri.parse(
         '${getBackendBaseUrl()}/v1/api/files/${msg.attachmentId}/download',
       );
-      final response = await http.get(uri, headers: {'Authorization': 'Bearer $token'});
+      final response =
+          await http.get(uri, headers: {'Authorization': 'Bearer $token'});
 
-      if (response.statusCode != 200 || !mounted) return;
+      if (response.statusCode != 200) {
+        if (mounted) {
+          final status = response.statusCode;
+          final message = switch (status) {
+            401 => 'Session expired. Please sign in again.',
+            403 => 'You do not have permission to download this attachment.',
+            404 => 'Attachment not found.',
+            _ => 'Download failed (HTTP $status).',
+          };
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+        }
+        return;
+      }
+
+      if (!mounted) return;
 
       if (kIsWeb) {
         download_utils.downloadFile(
@@ -607,7 +796,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              result.message?.isNotEmpty == true
+              result.message.isNotEmpty
                   ? 'Could not open attachment: ${result.message}'
                   : 'Could not open attachment.',
             ),
@@ -642,69 +831,98 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final currentUser = Provider.of<UserProvider>(context, listen: false).user;
     if (currentUser == null || _currentUserId == null) return;
 
-    bool allowed = true;
+    bool allowed = _messagingAllowed;
 
-    if (currentUser.role == 'PATIENT') {
-      final links = await ApiService.getPatientLinkedCaregiverLinks(_currentUserId!);
-      Map<String, dynamic>? matching;
-      for (final item in links) {
-        final caregiverRaw = item['caregiverUserId'];
-        final caregiverUserId = caregiverRaw is int
-            ? caregiverRaw
-            : int.tryParse('$caregiverRaw');
-        if (caregiverUserId == widget.peerUserId) {
-          matching = item;
-          break;
+    try {
+      if (currentUser.role == 'PATIENT') {
+        final links =
+            await ApiService.getPatientLinkedCaregiverLinks(_currentUserId!);
+        if (links.isEmpty) {
+          debugPrint(
+            'Messaging permission refresh inconclusive (no caregiver links returned); keeping current state.',
+          );
+          return;
         }
-      }
-      if (matching == null) {
-        allowed = false;
-      } else {
-        final enabledRaw = matching['patientMessagingEnabled'];
-        allowed = enabledRaw is bool
-            ? enabledRaw
-            : '$enabledRaw'.toLowerCase() != 'false';
-      }
-    } else if (currentUser.role == 'CAREGIVER') {
-      final caregiverId = currentUser.caregiverId;
-      if (caregiverId == null) {
-        allowed = false;
-      } else {
-        final response = await ApiService.getCaregiverPatients(caregiverId);
-        if (response.statusCode != 200) {
+        Map<String, dynamic>? matching;
+        for (final item in links) {
+          final caregiverRaw = item['caregiverUserId'];
+          final caregiverUserId = caregiverRaw is int
+              ? caregiverRaw
+              : int.tryParse('$caregiverRaw');
+          if (caregiverUserId == widget.peerUserId) {
+            matching = item;
+            break;
+          }
+        }
+        if (matching == null) {
+          debugPrint(
+            'Messaging permission refresh inconclusive (no matching caregiver link); keeping current state.',
+          );
+          return;
+        } else {
+          final enabledRaw = matching['patientMessagingEnabled'];
+          allowed = enabledRaw is bool
+              ? enabledRaw
+              : '$enabledRaw'.toLowerCase() != 'false';
+        }
+      } else if (currentUser.role == 'CAREGIVER') {
+        final caregiverId = currentUser.caregiverId;
+        if (caregiverId == null) {
           allowed = false;
         } else {
+          final response = await ApiService.getCaregiverPatients(caregiverId);
+          if (response.statusCode != 200) {
+            throw Exception(
+              'Failed caregiver-patient link lookup: ${response.statusCode}',
+            );
+          }
+
           final decoded = jsonDecode(response.body);
           if (decoded is! List) {
-            allowed = false;
+            throw Exception('Invalid caregiver-patient response payload');
+          }
+          if (decoded.isEmpty) {
+            debugPrint(
+              'Messaging permission refresh inconclusive (no patient links returned); keeping current state.',
+            );
+            return;
+          }
+
+          Map<String, dynamic>? matchingLink;
+          for (final item in decoded) {
+            if (item is! Map) continue;
+            final row = Map<String, dynamic>.from(item);
+            final link = row['link'];
+            if (link is! Map) continue;
+            final linkMap = Map<String, dynamic>.from(link);
+            final patientUserIdRaw = linkMap['patientUserId'];
+            final patientUserId = patientUserIdRaw is int
+                ? patientUserIdRaw
+                : int.tryParse('$patientUserIdRaw');
+            if (patientUserId == widget.peerUserId) {
+              matchingLink = linkMap;
+              break;
+            }
+          }
+
+          if (matchingLink == null) {
+            debugPrint(
+              'Messaging permission refresh inconclusive (no matching patient link); keeping current state.',
+            );
+            return;
           } else {
-            Map<String, dynamic>? matchingLink;
-            for (final item in decoded) {
-              if (item is! Map) continue;
-              final row = Map<String, dynamic>.from(item);
-              final link = row['link'];
-              if (link is! Map) continue;
-              final linkMap = Map<String, dynamic>.from(link);
-              final patientUserIdRaw = linkMap['patientUserId'];
-              final patientUserId = patientUserIdRaw is int
-                  ? patientUserIdRaw
-                  : int.tryParse('$patientUserIdRaw');
-              if (patientUserId == widget.peerUserId) {
-                matchingLink = linkMap;
-                break;
-              }
-            }
-            if (matchingLink == null) {
-              allowed = false;
-            } else {
-              final enabledRaw = matchingLink['patientMessagingEnabled'];
-              allowed = enabledRaw is bool
-                  ? enabledRaw
-                  : '$enabledRaw'.toLowerCase() != 'false';
-            }
+            final enabledRaw = matchingLink['patientMessagingEnabled'];
+            allowed = enabledRaw is bool
+                ? enabledRaw
+                : '$enabledRaw'.toLowerCase() != 'false';
           }
         }
       }
+    } catch (e) {
+      debugPrint(
+        'Messaging permission refresh failed. Keeping current state: $e',
+      );
+      return;
     }
 
     if (!mounted) return;
@@ -713,8 +931,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       _messagingBlockedReason = allowed
           ? null
           : (currentUser.role == 'PATIENT'
-                ? 'Messaging is disabled by your caregiver for this conversation.'
-                : 'Messaging is disabled for this patient link.');
+              ? 'Messaging is disabled by your caregiver for this conversation.'
+              : 'Messaging is disabled for this patient link.');
     });
   }
 
@@ -755,7 +973,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   void _markVisibleIncomingMessagesRead(List<MessageDto> source) {
     for (final msg in source) {
-      if (msg.senderId == widget.peerUserId && msg.receiverId == _currentUserId) {
+      if (msg.senderId == widget.peerUserId &&
+          msg.receiverId == _currentUserId) {
         _sendReadReceipt(msg.id);
       }
     }
@@ -786,8 +1005,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       _videoCallBlockedReason = canCall
           ? null
           : (currentUser.role == 'PATIENT'
-                ? 'Video calling is disabled by your caregiver or no active link exists.'
-                : 'You can only call assigned patients/caregivers in your care circle.');
+              ? 'Video calling is disabled by your caregiver or no active link exists.'
+              : 'You can only call assigned patients/caregivers in your care circle.');
     });
   }
 
@@ -804,7 +1023,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (!mounted) return;
     if (!_videoCallAllowed) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_videoCallBlockedReason ?? 'Video calling unavailable.')),
+        SnackBar(
+            content:
+                Text(_videoCallBlockedReason ?? 'Video calling unavailable.')),
       );
       return;
     }
@@ -861,27 +1082,38 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   // ── Message bubble ─────────────────────────────────────────────────────────
 
   // Bubble palette — meets WCAG AA (≥4.5:1) against their own background
-  static const Color _bubbleMeBg      = Color(0xFF1565C0); // Blue 800  — white text: ~5.9:1
-  static const Color _bubblePeerBg    = Color(0xFF37474F); // BlueGrey 800 — white text: ~7.5:1
-  static const Color _bubbleMeText    = Colors.white;
-  static const Color _bubblePeerText  = Colors.white;
-  static const Color _bubbleSubText   = Color(0xCCFFFFFF); // white 80% — ~4.7:1 on above bg
+  static const Color _bubbleMeBg =
+      Color(0xFF1565C0); // Blue 800  — white text: ~5.9:1
+  static const Color _bubblePeerBg =
+      Color(0xFF37474F); // BlueGrey 800 — white text: ~7.5:1
+  static const Color _bubbleMeText = Colors.white;
+  static const Color _bubblePeerText = Colors.white;
+  static const Color _bubbleSubText =
+      Color(0xCCFFFFFF); // white 80% — ~4.7:1 on above bg
 
   Widget _buildMessageBubble(MessageDto msg) {
     final isMe = msg.senderId == _currentUserId;
-    final bg        = isMe ? _bubbleMeBg     : _bubblePeerBg;
-    final textColor = isMe ? _bubbleMeText   : _bubblePeerText;
+    final bg = isMe ? _bubbleMeBg : _bubblePeerBg;
+    final textColor = isMe ? _bubbleMeText : _bubblePeerText;
 
     final timeStr = '${msg.timestamp.toLocal().hour.toString().padLeft(2, '0')}'
         ':${msg.timestamp.toLocal().minute.toString().padLeft(2, '0')}';
     final receiptLabel = isMe
-        ? (_readMessageIds.contains(msg.id)
-              ? 'Read'
-              : (_deliveredMessageIds.contains(msg.id) ? 'Delivered' : 'Sent'))
+        ? (msg.id < 0
+            ? 'Pending'
+            : _readMessageIds.contains(msg.id)
+                ? 'Read'
+                : (_deliveredMessageIds.contains(msg.id)
+                    ? 'Delivered'
+                    : 'Sent'))
         : null;
-    final receiptIcon = _readMessageIds.contains(msg.id)
-        ? Icons.done_all
-        : (_deliveredMessageIds.contains(msg.id) ? Icons.done_all : Icons.done);
+    final receiptIcon = msg.id < 0
+        ? Icons.schedule
+        : _readMessageIds.contains(msg.id)
+            ? Icons.done_all
+            : (_deliveredMessageIds.contains(msg.id)
+                ? Icons.done_all
+                : Icons.done);
 
     Widget bodyContent;
     if (msg.hasAttachment) {
@@ -904,9 +1136,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.only(
-            topLeft:     const Radius.circular(16),
-            topRight:    const Radius.circular(16),
-            bottomLeft:  Radius.circular(isMe ? 16 : 4),
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isMe ? 16 : 4),
             bottomRight: Radius.circular(isMe ? 4 : 16),
           ),
         ),
@@ -921,7 +1153,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               timeStr,
               style: const TextStyle(fontSize: 10, color: _bubbleSubText),
             ),
-            if (receiptLabel != null && msg.id > 0) ...[
+            if (receiptLabel != null) ...[
               const SizedBox(height: 2),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -929,9 +1161,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   Icon(
                     receiptIcon,
                     size: 12,
-                    color: _readMessageIds.contains(msg.id)
-                        ? Colors.lightBlueAccent
-                        : _bubbleSubText,
+                    color: msg.id < 0
+                        ? _bubbleSubText
+                        : _readMessageIds.contains(msg.id)
+                            ? Colors.lightBlueAccent
+                            : _bubbleSubText,
                   ),
                   const SizedBox(width: 3),
                   Text(
@@ -965,7 +1199,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 Flexible(
                   child: Text(
                     msg.attachmentName ?? 'Image',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: textColor),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: textColor),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -973,7 +1208,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
             if (sizeLabel.isNotEmpty) ...[
               const SizedBox(height: 2),
-              Text(sizeLabel, style: const TextStyle(fontSize: 11, color: _bubbleSubText)),
+              Text(sizeLabel,
+                  style: const TextStyle(fontSize: 11, color: _bubbleSubText)),
             ],
           ],
         ),
@@ -993,11 +1229,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 children: [
                   Text(
                     msg.attachmentName ?? 'Voice message',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: textColor),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: textColor),
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (sizeLabel.isNotEmpty)
-                    Text(sizeLabel, style: const TextStyle(fontSize: 11, color: _bubbleSubText)),
+                    Text(sizeLabel,
+                        style: const TextStyle(
+                            fontSize: 11, color: _bubbleSubText)),
                 ],
               ),
             ),
@@ -1019,11 +1258,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 children: [
                   Text(
                     msg.attachmentName ?? 'File',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: textColor),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: textColor),
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (sizeLabel.isNotEmpty)
-                    Text(sizeLabel, style: const TextStyle(fontSize: 11, color: _bubbleSubText)),
+                    Text(sizeLabel,
+                        style: const TextStyle(
+                            fontSize: 11, color: _bubbleSubText)),
                 ],
               ),
             ),
@@ -1068,17 +1310,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             Material(
               color: Colors.orange.shade700,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   children: [
                     const Icon(Icons.wifi_off, color: Colors.white, size: 16),
                     const SizedBox(width: 8),
                     const Expanded(
-                      child: Text('Reconnecting...', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      child: Text('Reconnecting...',
+                          style: TextStyle(color: Colors.white, fontSize: 13)),
                     ),
                     TextButton(
                       onPressed: _connectWebSocket,
-                      child: const Text('Retry', style: TextStyle(color: Colors.white)),
+                      child: const Text('Retry',
+                          style: TextStyle(color: Colors.white)),
                     ),
                   ],
                 ),
@@ -1090,20 +1335,26 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             Material(
               color: Colors.red.shade700,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   children: [
-                    const Icon(Icons.error_outline, color: Colors.white, size: 16),
+                    const Icon(Icons.error_outline,
+                        color: Colors.white, size: 16),
                     const SizedBox(width: 8),
                     const Expanded(
-                      child: Text('Message failed to send.', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      child: Text('Message failed to send.',
+                          style: TextStyle(color: Colors.white, fontSize: 13)),
                     ),
                     TextButton(
-                      onPressed: () => sendMessage(retryContent: _failedMessage),
-                      child: const Text('Retry', style: TextStyle(color: Colors.white)),
+                      onPressed: () =>
+                          sendMessage(retryContent: _failedMessage),
+                      child: const Text('Retry',
+                          style: TextStyle(color: Colors.white)),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white, size: 16),
+                      icon: const Icon(Icons.close,
+                          color: Colors.white, size: 16),
                       onPressed: () => setState(() => _failedMessage = null),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
@@ -1114,8 +1365,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
 
           // Upload progress
-          if (_isUploading)
-            const LinearProgressIndicator(),
+          if (_isUploading) const LinearProgressIndicator(),
 
           if (_peerTyping)
             Padding(
@@ -1150,7 +1400,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             Material(
               color: Colors.grey.shade300,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
                     Icon(Icons.block, size: 16, color: Colors.grey.shade800),
@@ -1159,7 +1410,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       child: Text(
                         _messagingBlockedReason ??
                             'Messaging is disabled for this conversation.',
-                        style: TextStyle(color: Colors.grey.shade900, fontSize: 13),
+                        style: TextStyle(
+                            color: Colors.grey.shade900, fontSize: 13),
                       ),
                     ),
                   ],
@@ -1237,7 +1489,8 @@ class _RecordingDialogState extends State<_RecordingDialog> {
   Future<void> _begin() async {
     try {
       final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final path =
+          '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await widget.recorder.start(const RecordConfig(), path: path);
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) setState(() => _seconds++);
@@ -1269,7 +1522,9 @@ class _RecordingDialogState extends State<_RecordingDialog> {
         children: [
           const Icon(Icons.mic, color: Colors.red, size: 48),
           const SizedBox(height: 12),
-          Text(_timeLabel, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+          Text(_timeLabel,
+              style:
+                  const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(
             _started ? 'Recording...' : 'Starting...',

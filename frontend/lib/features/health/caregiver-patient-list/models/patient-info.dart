@@ -7,6 +7,9 @@ class Patient {
   /// Unique identifier for the patient
   final String id;
 
+  /// User identifier used for direct chat and messaging
+  final int? patientUserId;
+
   /// Patient's first name
   final String firstName;
 
@@ -49,6 +52,7 @@ class Patient {
   /// * [messageCount] - Number of unread messages from this patient (defaults to 0)
   Patient({
     required this.id,
+    this.patientUserId,
     required this.firstName,
     required this.lastName,
     required this.lastUpdated,

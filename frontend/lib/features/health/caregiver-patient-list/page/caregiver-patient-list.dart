@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:care_connect_app/features/auth/presentation/pages/sign_up_screen.dart';
 import 'package:care_connect_app/features/health/caregiver-patient-list/models/patient-info.dart';
 import 'package:care_connect_app/features/health/caregiver-patient-list/widgets/patient-info-card.dart';
+import 'package:care_connect_app/features/social/presentation/pages/chat_room_screen.dart';
 import 'package:care_connect_app/widgets/default_app_header.dart';
 import 'package:care_connect_app/features/health/caregiver-patient-list/page/patient_details_page.dart';
 import 'package:care_connect_app/providers/user_provider.dart';
@@ -104,9 +105,8 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
 
         if (!mounted) return;
 
-        final patients = rows
-            .map((json) => _patientFromJson(json, moodByUserId))
-            .toList();
+        final patients =
+            rows.map((json) => _patientFromJson(json, moodByUserId)).toList();
 
         setState(() {
           _allPatients = patients;
@@ -139,12 +139,12 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
     final patient = json['patient'] ?? {};
     final link = json['link'] ?? {};
     final patientUserId = _safeInt(link['patientUserId']);
-    final moodSnapshot = patientUserId == null
-        ? null
-        : moodByUserId[patientUserId];
+    final moodSnapshot =
+        patientUserId == null ? null : moodByUserId[patientUserId];
 
     return Patient(
       id: patient['id']?.toString() ?? '',
+      patientUserId: patientUserId,
       firstName: patient['firstName'] ?? '',
       lastName: patient['lastName'] ?? '',
       lastUpdated: DateTime.now(), // TODO: Use actual lastUpdated from API
@@ -634,44 +634,66 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
                       ),
                     )
                   : _filteredPatients.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.search_off,
-                            size: 64,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No patients found',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _filteredPatients.length,
-                      itemBuilder: (context, index) {
-                        final patient = _filteredPatients[index];
-                        return PatientCard(
-                          patient: patient,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => PatientDetailsPage(
-                                  patientId: patient.id,
-                                  isCaregiver: true, // or patient: patient
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off,
+                                size: 64,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No patients found',
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _filteredPatients.length,
+                          itemBuilder: (context, index) {
+                            final patient = _filteredPatients[index];
+                            return PatientCard(
+                              patient: patient,
+                              onMessageTap: () {
+                                final peerUserId = patient.patientUserId;
+                                if (peerUserId == null || peerUserId <= 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Unable to open chat for this patient.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ChatRoomScreen(
+                                      peerUserId: peerUserId,
+                                      peerName: patient.fullName,
+                                    ),
+                                  ),
+                                );
+                              },
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => PatientDetailsPage(
+                                      patientId: patient.id,
+                                      isCaregiver: true, // or patient: patient
+                                    ),
+                                  ),
+                                );
+                              },
                             );
                           },
-                        );
-                      },
-                    ),
+                        ),
             ),
           ],
         ),

@@ -1,122 +1,137 @@
-# Quality & Security Enforcement Subsystem
+# CareConnect Quality & Security Enforcement Subsystem
 
 ## Overview
 
-The `quality/` directory contains the automated security and quality enforcement subsystem used by CI.
+The `quality/` directory contains the automated quality and security
+enforcement subsystem for CareConnect. It is organized into two
+complementary systems that work together to enforce code quality and
+security standards at every stage of the development workflow.
+
+|System                      |Location              |When It Runs                                    |
+|----------------------------|----------------------|------------------------------------------------|
+|Local Quality Gate (BN1)    |`quality/Local_Scans/`|Before every commit, on the developer’s machine |
+|CI Quality Gate Engine (BN2)|`quality/ci/gate/`    |On every push and pull request in GitHub Actions|
+
+-----
+
+## Local Quality Gate (BN1)
+
+The local gate runs static analysis tools on the developer’s machine
+before every `git commit`. If any enforced tool finds violations, the
+commit is blocked. A timestamped HTML report and ZIP archive are
+generated on every run.
+
+**Tools:**
+Flutter Analyze, Checkstyle, PMD, SpotBugs
+
+**Entry points:**
+
+```bash
+# Mac / Linux
+sh quality/Local_Scans/run-local-checks.sh
+
+# Windows
+quality\Local_Scans\run-local-checks.bat
+```
+
+See `quality/Local_Scans/README.md` for full setup and usage
+instructions.
+
+-----
+
+## CI Quality Gate Engine (BN2)
+
+The CI gate engine runs automatically on every push and pull request
+via GitHub Actions. It executes 13 static analysis, security, and
+vulnerability scanning tools, evaluates results against a centralized
+policy, and enforces merge decisions via exit codes. No manual
+intervention is required.
+
+**Tools:**
+TruffleHog, Gitleaks, Flutter Analyze, Checkstyle, PMD, SpotBugs,
+Semgrep, Pylint, Bandit, HTMLHint, Stylelint, OWASP Dependency-Check,
+Trivy
+
+**Trigger:**
+Every push and pull request to `team_d` and `team_d-*` branches.
+
+**Artifact output:**
+
+```
+quality/analysis/
+├── raw/           Native tool outputs (evidence layer)
+├── normalized/    normalized.json — unified schema
+├── evaluated/     evaluated.json — policy decisions
+├── report.md      Markdown report (GitHub Actions Job Summary)
+└── report.html    Full HTML report with per-tool findings
+```
+
+See `quality/ci/gate/README.md` for full configuration and usage
+instructions.
+
+-----
+
+## How They Work Together
+
+The two systems form a layered enforcement strategy:
+
+```
+Developer machine                   GitHub Actions
+─────────────────                   ──────────────
+git commit                          git push
+     │                                   │
+     ▼                                   ▼
+Local Gate (BN1)                   CI Gate (BN2)
+Flutter, Checkstyle,               13 tools including
+PMD, SpotBugs                      secrets, SCA, SAST
+     │                                   │
+     ▼                                   ▼
+Blocks commit                      Blocks merge
+if violations found                if policy violated
+```
+
+The local gate catches common issues early before they reach CI. The CI
+gate provides comprehensive coverage including secrets detection,
+dependency vulnerabilities, and container scanning that are impractical
+to run locally on every commit.
+
+-----
+
+## Subsystem Responsibilities
 
 This subsystem is responsible for:
 
 - Secrets detection
 - Static analysis (SAST)
-- Dependency analysis (SCA)
-- Policy evaluation
-- Merge approval/block decisions
+- Software composition analysis (SCA)
+- Policy evaluation and enforcement
+- Merge approval and block decisions
 - Artifact generation and reporting
 
-The enforcement engine is located at:
+-----
 
-```
-quality/ci/gate/
+## Architecture Principles
 
-```
+Changes to either system must:
 
-All tool execution artifacts are written to:
+- Preserve deterministic enforcement behavior
+- Maintain raw → normalized → evaluated traceability in the CI gate
+- Keep policy logic centralized in `quality/ci/gate/policy.yaml`
+- Not introduce conditional bypass logic
+- Ensure the CI gate scans real application code only (`SCAN_ROOT=.`)
 
-```
-quality/analysis/
-
-```
-
----
-
-## Sandbox Fixtures (Integration Phase Only)
-
-During CI gate development and validation, controlled fixtures may exist under:
-
-```
-quality/sandbox/
-
-```
-
-These fixtures provide deterministic:
-
-- Passing scenarios
-- Failing scenarios
-- Report validation
-- Merge blocking validation
-
-The directory is **not application code**.
-
----
-
-## Environment Control
-
-All scanners are scoped by:
-
-```
-SCAN_ROOT
-
-```
-
-Examples:
-
-```
-SCAN_ROOT=quality/sandbox/passing
-SCAN_ROOT=quality/sandbox/failing
-SCAN_ROOT=.
-
-```
-
-Production enforcement must use:
-
-```
-SCAN_ROOT=.
-
-```
-
----
-
-## Production Cutover Procedure
-
-Before enabling production enforcement:
-
-1. Remove sandbox fixtures:
-
-```
-git rm -r quality/sandbox
-
-```
-
-2. Remove this README (if it references sandbox validation).
-
-3. Commit removal.
-
-4. Set:
-
-```
-SCAN_ROOT=.
-
-```
-
-5. Validate full repository scan passes.
-
----
-
-## Production Policy
-
-- No sandbox fixtures may exist.
-- CI must scan real application code only.
-- No conditional bypass logic is permitted.
-- The Python gate engine is the single enforcement authority.
-
----
+-----
 
 ## Ownership
 
-Changes to this subsystem must:
+This subsystem is owned by Team D.
 
-- Preserve deterministic enforcement behavior.
-- Maintain raw → normalized → evaluated traceability.
-- Keep policy logic centralized in the gate engine.
+- **BN1 (Local Gate):** Changes must preserve local enforcement
+  behavior and report parity with the CI gate report style.
+- **BN2 (CI Gate):** Changes must preserve the gate engine architecture.
+  Tool additions follow the five-step process documented in
+  `quality/ci/gate/README.md`.
+- **Policy changes** are made exclusively in
+  `quality/ci/gate/policy.yaml` — no code changes required.
 
----
+-----

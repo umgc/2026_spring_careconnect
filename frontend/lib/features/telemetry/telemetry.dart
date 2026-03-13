@@ -23,6 +23,17 @@ class Telemetry {
   // One-time sync guard so we don't spam backend calls.
   static bool _forcedBackendOffThisRun = false;
 
+  // One session ID per app run
+  static String? _sessionId;
+
+  static String _getSessionId() {
+    if (_sessionId != null) return _sessionId!;
+
+    final micros = DateTime.now().microsecondsSinceEpoch;
+    _sessionId = 'session-$micros';
+    return _sessionId!;
+  }
+
   static Future<bool> _enabledLocal() async {
     final optedOut = await TelemetrySettings.isOptedOut();
     return !optedOut;
@@ -133,6 +144,7 @@ class Telemetry {
 
     final payload = {
       'eventName': name,
+      'sessionId': _getSessionId(),
       'traceId': 'trace-$micros',
       'spanId': 'span-${micros + 1}',
       'details': sanitized,

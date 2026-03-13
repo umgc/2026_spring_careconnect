@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:care_connect_app/features/invoices/screens/invoice_tabbed_page.dart';
+import 'package:care_connect_app/features/telemetry/telemetry.dart';
 
 class MenuPage extends StatefulWidget {
   const MenuPage({super.key});
@@ -24,6 +25,9 @@ class _MenuPageState extends State<MenuPage> {
   @override
   void initState() {
     super.initState();
+    Telemetry.event('screen_view', {
+      'screen': 'menu_page',
+    });
     _loadProfilePicture();
   }
 
@@ -40,6 +44,14 @@ class _MenuPageState extends State<MenuPage> {
     } catch (_) {
       // Keep avatar fallback
     }
+  }
+
+  void _trackMenuTap(_MenuItem item) {
+    Telemetry.event('button_tap', {
+      'screen': 'menu_page',
+      'target': item.label,
+      if (item.route != null) 'route': item.route,
+    });
   }
 
   @override
@@ -72,19 +84,18 @@ class _MenuPageState extends State<MenuPage> {
           );
         },
       ),
-      _MenuItem(icon: 
-      Icons.report, 
-        label: 'Patient Report',
-        route: '/patient-report'
-          ,visibleFor: const {'PATIENT'},
-        onTap: () {
-        Navigator.pop(context);
-        Navigator.push(
-          context, 
-          MaterialPageRoute(builder: (context) => const PatientReportsTab())
-        );
-        }
-      ),
+      _MenuItem(
+          icon: Icons.report,
+          label: 'Patient Report',
+          route: '/patient-report',
+          visibleFor: const {'PATIENT'},
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const PatientReportsTab()));
+          }),
       _MenuItem(
         icon: Icons.verified_user,
         label: local.evv,
@@ -97,17 +108,17 @@ class _MenuPageState extends State<MenuPage> {
         route: '/calendar',
       ),
       _MenuItem(
-        icon: Icons.medication,
-        label: 'Medication Tracker',
-        onTap: () {
-          Navigator.pop(context);
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const MedicationsTrackerPage()),
-          );
-        },
-        visibleFor: {"PATIENT"}
-      ),
+          icon: Icons.medication,
+          label: 'Medication Tracker',
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => const MedicationsTrackerPage()),
+            );
+          },
+          visibleFor: {"PATIENT"}),
       _MenuItem(
         icon: Icons.public,
         label: local.socialFeed,
@@ -148,7 +159,7 @@ class _MenuPageState extends State<MenuPage> {
       ),
       _MenuItem(
         icon: Icons.folder,
-        label:  local.fileManagement,
+        label: local.fileManagement,
         route: '/file-management',
       ),
       _MenuItem(
@@ -157,10 +168,7 @@ class _MenuPageState extends State<MenuPage> {
         route: '/alertpage',
       ),
       _MenuItem(
-        icon: Icons.mail,
-        label: 'USPS Mail Digest',
-        route: '/usps-test'
-      ),
+          icon: Icons.mail, label: 'USPS Mail Digest', route: '/usps-test'),
       _MenuItem(
         icon: Icons.person_add,
         label: 'Add Patient',
@@ -207,9 +215,23 @@ class _MenuPageState extends State<MenuPage> {
               ),
               trailing: IconButton(
                 icon: const Icon(Icons.chevron_right),
-                onPressed: () => context.push('/profile'),
+                onPressed: () {
+                  Telemetry.event('button_tap', {
+                    'screen': 'menu_page',
+                    'target': 'profile',
+                    'route': '/profile',
+                  });
+                  context.push('/profile');
+                },
               ),
-              onTap: () => context.push('/profile'),
+              onTap: () {
+                Telemetry.event('button_tap', {
+                  'screen': 'menu_page',
+                  'target': 'profile',
+                  'route': '/profile',
+                });
+                context.push('/profile');
+              },
             ),
           ),
 
@@ -225,7 +247,10 @@ class _MenuPageState extends State<MenuPage> {
                 mainAxisSpacing: 12,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, index) => _ToolTile(item: items[index]),
+                (context, index) => _ToolTile(
+                  item: items[index],
+                  onTrackTap: _trackMenuTap,
+                ),
                 childCount: items.length,
               ),
             ),
@@ -265,7 +290,13 @@ class _MenuPageState extends State<MenuPage> {
                     title: Text(local.language),
                     subtitle: Text(currentLabel),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => LanguagePicker.show(context),
+                    onTap: () {
+                      Telemetry.event('button_tap', {
+                        'screen': 'menu_page',
+                        'target': 'language_picker',
+                      });
+                      LanguagePicker.show(context);
+                    },
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                   );
 
@@ -301,6 +332,10 @@ class _MenuPageState extends State<MenuPage> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
                 onTap: () async {
+                  Telemetry.event('button_tap', {
+                    'screen': 'menu_page',
+                    'target': 'logout',
+                  });
                   await userProvider.clearUser();
                   if (context.mounted) context.go('/');
                 },
@@ -357,16 +392,27 @@ class _MenuItem {
 
 class _ToolTile extends StatelessWidget {
   final _MenuItem item;
-  const _ToolTile({required this.item});
+  final void Function(_MenuItem item) onTrackTap;
+
+  const _ToolTile({
+    required this.item,
+    required this.onTrackTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap:
-            item.onTap ??
-            (item.route != null ? () => context.push(item.route!) : null),
+        onTap: () {
+          onTrackTap(item);
+
+          if (item.onTap != null) {
+            item.onTap!();
+          } else if (item.route != null) {
+            context.push(item.route!);
+          }
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
@@ -411,11 +457,20 @@ class _LoggedOutPrompt extends StatelessWidget {
               t.loginRequiredMessage,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).disabledColor,
-              ),
+                    color: Theme.of(context).disabledColor,
+                  ),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: onLogin, child: Text(t.login)),
+            ElevatedButton(
+              onPressed: () {
+                Telemetry.event('button_tap', {
+                  'screen': 'menu_page_logged_out',
+                  'target': 'login',
+                });
+                onLogin();
+              },
+              child: Text(t.login),
+            ),
           ],
         ),
       ),

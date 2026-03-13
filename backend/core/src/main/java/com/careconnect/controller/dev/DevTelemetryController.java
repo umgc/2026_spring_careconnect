@@ -34,6 +34,7 @@ public class DevTelemetryController {
         e.setEventName(asString(body.getOrDefault("eventName", "dev_emit")));
         e.setEventTime(OffsetDateTime.now(java.time.Clock.systemUTC()));
 
+        e.setSessionId(asString(body.get("sessionId")));
         e.setTraceId(asString(body.get("traceId")));
         e.setSpanId(asString(body.get("spanId")));
 

@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../api_service.dart';
-import 'app_database_stub.dart'
-    if (dart.library.io) 'app_database.dart';
+import 'app_database_stub.dart' if (dart.library.io) 'app_database.dart';
 import 'connectivity_router_service.dart';
 
 /// Summary returned by sync operations.

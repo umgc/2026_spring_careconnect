@@ -182,7 +182,8 @@ class _MainScreenState extends State<MainScreen> {
             _failedRequestIds.add(item.id);
             // Keep failed item visible and move it to the end for later retry.
             if (_pendingSyncQueue.length > 1) {
-              final nextQueue = List<OfflineSyncQueueItem>.from(_pendingSyncQueue);
+              final nextQueue =
+                  List<OfflineSyncQueueItem>.from(_pendingSyncQueue);
               nextQueue.removeAt(0);
               nextQueue.add(item);
               _pendingSyncQueue = nextQueue;
@@ -361,7 +362,8 @@ class _MainScreenState extends State<MainScreen> {
   String _trimmed(dynamic value) => (value ?? '').toString().trim();
 
   String _fullName(String first, String last, String fallback) {
-    final name = [first.trim(), last.trim()].where((e) => e.isNotEmpty).join(' ').trim();
+    final name =
+        [first.trim(), last.trim()].where((e) => e.isNotEmpty).join(' ').trim();
     if (name.isNotEmpty) return name;
     return fallback;
   }
@@ -375,26 +377,35 @@ class _MainScreenState extends State<MainScreen> {
     final role = user.role.trim().toUpperCase();
     if (role == 'PATIENT') {
       final links = await ApiService.getPatientLinkedCaregiverLinks(user.id);
-      return links.where((link) {
-        final enabledRaw = link['patientVideoCallsEnabled'];
-        return enabledRaw is bool ? enabledRaw : '$enabledRaw'.toLowerCase() != 'false';
-      }).map((link) {
-        final caregiverUserId = _toInt(link['caregiverUserId']);
-        if (caregiverUserId == null || caregiverUserId <= 0) {
-          return null;
-        }
-        final caregiverName = _trimmed(link['caregiverName']);
-        final caregiverEmail = _trimmed(link['caregiverEmail']);
-        return _QuickCallTarget(
-          userId: caregiverUserId,
-          role: 'CAREGIVER',
-          title: caregiverName.isNotEmpty ? caregiverName : 'Caregiver $caregiverUserId',
-          subtitle: 'Caregiver - Patient calls enabled',
-          email: caregiverEmail,
-          phone: null,
-        );
-      }).whereType<_QuickCallTarget>().toList()
-        ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      return links
+          .where((link) {
+            final enabledRaw = link['patientVideoCallsEnabled'];
+            return enabledRaw is bool
+                ? enabledRaw
+                : '$enabledRaw'.toLowerCase() != 'false';
+          })
+          .map((link) {
+            final caregiverUserId = _toInt(link['caregiverUserId']);
+            if (caregiverUserId == null || caregiverUserId <= 0) {
+              return null;
+            }
+            final caregiverName = _trimmed(link['caregiverName']);
+            final caregiverEmail = _trimmed(link['caregiverEmail']);
+            return _QuickCallTarget(
+              userId: caregiverUserId,
+              role: 'CAREGIVER',
+              title: caregiverName.isNotEmpty
+                  ? caregiverName
+                  : 'Caregiver $caregiverUserId',
+              subtitle: 'Caregiver - Patient calls enabled',
+              email: caregiverEmail,
+              phone: null,
+            );
+          })
+          .whereType<_QuickCallTarget>()
+          .toList()
+        ..sort(
+            (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     }
 
     if (role != 'CAREGIVER') {
@@ -425,11 +436,16 @@ class _MainScreenState extends State<MainScreen> {
       if (item is! Map<String, dynamic>) continue;
       final link = item['link'];
       final patient = item['patient'];
-      final linkMap = link is Map<String, dynamic> ? link : const <String, dynamic>{};
-      final patientMap = patient is Map<String, dynamic> ? patient : const <String, dynamic>{};
+      final linkMap =
+          link is Map<String, dynamic> ? link : const <String, dynamic>{};
+      final patientMap =
+          patient is Map<String, dynamic> ? patient : const <String, dynamic>{};
 
-      final patientUserId = _toInt(linkMap['patientUserId']) ?? _toInt(patientMap['userId']);
-      if (patientUserId == null || patientUserId <= 0 || patientUserIds.contains(patientUserId)) {
+      final patientUserId =
+          _toInt(linkMap['patientUserId']) ?? _toInt(patientMap['userId']);
+      if (patientUserId == null ||
+          patientUserId <= 0 ||
+          patientUserIds.contains(patientUserId)) {
         continue;
       }
       patientUserIds.add(patientUserId);
@@ -459,10 +475,13 @@ class _MainScreenState extends State<MainScreen> {
     }
 
     for (final patientTarget in patientTargets) {
-      final links = await ApiService.getPatientLinkedCaregiverLinks(patientTarget.userId);
+      final links =
+          await ApiService.getPatientLinkedCaregiverLinks(patientTarget.userId);
       for (final link in links) {
         final caregiverUserId = _toInt(link['caregiverUserId']);
-        if (caregiverUserId == null || caregiverUserId <= 0 || caregiverUserId == currentUserId) {
+        if (caregiverUserId == null ||
+            caregiverUserId <= 0 ||
+            caregiverUserId == currentUserId) {
           continue;
         }
         final caregiverName = _trimmed(link['caregiverName']);
@@ -471,7 +490,9 @@ class _MainScreenState extends State<MainScreen> {
           caregiverUserId,
           () => _CareTeamAggregate(
             userId: caregiverUserId,
-            name: caregiverName.isNotEmpty ? caregiverName : 'Caregiver $caregiverUserId',
+            name: caregiverName.isNotEmpty
+                ? caregiverName
+                : 'Caregiver $caregiverUserId',
             email: caregiverEmail.isNotEmpty ? caregiverEmail : null,
           ),
         );
@@ -485,7 +506,9 @@ class _MainScreenState extends State<MainScreen> {
 
     final careTeamTargets = careTeamByUserId.values.map((entry) {
       final context = entry.patientNames.toList()..sort();
-      final summary = context.isEmpty ? 'Care team caregiver' : 'Care team for: ${context.join(', ')}';
+      final summary = context.isEmpty
+          ? 'Care team caregiver'
+          : 'Care team for: ${context.join(', ')}';
       return _QuickCallTarget(
         userId: entry.userId,
         role: 'CAREGIVER',
@@ -498,7 +521,8 @@ class _MainScreenState extends State<MainScreen> {
     }).toList()
       ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 
-    patientTargets.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    patientTargets
+        .sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return [...patientTargets, ...careTeamTargets];
   }
 
@@ -622,7 +646,9 @@ class _MainScreenState extends State<MainScreen> {
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (_, index) {
                           final target = targets[index];
-                          final roleBadge = target.role == 'PATIENT' ? 'PATIENT' : 'CAREGIVER';
+                          final roleBadge = target.role == 'PATIENT'
+                              ? 'PATIENT'
+                              : 'CAREGIVER';
                           return ListTile(
                             leading: CircleAvatar(
                               child: Text(
@@ -868,8 +894,8 @@ class _MainScreenState extends State<MainScreen> {
                                 final status = isSyncing
                                     ? 'Syncing now'
                                     : isFailed
-                                    ? 'Failed (will retry)'
-                                    : 'Queued';
+                                        ? 'Failed (will retry)'
+                                        : 'Queued';
 
                                 return ListTile(
                                   leading: CircleAvatar(
@@ -911,9 +937,8 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
     setState(() {
-      _pendingSyncQueue = _pendingSyncQueue
-          .where((queued) => queued.id != item.id)
-          .toList();
+      _pendingSyncQueue =
+          _pendingSyncQueue.where((queued) => queued.id != item.id).toList();
       _failedRequestIds.remove(item.id);
     });
   }
@@ -1058,6 +1083,7 @@ extension MainScreenNavigation on BuildContext {
     );
   }
 }
+
 class _QuickCallTarget {
   final int userId;
   final String role;

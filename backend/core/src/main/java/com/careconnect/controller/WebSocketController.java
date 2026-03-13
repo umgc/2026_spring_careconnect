@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/websocket")
+@RequestMapping("v1/api/websocket")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "WebSocket Management", description = "WebSocket notifications and real-time communication management")

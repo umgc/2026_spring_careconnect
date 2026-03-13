@@ -236,37 +236,6 @@
   </div>
   
   <script>
-    // Optimized service worker registration to prevent timeout issues
-    if ('serviceWorker' in navigator) {
-      // Register service workers with timeout protection
-      const registerServiceWorker = async () => {
-        try {
-          // Register custom optimized service worker first
-          const swRegistration = await navigator.serviceWorker.register('/sw.js', {
-            scope: '/',
-            updateViaCache: 'none' // Always check for updates
-          });
-          console.log('✅ CareConnect SW registered successfully');
-          
-          // Register Firebase messaging service worker
-          const firebaseRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-            scope: '/firebase-messaging-sw.js',
-            updateViaCache: 'none'
-          });
-          console.log('✅ Firebase SW registered successfully');
-          
-          return { swRegistration, firebaseRegistration };
-        } catch (error) {
-          console.warn('⚠️ Service worker registration failed:', error);
-          // Continue without service worker - app still works
-          return null;
-        }
-      };
-      
-      // Register immediately instead of waiting for load event
-      registerServiceWorker();
-    }
-    
     // Add platform detection classes to the body element
     function detectPlatform() {
       var userAgent = navigator.userAgent || navigator.vendor || window.opera;

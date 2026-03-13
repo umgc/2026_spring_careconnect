@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'package:care_connect_app/providers/user_provider.dart';
 import 'package:care_connect_app/config/env_constant.dart';
-import 'dart:html' as html;
 
 class UspsTestScreen extends StatefulWidget {
   const UspsTestScreen({super.key});
@@ -246,8 +246,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
 
     final base = getBackendBaseUrl();
 
-    // Get actual current page URL from browser window
-    final currentUrl = html.window.location.href;
+    // Use a platform-safe return URL; Uri.base works on web and mobile.
+    final currentUrl = kIsWeb ? Uri.base.toString() : getWebBaseUrl();
     final authUrl = '$base/oauth/google/start?userId=${Uri.encodeComponent(user.id.toString())}&returnUrl=${Uri.encodeComponent(currentUrl)}';
 
     final uri = Uri.parse(authUrl);

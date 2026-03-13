@@ -51,18 +51,18 @@ public class EvvRecord {
     private Map<String,Object> deviceInfo;
 
     // Offline support
-    @Column(name = "is_offline", nullable = false) private Boolean isOffline = false;
+    @Column(name = "is_offline", nullable = false) @Builder.Default private Boolean isOffline = false;
     @Column(name = "sync_status") private String syncStatus; // PENDING|SYNCED|FAILED
     @Column(name = "last_sync_attempt") private OffsetDateTime lastSyncAttempt;
 
     // EOR approval workflow
-    @Column(name = "eor_approval_required", nullable = false) private Boolean eorApprovalRequired = false;
+    @Column(name = "eor_approval_required", nullable = false) @Builder.Default private Boolean eorApprovalRequired = false;
     @Column(name = "eor_approved_by") private Long eorApprovedBy;
     @Column(name = "eor_approved_at") private OffsetDateTime eorApprovedAt;
     @Column(name = "eor_approval_comment") private String eorApprovalComment;
 
     // Correction support
-    @Column(name = "is_corrected", nullable = false) private Boolean isCorrected = false;
+    @Column(name = "is_corrected", nullable = false) @Builder.Default private Boolean isCorrected = false;
     @Column(name = "original_record_id") private Long originalRecordId;
     @Column(name = "correction_reason_code") private String correctionReasonCode;
     @Column(name = "correction_explanation") private String correctionExplanation;

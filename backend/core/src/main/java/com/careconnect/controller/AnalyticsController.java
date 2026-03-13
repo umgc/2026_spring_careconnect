@@ -3,6 +3,7 @@ package com.careconnect.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import com.careconnect.security.Role;
 
@@ -43,6 +44,7 @@ import com.careconnect.model.CaregiverPatientLink;
 import java.time.Period;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
 @RequestMapping("/v1/api/analytics")
@@ -73,7 +75,7 @@ private final FamilyMemberLinkRepository familyMemberPatientLinkRepository;
     
     @Autowired
     private VitalSampleService vitalSampleService;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ScheduledExecutorService sseExecutor = Executors.newScheduledThreadPool(2);
 
     @GetMapping("/dashboard")
     public DashboardDTO dashboard(
@@ -126,18 +128,39 @@ private final FamilyMemberLinkRepository familyMemberPatientLinkRepository;
     @GetMapping(value = "/live", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter live(@RequestParam Long patientId) {
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L); // 30 min
-        executor.submit(() -> {
+        AtomicBoolean active = new AtomicBoolean(true);
+        ScheduledFuture<?> task = sseExecutor.scheduleAtFixedRate(() -> {
+            if (!active.get()) {
+                return;
+            }
             try {
-                while (true) {
-                    DashboardDTO dto = analyticsService.getDashboard(patientId, Period.ofDays(1));
-                    emitter.send(dto);
-                    Thread.sleep(2000);
-                }
+                DashboardDTO dto = analyticsService.getDashboard(patientId, Period.ofDays(1));
+                emitter.send(dto);
             } catch (Exception e) {
+                active.set(false);
                 emitter.completeWithError(e);
             }
+        }, 0, 2, TimeUnit.SECONDS);
+
+        emitter.onCompletion(() -> {
+            active.set(false);
+            task.cancel(true);
+        });
+        emitter.onTimeout(() -> {
+            active.set(false);
+            task.cancel(true);
+            emitter.complete();
+        });
+        emitter.onError((ex) -> {
+            active.set(false);
+            task.cancel(true);
         });
         return emitter;
+    }
+
+    @PreDestroy
+    public void shutdownSseExecutor() {
+        sseExecutor.shutdownNow();
     }
 
 @GetMapping("/vitals")

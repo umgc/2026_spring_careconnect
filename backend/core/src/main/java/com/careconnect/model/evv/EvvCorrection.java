@@ -33,6 +33,7 @@ public class EvvCorrection {
     private OffsetDateTime correctedAt;
 
     @Column(name = "approval_required", nullable = false)
+    @Builder.Default
     private Boolean approvalRequired = false;
 
     @Column(name = "approved_by")

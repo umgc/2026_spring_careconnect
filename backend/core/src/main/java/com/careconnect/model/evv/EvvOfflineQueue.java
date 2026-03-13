@@ -30,18 +30,21 @@ public class EvvOfflineQueue {
     private OffsetDateTime queuedAt;
 
     @Column(name = "sync_attempts", nullable = false)
+    @Builder.Default
     private Integer syncAttempts = 0;
 
     @Column(name = "last_sync_attempt")
     private OffsetDateTime lastSyncAttempt;
 
     @Column(name = "sync_status", nullable = false, length = 20) // PENDING|SYNCING|SYNCED|FAILED
+    @Builder.Default
     private String syncStatus = "PENDING";
 
     @Column(name = "last_error")
     private String lastError;
 
     @Column(name = "priority", nullable = false)
+    @Builder.Default
     private Integer priority = 1; // 1=normal, 2=high, 3=urgent
 
     // Store the full record data for offline operations

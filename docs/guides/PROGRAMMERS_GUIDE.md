@@ -2363,7 +2363,7 @@ REST API endpoints:
 ```java
 // controller/HealthController.java
 @RestController
-@RequestMapping("/api/health")
+@RequestMapping("v1/api/health")
 @PreAuthorize("hasRole('PATIENT') or hasRole('CAREGIVER')")
 @Tag(name = "Health", description = "Health data management")
 public class HealthController {
@@ -3838,7 +3838,7 @@ public class WebSocketConnectionService {
 ```java
 // controller/WebSocketController.java
 @RestController
-@RequestMapping("/api/websocket")
+@RequestMapping("v1/api/websocket")
 @PreAuthorize("hasAnyRole('PATIENT', 'CAREGIVER', 'FAMILY_MEMBER', 'ADMIN')")
 public class WebSocketController {
 

@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/env_constant.dart';
 
 /// Service that handles creating and retrieving patient check-ins.
 /// Used by both patient and caregiver dashboards.
 class CheckinService {
-  static const String _baseUrl = 'https://localhost:8080/api/checkins';
+  static String get _baseUrl => '${getBackendBaseUrl()}/api/checkins';
 
   /// Adds a new check-in for a patient.
   /// Example use: CheckinService.addCheckin(patientId, caregiverId);

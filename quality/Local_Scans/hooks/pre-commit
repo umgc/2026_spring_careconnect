@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# ==========================================================
+# CareConnect Pre-Commit Hook
+# ----------------------------------------------------------
+# Runs the local quality gate before every commit.
+# If any enforced check fails, the commit is blocked.
+#
+# One-time setup (run after cloning):
+#   git config core.hooksPath quality/local/hooks
+#
+# To bypass in an emergency (use sparingly):
+#   git commit --no-verify -m "your message"
+# ==========================================================
+
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+CHECK_SCRIPT="${REPO_ROOT}/quality/local/run-local-checks.sh"
+
+if [ ! -f "${CHECK_SCRIPT}" ]; then
+  echo "⚠️ run-local-checks.sh not found at ${CHECK_SCRIPT}"
+  echo "Skipping local gate check."
+  exit 0
+fi
+
+sh "${CHECK_SCRIPT}"
+EXIT_CODE=$?
+
+if [ "${EXIT_CODE}" -ne 0 ]; then
+  echo ""
+  echo "❌ Commit blocked — fix the issues above before committing."
+  echo "To bypass in an emergency: git commit --no-verify"
+  exit 1
+fi
+
+exit 0

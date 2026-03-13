@@ -18,13 +18,20 @@ else
     echo "No .env file found at /app/.env, using system environment variables"
 fi
 
-# Verify critical variables are set
+# Verify critical variables are set (strict in prod, flexible in local/dev)
+PROFILE="${SPRING_PROFILES_ACTIVE:-dev}"
+echo "Active profile: ${PROFILE}"
+
 required_vars=(
     "JDBC_URI"
-    "DB_USER" 
+    "DB_USER"
     "DB_PASSWORD"
     "SECURITY_JWT_SECRET"
 )
+
+if [ "$PROFILE" = "prod" ]; then
+    required_vars+=("AWS_REGION")
+fi
 
 missing_vars=()
 for var in "${required_vars[@]}"; do

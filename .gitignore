@@ -1,4 +1,12 @@
+# macOS system files
+.DS_Store
+**/.DS_Store
+
 # See https://www.dartlang.org/guides/libraries/private-files
+
+# macOS system files
+.DS_Store
+**/.DS_Store
 
 # Files and directories created by pub
 .dart_tool/
@@ -28,3 +36,17 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+**/.DS_Store
+.venv/
+
+# Quality gate outputs
+quality/analysis/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+*.iml
+quality/sandbox/**/target/

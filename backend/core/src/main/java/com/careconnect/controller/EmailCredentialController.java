@@ -7,7 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("v1/api/email-credentials/status")
 @RequiredArgsConstructor
 public class EmailCredentialController {
 

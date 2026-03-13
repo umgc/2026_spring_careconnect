@@ -4,6 +4,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import 'package:http/http.dart' as http;
 import 'auth_token_manager.dart';
+import '../config/env_constant.dart';
 
 /// WebSocket service for real-time communication with Spring Boot backend
 class CareConnectWebSocketService {
@@ -42,9 +43,14 @@ class CareConnectWebSocketService {
     try {
       print('🔌 Connecting to WebSocket server...');
 
+      final backendUrl = getBackendBaseUrl();
+      final websocketBase = backendUrl.startsWith('https://')
+          ? backendUrl.replaceFirst('https://', 'wss://')
+          : backendUrl.replaceFirst('http://', 'ws://');
+
       // Connect to Spring Boot WebSocket endpoint
       _channel = WebSocketChannel.connect(
-        Uri.parse('ws://localhost:8080/ws/careconnect'),
+        Uri.parse('$websocketBase/ws/careconnect'),
       );
 
       _isConnected = true;
@@ -166,7 +172,7 @@ class CareConnectWebSocketService {
       }
 
       final response = await http.post(
-        Uri.parse('http://localhost:8080/api/sms/send'),
+        Uri.parse('${getBackendBaseUrl()}/v1/api/sms/send'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

@@ -1,10 +1,11 @@
-import 'package:care_connect_app/core/services/api_service.dart';
+import 'package:care_connect_app/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
+import '../config/env_constant.dart';
 import '../config/theme/app_theme.dart';
 
 /// Dialog shown when user hasn't verified their email address
@@ -28,15 +29,19 @@ class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
   WebSocketChannel? _wsChannel;
   bool _wsConnected = false;
   String _connectionMethod = 'Connecting...';
+  Timer? _verificationPollTimer;
+  bool _isCheckingVerification = false;
 
   @override
   void initState() {
     super.initState();
     _connectWebSocket();
+    _startVerificationPolling();
   }
 
   @override
   void dispose() {
+    _verificationPollTimer?.cancel();
     _wsChannel?.sink.close(status.normalClosure);
     super.dispose();
   }
@@ -44,9 +49,12 @@ class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
   /// Connect to WebSocket for real-time email verification notifications
   void _connectWebSocket() {
     try {
-      // Connect to WebSocket endpoint
-      // Note: Change this URL when backend is deployed
-      final wsUrl = Uri.parse('ws://localhost:8080/ws/careconnect');
+      // Build WebSocket endpoint from configured backend URL.
+      final backendUrl = Uri.parse(getBackendBaseUrl());
+      final wsScheme = backendUrl.scheme == 'https' ? 'wss' : 'ws';
+      final wsHost =
+          backendUrl.hasPort ? '${backendUrl.host}:${backendUrl.port}' : backendUrl.host;
+      final wsUrl = Uri.parse('$wsScheme://$wsHost/ws/careconnect');
       _wsChannel = WebSocketChannel.connect(wsUrl);
 
       // Listen to WebSocket messages
@@ -59,7 +67,7 @@ class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
           if (mounted) {
             setState(() {
               _wsConnected = false;
-              _connectionMethod = 'WebSocket Error - Please refresh';
+              _connectionMethod = 'WebSocket Error - Using auto-check';
             });
           }
         },
@@ -68,7 +76,7 @@ class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
           if (mounted) {
             setState(() {
               _wsConnected = false;
-              _connectionMethod = 'WebSocket Disconnected';
+              _connectionMethod = 'WebSocket Disconnected - Using auto-check';
             });
           }
         },
@@ -96,9 +104,38 @@ class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
       if (mounted) {
         setState(() {
           _wsConnected = false;
-          _connectionMethod = 'WebSocket Failed - Please refresh';
+          _connectionMethod = 'WebSocket Failed - Using auto-check';
         });
       }
+    }
+  }
+
+  void _startVerificationPolling() {
+    _checkVerificationStatus();
+    _verificationPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _checkVerificationStatus();
+    });
+  }
+
+  Future<void> _checkVerificationStatus() async {
+    if (_isCheckingVerification || !mounted) return;
+    _isCheckingVerification = true;
+    try {
+      final uri = Uri.parse(
+        '${ApiConstants.auth}/check-verification?email=${Uri.encodeQueryComponent(widget.email)}',
+      );
+      final response = await http.get(uri).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final verified = data is Map<String, dynamic> && data['verified'] == true;
+        if (verified) {
+          _handleEmailVerified();
+        }
+      }
+    } catch (_) {
+      // Ignore transient polling failures; keep polling.
+    } finally {
+      _isCheckingVerification = false;
     }
   }
 
@@ -133,6 +170,7 @@ class _EmailVerificationDialogState extends State<EmailVerificationDialog> {
 
   /// Handle email verified notification
   void _handleEmailVerified() async {
+    _verificationPollTimer?.cancel();
     _wsChannel?.sink.close(status.normalClosure);
 
     if (mounted) {

@@ -25,12 +25,15 @@ public class Question {
     private QuestionType type;  // TEXT | YES_NO | TRUE_FALSE | NUMBER
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean required = false;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean active = true;
 
     @Column(nullable = false)
+    @Builder.Default
     private int ordinal = 0;
 
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)

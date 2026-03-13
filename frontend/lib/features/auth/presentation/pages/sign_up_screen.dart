@@ -1,4 +1,4 @@
-import 'package:care_connect_app/core/services/api_service.dart';
+import 'package:care_connect_app/services/api_service.dart';
 import 'package:care_connect_app/widgets/email_verification_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';

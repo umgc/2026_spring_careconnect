@@ -1,4 +1,4 @@
-import 'package:care_connect_app/core/services/api_service.dart';
+import 'package:care_connect_app/services/api_service.dart';
 import 'package:care_connect_app/features/health/medication-tracker/pages/medication-tracker.dart';
 import 'package:care_connect_app/l10n/app_localizations.dart';
 import 'package:care_connect_app/providers/locale_provider.dart';
@@ -124,23 +124,23 @@ class _MenuPageState extends State<MenuPage> {
         label: local.notetakerAssistant,
         route: '/notetaker-search',
       ),
-      _MenuItem(
-        icon: Icons.person_add,
-        label: local.addPatient,
-        route: '/add-patient',
-        visibleFor: const {'CAREGIVER'},
-      ),
+      // _MenuItem(
+      //   icon: Icons.person_add,
+      //   label: local.addPatient,
+      //   route: '/add-patient',
+      //   visibleFor: const {'CAREGIVER'},
+      // ),
       _MenuItem(
         icon: Icons.mail,
         label: local.informedDelivery,
         route: '/informed-delivery',
       ),
-      _MenuItem(
-        icon: Icons.settings,
-        label: local.settings,
-        route: '/settings',
-        section: _Section.settings,
-      ),
+      // _MenuItem(
+      //   icon: Icons.settings,
+      //   label: local.settings,
+      //   route: '/settings',
+      //   section: _Section.settings,
+      // ),
       _MenuItem(
         icon: Icons.devices,
         label: local.smartDevices,

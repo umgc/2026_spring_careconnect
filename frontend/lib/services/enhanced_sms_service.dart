@@ -3,9 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import '../config/env_constant.dart';
 
 class EnhancedSMSService {
-  static const String _baseUrl = 'http://localhost:8080'; // Your backend URL
+  static String get _baseUrl => getBackendBaseUrl();
 
   /// Send SMS through backend (production approach)
   /// This replaces opening the SMS app and actually sends the message

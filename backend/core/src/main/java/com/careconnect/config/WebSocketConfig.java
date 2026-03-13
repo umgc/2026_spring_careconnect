@@ -6,6 +6,7 @@ import com.careconnect.websocket.NotificationWebSocketHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -26,6 +27,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @Slf4j
 @Configuration
 @ConditionalOnProperty(name = "careconnect.websocket.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnExpression("'${careconnect.websocket.mode:aws}' == 'local'")
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
 

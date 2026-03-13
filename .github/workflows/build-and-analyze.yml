@@ -1,0 +1,89 @@
+name: Build and Static Analysis
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-analyze:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Checkstyle
+        working-directory: backend/core
+        run: ./mvnw checkstyle:check
+
+      - name: Run SpotBugs
+        working-directory: backend/core
+        run: ./mvnw spotbugs:check
+
+      - name: Run PMD
+        working-directory: backend/core
+        run: ./mvnw pmd:check pmd:cpd-check
+
+      - name: Run OWASP Dependency-Check
+        working-directory: backend/core
+        run: |
+          if [ -n "${{ secrets.NVD_API_KEY }}" ]; then
+            ./mvnw org.owasp:dependency-check-maven:check -Dnvd.api.key="${{ secrets.NVD_API_KEY }}"
+          else
+            echo "WARNING: NVD_API_KEY not configured. Skipping full OWASP scan."
+            echo "To enable OWASP scanning, add NVD_API_KEY secret to GitHub repository."
+            echo "Get a free API key at: https://nvd.nist.gov/developers/request-an-api-key"
+          fi
+        continue-on-error: true
+
+      - name: Build with Maven
+        working-directory: backend/core
+        run: ./mvnw clean verify -DskipTests
+
+      - name: SonarQube Scan
+        working-directory: backend/core
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_HOST_URL" ] && [ -n "$SONAR_TOKEN" ]; then
+            ./mvnw org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+              -Dsonar.host.url=$SONAR_HOST_URL \
+              -Dsonar.login=$SONAR_TOKEN \
+              -Dsonar.qualitygate.wait=true
+          else
+            echo "Skipping SonarQube: credentials not configured"
+          fi
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: backend/core/target/surefire-reports/
+
+      - name: Upload Analysis Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: analysis-reports
+          path: |
+            backend/core/target/checkstyle-result.xml
+            backend/core/target/spotbugsXml.xml
+            backend/core/target/pmd.xml
+            backend/core/target/dependency-check-report.*

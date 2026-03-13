@@ -1,10 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import '../config/env_constant.dart';
 
 /// Service to integrate with your Spring Boot backend at localhost:8080
 class BackendApiService {
-  static const String baseUrl = 'http://localhost:8080/v1/api';
+  static String get baseUrl => '${getBackendBaseUrl()}/v1/api';
 
   // This should be passed from your authentication system
   static String? _authToken;
@@ -14,17 +15,15 @@ class BackendApiService {
   }
 
   static Map<String, String> get _headers {
-    final headers = {
-      'Content-Type': 'application/json',
-      'Accept': '*/*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Connection': 'keep-alive',
-      'Origin': 'http://localhost:50030',
-      'Referer': 'http://localhost:50030/',
-      'Sec-Fetch-Dest': 'empty',
-      'Sec-Fetch-Mode': 'cors',
-      'Sec-Fetch-Site': 'same-site',
-    };
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+      };
 
     if (_authToken != null) {
       headers['Authorization'] = 'Bearer $_authToken';
@@ -117,7 +116,7 @@ class BackendApiService {
     String messageType = 'text',
   }) async {
     try {
-      const url = '$baseUrl/messages';
+      final url = '$baseUrl/messages';
       final messageId =
           '${DateTime.now().millisecondsSinceEpoch}_${_generateRandomId()}';
 
@@ -160,7 +159,7 @@ class BackendApiService {
     required String message,
   }) async {
     try {
-      const url = '$baseUrl/sms/send';
+      final url = '$baseUrl/sms/send';
 
       final smsData = {
         'senderName': senderName,
@@ -200,7 +199,7 @@ class BackendApiService {
     bool isVideoCall = true,
   }) async {
     try {
-      const url = '$baseUrl/notifications/video-call-invitation';
+      final url = '$baseUrl/notifications/video-call-invitation';
 
       final invitationData = {
         'callerId': callerId,
@@ -248,7 +247,7 @@ class BackendApiService {
     required bool isVideoCall,
   }) async {
     try {
-      const url = '$baseUrl/calls/log';
+      final url = '$baseUrl/calls/log';
 
       final callData = {
         'callId': callId,
@@ -263,11 +262,11 @@ class BackendApiService {
         'duration': endTime != null
             ? endTime.difference(startTime).inSeconds
             : 0,
-        'platform': Platform.isAndroid
-            ? 'android'
-            : Platform.isIOS
-            ? 'ios'
-            : 'web',
+        'platform': kIsWeb
+            ? 'web'
+            : (defaultTargetPlatform == TargetPlatform.android
+                  ? 'android'
+                  : (defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'other')),
       };
 
       print('📊 Logging call to backend: $callData');

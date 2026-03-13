@@ -143,15 +143,15 @@ export SPRING_PROFILES_ACTIVE=dev
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
 # Wait a few seconds for the backend to start up
-sleep 6
+# sleep 6
 
-# Automatically open Swagger UI in Chrome
-open -a "Google Chrome" http://localhost:8080/swagger-ui/index.html
+# # Automatically open Swagger UI in Chrome
+# open -a "Google Chrome" http://localhost:8080/swagger-ui/index.html
 
-# Wait a few seconds for the backend to start up
-sleep 6
+# # Wait a few seconds for the backend to start up
+# sleep 6
 
-# Automatically open Swagger UI in Chrome
-open -a "Google Chrome" http://localhost:8080/swagger-ui/index.html
+# # Automatically open Swagger UI in Chrome
+# open -a "Google Chrome" http://localhost:8080/swagger-ui/index.html
 
 echo "🛑 Application stopped."

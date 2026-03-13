@@ -9,6 +9,9 @@ import '../models/caregiver_model.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import 'dart:async'; // Needed for the StreamSubscription
+import 'package:connectivity_plus/connectivity_plus.dart';
+
 /// Represents an authenticated user session with basic information.
 ///
 /// This class contains the essential session data obtained during login,
@@ -146,34 +149,119 @@ class UserSession {
 class UserProvider extends ChangeNotifier {
   /// Current user session containing authentication and basic user data
   UserSession? _user;
-
   /// Public getter for the current user session
   UserSession? get user => _user;
-
   /// Loading state indicator for async operations
   bool _isLoading = false;
-
   /// Public getter for loading state
   bool get isLoading => _isLoading;
-
   /// Base user model containing core user information
   UserModel? _userModel;
-
   /// Detailed patient model (populated only for patient users)
   PatientUserModel? _patientModel;
-
   /// Detailed caregiver model (populated only for caregiver users)
   CaregiverModel? _caregiverModel;
+  
+  // BNS 5: Offline Mode
+  bool _offlineModeEnabled = true;
+  // is the device currently online?
+  bool _isDeviceOnline = true;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+
+  // getters
+
+  // get offline mode status (enabled/disabled by user)
+  bool get offlineModeEnabled => _offlineModeEnabled;
+  // get current hardware connectivity status
+  bool get isDeviceOnline => _isDeviceOnline;
+  // This returns true if EITHER condition is met
+  bool get shouldShowOfflineWarning => !offlineModeEnabled || !_isDeviceOnline;
 
   /// Public getter for base user model
   UserModel? get userModel => _userModel;
-
   /// Public getter for patient model
   PatientUserModel? get patientModel => _patientModel;
-
   /// Public getter for caregiver model
   CaregiverModel? get caregiverModel => _caregiverModel;
 
+  UserProvider() {
+    // The "Start" button for your listener
+    _initConnectivity();
+  }// end constructor
+
+  /// Updates the offline persistence setting and notifies listeners.
+  /// This will trigger the Dashboard banner to show/hide.
+  void setOfflineMode(bool enabled) {
+    if (_offlineModeEnabled == enabled) return;
+    _offlineModeEnabled = enabled;
+    
+    notifyListeners();
+  }
+
+  /// Initializes the hardware connectivity listener to monitor internet status.
+  /// 
+  /// This method performs two key actions:
+  /// 1. **Initial Check**: Queries the current state of the network interface
+  ///    immediately upon app/provider initialization.
+  /// 2. **Real-time Subscription**: Sets up a [StreamSubscription] to listen 
+  ///    for hardware changes (e.g., toggling Airplane Mode or losing Wi-Fi).
+  /// 
+  /// When a change is detected, [_updateConnectionStatus] is triggered, which:
+  /// - Updates the global `isDeviceOnline` state.
+  /// - Forces `offlinePersistenceEnabled` to true if the device goes offline.
+  /// - Notifies UI listeners to show/hide the appropriate status banners.
+  /// - Logs telemetry for Team B tracking.
+  Future<void> _initConnectivity() async {
+    final connectivity = Connectivity();
+    // Check initial state
+    List<ConnectivityResult> result = await connectivity.checkConnectivity();
+    _updateConnectionStatus(result);
+    // Subscribe to changes (This is the "Heartbeat")
+    _connectivitySubscription = connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
+  }
+
+  /// Processes connectivity changes and manages the "Offline Mode" business logic.
+  ///
+  /// [results] is a list of [ConnectivityResult] (e.g., wifi, mobile, none).
+  ///
+  /// Logic Rules:
+  /// 1. Determines 'online' status if the list contains anything other than 'none'.
+  /// 2. If the device transitions to 'offline':
+  ///    - Forces [_offlineModeEnabled] to true (Auto-Reset) to ensure data
+  ///      safety during local-only operation.
+  ///    - Logs the event for Team B via Telemetry.
+  /// 3. Triggers [notifyListeners] only when a state change occurs to avoid
+  ///    unnecessary UI repaints.
+  void _updateConnectionStatus(List<ConnectivityResult> results) {
+    // connectivity_plus 6.0+ returns a list. 
+    // We are "online" if any result is NOT 'none'
+    bool currentlyOnline = !results.contains(ConnectivityResult.none);
+    
+    if (_isDeviceOnline != currentlyOnline) {
+      _isDeviceOnline = currentlyOnline;
+      // If we just lost internet, force the setting back to 'Enabled'
+      if (!_isDeviceOnline) {
+        _offlineModeEnabled = true; 
+        // If you are saving this to SharedPreferences, call that save method here too!
+        print('DEBUG: Internet lost. Auto-resetting persistence setting to Enabled.');
+      }
+    
+      print('DEBUG: Hardware Online Status = $_isDeviceOnline');
+      notifyListeners(); // This triggers the banner to show/hide in MainScreen
+    }
+  }
+
+  /// Standard lifecycle method to clean up resources.
+  /// 
+  /// Critically, this cancels the [_connectivitySubscription] to prevent 
+  /// memory leaks. Without this, the listener would continue to run 
+  /// in the background even after the Provider is destroyed.
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
+  }
+  
   /// Initializes user authentication state from stored data on app start.
   ///
   /// This method is called when the app starts to restore any existing
@@ -472,6 +560,8 @@ class UserProvider extends ChangeNotifier {
           caregiverId: _user!.caregiverId,
         );
       } catch (e) {
+
+        print('Error syncing user data to storage: $e');
       }
     }
   }
@@ -539,4 +629,4 @@ class UserProvider extends ChangeNotifier {
   }
 
   bool get isPatient => _user?.role.toUpperCase() == 'PATIENT';
-}
+}// end UserProvider class

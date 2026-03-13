@@ -4,8 +4,9 @@ Create a CareConnect app icon with love and connection theme
 This script creates an SVG that can be converted to PNG
 """
 
+
 def create_svg_icon():
-    svg_content = '''<?xml version="1.0" encoding="UTF-8"?>
+    svg_content = """<?xml version="1.0" encoding="UTF-8"?>
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <!-- Gradient for main background -->
@@ -99,22 +100,25 @@ def create_svg_icon():
   <!-- Text "CC" in elegant font (optional - can be removed for pure icon) -->
   <text x="512" y="420" font-family="Arial, sans-serif" font-size="60" font-weight="bold" 
         text-anchor="middle" fill="#FFFFFF" opacity="0.3">CC</text>
-</svg>'''
-    
+</svg>"""
+
     return svg_content
+
 
 def main():
     svg_content = create_svg_icon()
-    
+
     # Save SVG file
-    with open('app_icon.svg', 'w') as f:
+    with open("app_icon.svg", "w") as f:
         f.write(svg_content)
-    
+
     print("✅ CareConnect app icon SVG created successfully!")
     print("📁 Created: app_icon.svg")
     print("\n🔄 To convert to PNG, you can:")
     print("1. Use online converter: https://convertio.co/svg-png/")
-    print("2. Use Inkscape: inkscape app_icon.svg --export-png=app_icon.png --export-width=1024")
+    print(
+        "2. Use Inkscape: inkscape app_icon.svg --export-png=app_icon.png --export-width=1024"
+    )
     print("3. Use ImageMagick: convert app_icon.svg -resize 1024x1024 app_icon.png")
     print("\n🎨 Icon features:")
     print("- Medical cross for healthcare")
@@ -122,6 +126,7 @@ def main():
     print("- Connected people showing community")
     print("- Soft blue gradient background")
     print("- Floating hearts for warmth")
+
 
 if __name__ == "__main__":
     main()

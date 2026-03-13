@@ -2,7 +2,7 @@ package com.careconnect.controller;
 
 import com.careconnect.service.GoogleOAuthService;
 import com.careconnect.repository.EmailCredentialRepository;
-import com.careconnect.model.EmailCredential;
+// import com.careconnect.model.EmailCredential;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;

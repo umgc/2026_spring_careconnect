@@ -23,20 +23,25 @@ public class Invoice {
     private String id;
 
     @Column(name = "invoice_number", nullable = false)
+    @Builder.Default
     private String invoiceNumber = "";
 
     // Provider snapshot
     @Column(name = "provider_name", nullable = false)
+    @Builder.Default
     private String providerName = "";
     @Column(name = "provider_address", nullable = false)
+    @Builder.Default
     private String providerAddress = "";
     @Column(name = "provider_phone", nullable = false)
+    @Builder.Default
     private String providerPhone = "";
     @Column(name = "provider_email")
     private String providerEmail;
 
     // Patient snapshot
     @Column(name = "patient_name", nullable = false)
+    @Builder.Default
     private String patientName = "";
     @Column(name = "patient_address")
     private String patientAddress;
@@ -109,15 +114,19 @@ public class Invoice {
 
     // Children
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<ServiceLine> services = new ArrayList<>();
 
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<HistoryEntry> history = new ArrayList<>();
 
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<RecommendedAction> recommendedActions = new ArrayList<>();
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("paymentDate ASC")
+    @Builder.Default
     private java.util.List<InvoicePayment> payments = new java.util.ArrayList<>();
 
     public java.util.List<InvoicePayment> getPayments() { return payments; }

@@ -3,13 +3,14 @@ package com.careconnect.service;
 import com.careconnect.model.WebSocketConnection;
 import com.careconnect.repository.WebSocketConnectionRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.apigatewaymanagementapi.ApiGatewayManagementApiClient;
@@ -22,6 +23,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * AWS WebSocket Service for Lambda environment
@@ -35,11 +38,12 @@ import java.util.Optional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "AWS_WEBSOCKET_API_ENDPOINT")
+@ConditionalOnProperty(name = "careconnect.websocket.aws.api-gateway-endpoint")
 public class AwsWebSocketService {
 
     private final WebSocketConnectionRepository connectionRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ConcurrentMap<String, ApiGatewayManagementApiClient> apiClients = new ConcurrentHashMap<>();
 
     @Value("${careconnect.websocket.aws.api-gateway-endpoint}")
     private String apiGatewayEndpoint;
@@ -233,12 +237,13 @@ public class AwsWebSocketService {
      */
     private boolean postToConnection(WebSocketConnection connection, Map<String, Object> message) {
         try {
-            // Create API Gateway Management API client
-            ApiGatewayManagementApiClient client = ApiGatewayManagementApiClient.builder()
-                    .endpointOverride(URI.create(connection.getApiGatewayEndpoint()))
-                    .region(Region.of(awsRegion))
-                    .credentialsProvider(EnvironmentVariableCredentialsProvider.create())
-                    .build();
+            ApiGatewayManagementApiClient client = apiClients.computeIfAbsent(
+                    connection.getApiGatewayEndpoint(),
+                    endpoint -> ApiGatewayManagementApiClient.builder()
+                            .endpointOverride(URI.create(endpoint))
+                            .region(Region.of(awsRegion))
+                            .credentialsProvider(DefaultCredentialsProvider.create())
+                            .build());
 
             // Convert message to JSON
             String messageJson = objectMapper.writeValueAsString(message);
@@ -267,5 +272,17 @@ public class AwsWebSocketService {
             log.error("Failed to post to connection {}: {}", connection.getConnectionId(), e.getMessage());
             return false;
         }
+    }
+
+    @PreDestroy
+    public void closeApiClients() {
+        apiClients.values().forEach(client -> {
+            try {
+                client.close();
+            } catch (Exception e) {
+                log.warn("Error closing API Gateway Management client: {}", e.getMessage());
+            }
+        });
+        apiClients.clear();
     }
 }

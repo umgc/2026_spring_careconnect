@@ -797,7 +797,7 @@ public class TaskServiceV2 {
             }
             case "weekly" -> {
                 List<Boolean> daysOfWeek = dto.getDaysOfWeek();
-                if (daysOfWeek == null || daysOfWeek.isEmpty())
+                if (daysOfWeek == null || daysOfWeek.size() < 7 || !hasAnySelectedDay(daysOfWeek))
                     return dates;
 
                 int created = 0;
@@ -897,12 +897,25 @@ public class TaskServiceV2 {
                     }
                     break;
                 }
+                if (!hasAnySelectedDay(days)) {
+                    // Invalid weekly mask: avoid infinite loops by returning no occurrences.
+                    break;
+                }
 
                 // Iterate week by week starting from the week containing startDate.
                 LocalDate cursor = p.startDate;
                 int made = 0;
-                while (true) {
+                int weeklyIterations = 0;
+                int maxWeeklyIterations = (endCap != null)
+                        ? Math.max(1, (int) Duration.between(
+                                p.startDate.atStartOfDay(),
+                                endCap.plusDays(1).atStartOfDay()).toDays() / 7 + 2)
+                        : Math.max(8, p.count * 8);
+                while (weeklyIterations++ < maxWeeklyIterations) {
                     LocalDate weekStart = cursor.with(DayOfWeek.SUNDAY);
+                    if (endCap != null && weekStart.isAfter(endCap)) {
+                        return out;
+                    }
                     for (int i = 0; i < 7; i++) {
                         if (Boolean.TRUE.equals(days.get(i))) {
                             // Map i=0..6 (Sun..Sat) -> DayOfWeek (Mon=1..Sun=7)
@@ -927,6 +940,7 @@ public class TaskServiceV2 {
                     }
                     cursor = cursor.plusWeeks(p.interval);
                 }
+                return out;
             }
             case "monthly" -> {
                 if (endCap != null) {
@@ -974,6 +988,13 @@ public class TaskServiceV2 {
     /** Count given a target end cap. */
     private int recomputeCountFromEnd(SeriesParams params, LocalDate endCap) {
         return generateDates(params, endCap).size();
+    }
+
+    private static boolean hasAnySelectedDay(List<Boolean> days) {
+        if (days == null) {
+            return false;
+        }
+        return days.stream().anyMatch(Boolean.TRUE::equals);
     }
 
     /**

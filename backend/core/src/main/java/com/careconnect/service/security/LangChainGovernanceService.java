@@ -1,9 +1,9 @@
 package com.careconnect.service.security;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
-import dev.langchain4j.model.chat.ChatModel;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.time.LocalDateTime;
@@ -129,5 +129,15 @@ public class LangChainGovernanceService {
                 ? tracker.lastMinuteReset : tracker.lastHourReset;
             return lastActivity.isBefore(cutoff);
         });
+    }
+
+    @Scheduled(fixedRateString = "${careconnect.security.governance.cleanup-interval-ms:900000}")
+    public void scheduledTrackerCleanup() {
+        int before = userRequestTrackers.size();
+        cleanupOldTrackers();
+        int after = userRequestTrackers.size();
+        if (after < before) {
+            log.debug("Governance tracker cleanup: {} -> {}", before, after);
+        }
     }
 }

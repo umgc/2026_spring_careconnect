@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 @RestController
-@RequestMapping("/api/gamification")
+@RequestMapping("v1/api/gamification")
 public class GamificationController {
 
     private final GamificationService gamificationService;

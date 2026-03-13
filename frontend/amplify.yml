@@ -12,7 +12,7 @@ frontend:
       commands:
         - echo "Building Flutter Web App..."
         - flutter pub get
-        - flutter build web
+        - flutter build web --release --dart-define=BACKEND_URL=$BACKEND_URL --dart-define=APP_DOMAIN=$APP_DOMAIN --dart-define=APP_PORT=$APP_PORT
   artifacts:
     baseDirectory: build/web
     files:

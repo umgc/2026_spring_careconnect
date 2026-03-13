@@ -1,7 +1,7 @@
 ## Copy this file and create .env file
 
 # PostgreSQL Development Database Configuration
-JDBC_URI=jdbc:postgresql://localhost:5433/careconnect
+JDBC_URI=jdbc:postgresql://localhost:5432/careconnect
 DB_USER=postgres
 DB_PASSWORD=changeme
 CORS_ALLOWED_LIST=http://localhost:*

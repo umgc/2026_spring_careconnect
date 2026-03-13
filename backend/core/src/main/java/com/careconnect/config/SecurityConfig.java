@@ -3,6 +3,9 @@ package com.careconnect.config;
 import com.careconnect.security.JwtAuthenticationFilter;
 import com.careconnect.security.JwtTokenProvider;
 import jakarta.servlet.http.HttpServletResponse;
+
+import java.beans.BeanProperty;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -47,7 +50,14 @@ public class SecurityConfig {
                                 "/swagger-ui/index.html",
                                 "/api-docs/**",
                                 "/configuration/ui",
-                                "/configuration/security"
+                                "/configuration/security",
+                                // Adding Bedrock
+                                "/api/bedrock/**",
+                                "/v1/api/ai/**",
+                                "/auth/**",
+                                "/v1/api/ai-chat/**",
+                                "v1/api/test/**",
+                                "/v1/api/invoices/**"
                         ).permitAll()
 
                 /* ---------- public API endpoints ------------------------ */

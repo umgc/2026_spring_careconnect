@@ -5,7 +5,6 @@ import com.careconnect.dto.ChatResponse;
 import com.careconnect.dto.ChatConversationSummary;
 import com.careconnect.dto.ChatMessageSummary;
 import com.careconnect.model.*;
-import com.careconnect.model.UserAIConfig;
 import com.careconnect.util.UserAIConfigDefaults;
 import com.careconnect.service.security.InputSanitizationService;
 import com.careconnect.service.security.ResponseSanitizationService;
@@ -20,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
+import opennlp.tools.stemmer.snowball.turkishStemmer;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -28,7 +28,12 @@ import dev.langchain4j.exception.AuthenticationException;
 
 @Service
 @Primary
-@ConditionalOnProperty(name = "careconnect.deepseek.enabled", havingValue = "true")
+@ConditionalOnProperty(
+    name = "careconnect.ai.provider",
+    havingValue = "deepseek",
+    matchIfMissing = true
+)
+
 public class DefaultAIChatService implements AIChatService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DefaultAIChatService.class);
 
@@ -51,6 +56,11 @@ public class DefaultAIChatService implements AIChatService {
     private final SecurityAuditService securityAuditService;
     private final DocumentProcessingService documentProcessingService;
 
+    @org.springframework.beans.factory.annotation.Value("${careconnect.ai.provider}")
+    private String provider;
+
+    @org.springframework.beans.factory.annotation.Value("${careconnect.ai.model.name}")
+    private String configuredModelName;
 
     @Autowired
     public DefaultAIChatService(ChatModel chatModel,
@@ -623,10 +633,27 @@ public class DefaultAIChatService implements AIChatService {
                    String aiResponse;
                    long processingTimeMs = 0;
                    try {
-                       long aiStartTime = System.currentTimeMillis();
+                       //Commenting out the 3 lines before to compare deepseek with bedrock
+                       //StartTime = System.currentTimeMillis();
                        // Use ChatMemory to get AI response
+                       //var response = chatModel.chat(chatMemory.messages());
+                       //processingTimeMs = System.currentTimeMillis() - aiStartTime;
+
+                       // 🔎 Log provider + model before calling AI
+                       log.info("=== CALLING AI PROVIDER: {} ===", provider.toUpperCase());
+                       log.info("Model: {}", configuredModelName);
+                       log.debug("Total messages in memory: {}", chatMemory.messages().size());
+
+                       // Optional: log last user message length only (safer than full prompt)
+                       log.debug("User message length: {}", sanitizedUserMessage.length());
+
+                       long aiStartTime = System.currentTimeMillis();
+
                        var response = chatModel.chat(chatMemory.messages());
+
                        processingTimeMs = System.currentTimeMillis() - aiStartTime;
+
+                       log.info("AI response time: {} ms", processingTimeMs);
 
                        // Extract the actual text content from the LangChain4j response
                        if (response != null && response.aiMessage() != null && response.aiMessage().text() != null) {

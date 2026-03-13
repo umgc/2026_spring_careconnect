@@ -37,6 +37,7 @@
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>textract</artifactId>
+            <version>2.25.10</version>
         </dependency>
 
         <!-- Spring Boot Starter Web -->
@@ -146,9 +147,12 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>chimesdkmeetings</artifactId>
         </dependency>
+
+        <!-- Adding Bedrock -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>bedrockruntime</artifactId>
+            <version>2.25.10</version>
         </dependency>
 
         <!-- OpenAPI UI -->

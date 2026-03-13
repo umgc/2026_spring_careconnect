@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @Slf4j
-@ConditionalOnProperty(name = "careconnect.deepseek.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "careconnect.ai.provider", havingValue = "mock", matchIfMissing = true)
 public class MockAIChatService implements AIChatService {
 
     private final UserAIConfigRepository userAIConfigRepository;

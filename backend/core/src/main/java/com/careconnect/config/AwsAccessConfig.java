@@ -48,7 +48,7 @@ public class AwsAccessConfig {
     public TextractClient textractClient() {
         return TextractClient.builder()
                 .region(defaultAwsRegion())
-                .credentialsProvider(awsCredentialsProvider())
+                .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
     }
 

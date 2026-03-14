@@ -1,9 +1,16 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.dto.evv.EvvLocationRequest;
 import com.careconnect.dto.evv.EvvLocationResponse;
+import com.careconnect.model.User;
 import com.careconnect.model.evv.EvvLocationRole;
+import com.careconnect.security.AuthorizationService;
+import com.careconnect.security.UnauthorizedException;
 import com.careconnect.service.evv.EvvLocationService;
+import com.careconnect.util.SecurityUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -21,13 +28,17 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(name = "EVV Locations", description = "EVV check-in and check-out location management")
 public class EvvLocationController {
-    
+
     private final EvvLocationService locationService;
+    private final SecurityUtil securityUtil;
+    private final AuthorizationService authorizationService;
     
     /**
      * Save or update an EVV location (check-in or check-out)
      * Supports both GPS coordinates and patient address
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping
     @Operation(summary = "Save EVV location", 
                description = "Save or update check-in/check-out location for an EVV record. " +
@@ -38,7 +49,9 @@ public class EvvLocationController {
         @ApiResponse(responseCode = "400", description = "Invalid request data"),
         @ApiResponse(responseCode = "404", description = "EVV record or patient not found")
     })
-    public ResponseEntity<EvvLocationResponse> saveLocation(@Valid @RequestBody EvvLocationRequest request) {
+    public ResponseEntity<EvvLocationResponse> saveLocation(@Valid @RequestBody EvvLocationRequest request) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         // Perform custom validation
         request.validate();
         
@@ -52,6 +65,8 @@ public class EvvLocationController {
     /**
      * Get all locations for an EVV record
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/records/{evvRecordId}")
     @Operation(summary = "Get locations for EVV record", 
                description = "Retrieve all locations (check-in and check-out) for a specific EVV record")
@@ -60,7 +75,9 @@ public class EvvLocationController {
         @ApiResponse(responseCode = "404", description = "EVV record not found")
     })
     public ResponseEntity<List<EvvLocationResponse>> getLocationsForRecord(
-            @PathVariable Long evvRecordId) {
+            @PathVariable Long evvRecordId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         List<EvvLocationResponse> locations = locationService.getLocationsForRecord(evvRecordId);
         return ResponseEntity.ok(locations);
     }
@@ -68,6 +85,8 @@ public class EvvLocationController {
     /**
      * Get a specific location by role
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/records/{evvRecordId}/{role}")
     @Operation(summary = "Get specific location by role", 
                description = "Retrieve check-in or check-out location for an EVV record")
@@ -77,7 +96,9 @@ public class EvvLocationController {
     })
     public ResponseEntity<EvvLocationResponse> getLocationByRole(
             @PathVariable Long evvRecordId,
-            @PathVariable EvvLocationRole role) {
+            @PathVariable EvvLocationRole role) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         EvvLocationResponse location = locationService.getLocationByRole(evvRecordId, role);
         return ResponseEntity.ok(location);
     }
@@ -85,6 +106,8 @@ public class EvvLocationController {
     /**
      * Delete a location
      */
+    @RequirePermission(Permission.DELETE_PATIENTS)
+
     @DeleteMapping("/records/{evvRecordId}/{role}")
     @Operation(summary = "Delete location", 
                description = "Delete a check-in or check-out location for an EVV record")
@@ -94,7 +117,9 @@ public class EvvLocationController {
     })
     public ResponseEntity<Void> deleteLocation(
             @PathVariable Long evvRecordId,
-            @PathVariable EvvLocationRole role) {
+            @PathVariable EvvLocationRole role) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         locationService.deleteLocation(evvRecordId, role);
         return ResponseEntity.noContent().build();
     }

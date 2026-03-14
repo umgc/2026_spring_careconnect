@@ -1,27 +1,15 @@
 import 'package:flutter/material.dart';
-
-/// Medication Reminder Model
-class MedicationReminder {
-  final String medicationName;
-  final DateTime scheduledTime;
-  final String status;
-
-  MedicationReminder({
-    required this.medicationName,
-    required this.scheduledTime,
-    required this.status,
-  });
-}
+import 'package:care_connect_app/features/dashboard/patient_dashboard/models/medication_reminder_item.dart';
 
 /// Medication Reminders Widget
 class MedicationRemindersWidget extends StatelessWidget {
-  final MedicationReminder? reminder; // ✅ made nullable to allow empty state
-  final VoidCallback? onMarkTaken;
-  final VoidCallback? onMarkMissed;
+  final List<MedicationReminderItem> reminders;
+  final void Function(int medicationId)? onMarkTaken;
+  final void Function(int medicationId)? onMarkMissed;
 
   const MedicationRemindersWidget({
     super.key,
-    required this.reminder,
+    required this.reminders,
     this.onMarkTaken,
     this.onMarkMissed,
   });
@@ -30,8 +18,7 @@ class MedicationRemindersWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // ✅ If no reminders exist, show "None to show"
-    if (reminder == null) {
+    if (reminders.isEmpty) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         padding: const EdgeInsets.all(20),
@@ -49,7 +36,7 @@ class MedicationRemindersWidget extends StatelessWidget {
         ),
         child: Center(
           child: Text(
-            'None to show',
+            'No active medication reminders',
             style: TextStyle(
               fontSize: 16,
               color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
@@ -59,6 +46,8 @@ class MedicationRemindersWidget extends StatelessWidget {
         ),
       );
     }
+
+    final visibleReminders = reminders.take(6).toList();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -96,76 +85,129 @@ class MedicationRemindersWidget extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Text(
-            _formatScheduledTime(reminder!.scheduledTime),
-            style: TextStyle(
-              fontSize: 14,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.3,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  reminder!.medicationName,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+          const SizedBox(height: 14),
+          ...visibleReminders.map(
+            (reminder) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: reminder.isTakenForCurrentWindow
+                      ? theme.colorScheme.primaryContainer.withValues(alpha: 0.28)
+                      : theme.colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.3,
+                        ),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: reminder.isTakenForCurrentWindow
+                        ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                        : theme.colorScheme.outline.withValues(alpha: 0.2),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  reminder!.status,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: onMarkTaken,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.tertiary,
-                          side: BorderSide(color: theme.colorScheme.tertiary),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            reminder.medicationName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                        child: const Text('Mark Taken'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: onMarkMissed,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.error,
-                          side: BorderSide(color: theme.colorScheme.error),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                        if (reminder.isTakenForCurrentWindow)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Text(
+                              'Taken',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
                           ),
-                        ),
-                        child: const Text('Mark Missed'),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${reminder.dosage} • ${reminder.frequency}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.76),
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      reminder.isTakenForCurrentWindow
+                          ? 'Next dose ${_formatScheduledTime(reminder.nextDueAt)}'
+                          : 'Due ${_formatScheduledTime(reminder.nextDueAt)}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                      ),
+                    ),
+                    if (!reminder.isTakenForCurrentWindow) ...[
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: onMarkTaken == null
+                                  ? null
+                                  : () => onMarkTaken!(reminder.medicationId),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: theme.colorScheme.tertiary,
+                                side: BorderSide(color: theme.colorScheme.tertiary),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: const Text('Mark Taken'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: onMarkMissed == null
+                                  ? null
+                                  : () => onMarkMissed!(reminder.medicationId),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: theme.colorScheme.error,
+                                side: BorderSide(color: theme.colorScheme.error),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: const Text('Mark Missed'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
-              ],
+              ),
             ),
           ),
+          if (reminders.length > visibleReminders.length)
+            Text(
+              '+${reminders.length - visibleReminders.length} more medications',
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+              ),
+            ),
         ],
       ),
     );
@@ -185,7 +227,7 @@ class MedicationRemindersWidget extends StatelessWidget {
       dayStr = '${time.month}/${time.day}';
     }
 
-    final hour = time.hour > 12 ? time.hour - 12 : time.hour;
+    final hour = (time.hour % 12 == 0) ? 12 : time.hour % 12;
     final amPm = time.hour >= 12 ? 'PM' : 'AM';
 
     return '$dayStr, $hour:${time.minute.toString().padLeft(2, '0')} $amPm';

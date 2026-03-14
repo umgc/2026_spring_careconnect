@@ -40,7 +40,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
     final userId = userIdRaw?.toString() ?? 'demo-user';
 
     // Format date as YYYY-MM-DD
-    final dateString = '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
+    final dateString =
+        '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
     final encodedUser = Uri.encodeComponent(userId);
     final url = '$base/api/usps/latest?userId=$encodedUser&date=$dateString';
 
@@ -126,7 +127,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
     final userId = userIdRaw?.toString() ?? 'demo-user';
     final encodedUser = Uri.encodeComponent(userId);
 
-    final url = '$base/api/usps/search?userId=$encodedUser&keyword=${Uri.encodeComponent(keyword)}';
+    final url =
+        '$base/api/usps/search?userId=$encodedUser&keyword=${Uri.encodeComponent(keyword)}';
 
     try {
       final dio = Dio(BaseOptions(
@@ -170,7 +172,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
     final base = getBackendBaseUrl();
     try {
       final dio = Dio();
-      final resp = await dio.get('$base/api/email-credentials/status?userId=$encodedUser');
+      final resp = await dio
+          .get('$base/api/email-credentials/status?userId=$encodedUser');
       if (resp.statusCode == 200 && resp.data == true) {
         setState(() => isGoogleConnected = true);
       }
@@ -209,9 +212,11 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
     final base = getBackendBaseUrl();
     try {
       final dio = Dio();
-      await dio.post('$base/api/usps/clear-cache?userId=${Uri.encodeComponent(userId)}');
+      await dio.post(
+          '$base/api/usps/clear-cache?userId=${Uri.encodeComponent(userId)}');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cache cleared! Try fetching digest again.')),
+        const SnackBar(
+            content: Text('Cache cleared! Try fetching digest again.')),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -248,7 +253,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
 
     // Use a platform-safe return URL; Uri.base works on web and mobile.
     final currentUrl = kIsWeb ? Uri.base.toString() : getWebBaseUrl();
-    final authUrl = '$base/oauth/google/start?userId=${Uri.encodeComponent(user.id.toString())}&returnUrl=${Uri.encodeComponent(currentUrl)}';
+    final authUrl =
+        '$base/oauth/google/start?userId=${Uri.encodeComponent(user.id.toString())}&returnUrl=${Uri.encodeComponent(currentUrl)}';
 
     final uri = Uri.parse(authUrl);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -353,8 +359,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
     final type = ((item['type'] as String?) ?? 'mail').toLowerCase();
     final bool isPackage = type == 'package';
 
-    final imageSource = (item['imageDataUrl'] as String?) ??
-        (item['thumbnailUrl'] as String?);
+    final imageSource =
+        (item['imageDataUrl'] as String?) ?? (item['thumbnailUrl'] as String?);
     final hasAttachment = !isPackage && _hasAttachment(imageSource);
     final actions = item['actions'];
     final Map<String, dynamic> actionsMap = actions is Map<String, dynamic>
@@ -372,19 +378,17 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
             ? 'Tracking ${item['trackingNumber']}'
             : 'No subject available');
     final trackingNumber = item['trackingNumber'] as String?;
-    final delivered = (item['deliveryDate'] as String?) ??
-        (item['receivedAt'] as String?);
+    final delivered =
+        (item['deliveryDate'] as String?) ?? (item['receivedAt'] as String?);
     final expectedIso = item['expectedDateIso'] as String?;
     final expectedDisplay = (item['expectedDate'] as String?) ??
         (expectedIso != null ? _formatDateLabel(expectedIso) : null);
 
     final typeLabel = isPackage ? 'Package' : 'Mail Piece';
-    final primaryActionUrl = isPackage
-        ? (trackUrl ?? dashboardUrl)
-        : (dashboardUrl ?? trackUrl);
-    final primaryActionLabel = isPackage
-        ? 'Track Package'
-        : 'View in USPS Dashboard';
+    final primaryActionUrl =
+        isPackage ? (trackUrl ?? dashboardUrl) : (dashboardUrl ?? trackUrl);
+    final primaryActionLabel =
+        isPackage ? 'Track Package' : 'View in USPS Dashboard';
     final String? dateLabel = isPackage ? expectedDisplay : delivered;
     showDialog<void>(
       context: context,
@@ -470,7 +474,9 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ],
-                  if (isPackage && trackingNumber != null && trackingNumber.isNotEmpty) ...[
+                  if (isPackage &&
+                      trackingNumber != null &&
+                      trackingNumber.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(
                       'Tracking Number',
@@ -515,7 +521,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ],
-                  if (primaryActionUrl != null && primaryActionUrl.isNotEmpty) ...[
+                  if (primaryActionUrl != null &&
+                      primaryActionUrl.isNotEmpty) ...[
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -524,12 +531,17 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                           Navigator.of(context).pop();
                           _openUri(primaryActionUrl);
                         },
-                        icon: Icon(isPackage ? Icons.local_shipping : Icons.open_in_new),
+                        icon: Icon(isPackage
+                            ? Icons.local_shipping
+                            : Icons.open_in_new),
                         label: Text(primaryActionLabel),
                       ),
                     ),
                   ],
-                  if (!isPackage && trackUrl != null && trackUrl.isNotEmpty && trackUrl != primaryActionUrl) ...[
+                  if (!isPackage &&
+                      trackUrl != null &&
+                      trackUrl.isNotEmpty &&
+                      trackUrl != primaryActionUrl) ...[
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
@@ -594,8 +606,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                     const SizedBox(height: 8),
                     Text(
                       isGoogleConnected
-                        ? '✅ Google account connected! You can now fetch USPS digests automatically.'
-                        : 'Connect your Google account to automatically fetch USPS digests from Gmail.',
+                          ? '✅ Google account connected! You can now fetch USPS digests automatically.'
+                          : 'Connect your Google account to automatically fetch USPS digests from Gmail.',
                       style: TextStyle(
                         color: isGoogleConnected ? Colors.green : Colors.grey,
                       ),
@@ -650,12 +662,14 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.calendar_today, color: Theme.of(context).primaryColor),
+                              Icon(Icons.calendar_today,
+                                  color: Theme.of(context).primaryColor),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'Select Digest Date',
-                                  style: Theme.of(context).textTheme.titleMedium,
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
                                 ),
                               ),
                             ],
@@ -663,7 +677,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                           const SizedBox(height: 8),
                           Text(
                             'Choose any date to view historical USPS digest data.',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                            style: TextStyle(
+                                color: Colors.grey[600], fontSize: 12),
                           ),
                           const SizedBox(height: 12),
                           SizedBox(
@@ -677,7 +692,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                               ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Theme.of(context).primaryColor,
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12, horizontal: 12),
                               ),
                             ),
                           ),
@@ -697,7 +713,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                               label: const Text('Go to Today'),
                               style: TextButton.styleFrom(
                                 foregroundColor: Colors.grey[600],
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
                               ),
                             ),
                           ),
@@ -718,12 +735,14 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.search, color: Theme.of(context).primaryColor),
+                              Icon(Icons.search,
+                                  color: Theme.of(context).primaryColor),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   'Search Mail History',
-                                  style: Theme.of(context).textTheme.titleMedium,
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
                                 ),
                               ),
                             ],
@@ -731,7 +750,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                           const SizedBox(height: 8),
                           Text(
                             'Search for mail by sender, subject, or any keyword.',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                            style: TextStyle(
+                                color: Colors.grey[600], fontSize: 12),
                           ),
                           const SizedBox(height: 12),
                           TextField(
@@ -748,10 +768,12 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 12, horizontal: 12),
                             ),
                             onChanged: (value) {
-                              setState(() {}); // Trigger rebuild to show/hide clear button
+                              setState(
+                                  () {}); // Trigger rebuild to show/hide clear button
                             },
                             onSubmitted: (value) => _searchMail(),
                           ),
@@ -763,18 +785,21 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Theme.of(context).primaryColor,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                               ),
                               child: searchLoading
-                                ? const SizedBox(
-                                    height: 16,
-                                    width: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                    ),
-                                  )
-                                : const Text('Search'),
+                                  ? const SizedBox(
+                                      height: 16,
+                                      width: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
+                                      ),
+                                    )
+                                  : const Text('Search'),
                             ),
                           ),
                         ],
@@ -819,7 +844,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                       decoration: BoxDecoration(
                         color: Colors.green.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.withOpacity(0.3)),
+                        border:
+                            Border.all(color: Colors.green.withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
@@ -843,36 +869,49 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                         ],
                       ),
                     ),
-                    const Text('Search Results', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text('Search Results',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     for (final result in searchResults)
                       Builder(
                         builder: (context) {
-                          final type = ((result['type'] as String?) ?? 'mail').toLowerCase();
+                          final type = ((result['type'] as String?) ?? 'mail')
+                              .toLowerCase();
                           final isPackage = type == 'package';
                           final actions = result['actions'];
                           final actionsMap = actions is Map<String, dynamic>
                               ? Map<String, dynamic>.from(actions as Map)
                               : <String, dynamic>{};
                           final trackUrl = actionsMap['track'] as String?;
-                          final dashboardUrl = actionsMap['dashboard'] as String?;
+                          final dashboardUrl =
+                              actionsMap['dashboard'] as String?;
                           final trailingUrl = isPackage
                               ? (trackUrl ?? dashboardUrl)
                               : (dashboardUrl ?? trackUrl);
-                          final trailingIcon = isPackage ? Icons.local_shipping : Icons.open_in_new;
-                          final summary = result['summary'] ?? result['subject'] ?? 'No summary';
+                          final trailingIcon = isPackage
+                              ? Icons.local_shipping
+                              : Icons.open_in_new;
+                          final summary = result['summary'] ??
+                              result['subject'] ??
+                              'No summary';
                           final from = result['sender'] as String?;
-                          final attachmentSource = (result['imageDataUrl'] as String?) ??
-                              (result['thumbnailUrl'] as String?);
-                          final hasAttachment = !isPackage && _hasAttachment(attachmentSource);
+                          final attachmentSource =
+                              (result['imageDataUrl'] as String?) ??
+                                  (result['thumbnailUrl'] as String?);
+                          final hasAttachment =
+                              !isPackage && _hasAttachment(attachmentSource);
                           final deliveryLabel = isPackage
-                              ? (result['expectedDate'] as String?) ?? (result['deliveryDate'] as String?)
+                              ? (result['expectedDate'] as String?) ??
+                                  (result['deliveryDate'] as String?)
                               : result['deliveryDate'] as String?;
-                          final deliveryPrefix = isPackage ? 'Expected: ' : 'Delivered: ';
+                          final deliveryPrefix =
+                              isPackage ? 'Expected: ' : 'Delivered: ';
 
                           return Card(
                             child: ListTile(
-                              onTap: () => _showMailItemDetails(Map<String, dynamic>.from(result)),
+                              onTap: () => _showMailItemDetails(
+                                  Map<String, dynamic>.from(result)),
                               leading: _buildMailImage(
                                 (result['imageDataUrl'] as String?) ??
                                     (result['thumbnailUrl'] as String?),
@@ -880,7 +919,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                               title: Row(
                                 children: [
                                   Expanded(
-                                    child: Text(result['sender'] ?? 'Unknown Sender'),
+                                    child: Text(
+                                        result['sender'] ?? 'Unknown Sender'),
                                   ),
                                   if (hasAttachment) ...[
                                     const SizedBox(width: 6),
@@ -888,7 +928,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                                   ],
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: isPackage
                                           ? Colors.orange.withOpacity(0.15)
@@ -900,7 +941,9 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: isPackage ? Colors.orange[800] : Colors.blue[800],
+                                        color: isPackage
+                                            ? Colors.orange[800]
+                                            : Colors.blue[800],
                                       ),
                                     ),
                                   ),
@@ -912,12 +955,16 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                                   if (from != null && from.isNotEmpty)
                                     Text('From: $from'),
                                   Text(summary),
-                                  if (deliveryLabel != null && deliveryLabel.isNotEmpty) ...[
+                                  if (deliveryLabel != null &&
+                                      deliveryLabel.isNotEmpty) ...[
                                     const SizedBox(height: 4),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: Theme.of(context).primaryColor.withOpacity(0.08),
+                                        color: Theme.of(context)
+                                            .primaryColor
+                                            .withOpacity(0.08),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
@@ -934,9 +981,10 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                               ),
                               trailing: IconButton(
                                 icon: Icon(trailingIcon),
-                                onPressed: trailingUrl == null || trailingUrl.isEmpty
-                                    ? null
-                                    : () => _openUri(trailingUrl),
+                                onPressed:
+                                    trailingUrl == null || trailingUrl.isEmpty
+                                        ? null
+                                        : () => _openUri(trailingUrl),
                               ),
                             ),
                           );
@@ -982,7 +1030,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                             Expanded(
                               child: Text(
                                 'No mail items matched "${_searchController.text.trim()}".',
-                                style: const TextStyle(fontWeight: FontWeight.w500),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w500),
                               ),
                             ),
                             TextButton(
@@ -1004,11 +1053,15 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                       decoration: BoxDecoration(
                         color: Theme.of(context).primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.3)),
+                        border: Border.all(
+                            color: Theme.of(context)
+                                .primaryColor
+                                .withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.event, color: Theme.of(context).primaryColor),
+                          Icon(Icons.event,
+                              color: Theme.of(context).primaryColor),
                           const SizedBox(width: 8),
                           Text(
                             'Showing digest for ${selectedDate.month}/${selectedDate.day}/${selectedDate.year}',
@@ -1027,7 +1080,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                             const SizedBox(width: 4),
                             Text(
                               '${pkgs.length + mail.length} items',
-                              style: const TextStyle(color: Colors.green, fontSize: 12),
+                              style: const TextStyle(
+                                  color: Colors.green, fontSize: 12),
                             ),
                           ] else ...[
                             Icon(
@@ -1038,7 +1092,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                             const SizedBox(width: 4),
                             Text(
                               'No items',
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 12),
                             ),
                           ],
                         ],
@@ -1046,7 +1101,9 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                     ),
                   ],
                   if (!_isSearchActive && pkgs.isNotEmpty) ...[
-                    const Text('Packages', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text('Packages',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     for (final p in pkgs)
                       Builder(
@@ -1057,17 +1114,20 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
 
                           final pkg = Map<String, dynamic>.from(p as Map);
                           final expectedIso = pkg['expectedDateIso'] as String?;
-                          final expectedLabel = expectedIso != null && expectedIso.isNotEmpty
-                              ? _formatDateLabel(expectedIso)
-                              : '—';
+                          final expectedLabel =
+                              expectedIso != null && expectedIso.isNotEmpty
+                                  ? _formatDateLabel(expectedIso)
+                                  : '—';
                           final sender = (pkg['sender'] as String?)?.trim();
-                          final trackingNumber = pkg['trackingNumber'] as String?;
+                          final trackingNumber =
+                              pkg['trackingNumber'] as String?;
                           final actions = pkg['actions'];
                           final actionsMap = actions is Map<String, dynamic>
                               ? Map<String, dynamic>.from(actions as Map)
                               : <String, dynamic>{};
                           final trackUrl = actionsMap['track'] as String?;
-                          final dashboardUrl = actionsMap['dashboard'] as String?;
+                          final dashboardUrl =
+                              actionsMap['dashboard'] as String?;
                           final trailingUrl = trackUrl ?? dashboardUrl;
 
                           final detailPayload = {
@@ -1083,17 +1143,21 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                             child: ListTile(
                               onTap: () => _showMailItemDetails(detailPayload),
                               leading: CircleAvatar(
-                                backgroundColor: Colors.orange.withOpacity(0.15),
-                                child: Icon(Icons.local_shipping, color: Colors.orange[700]),
+                                backgroundColor:
+                                    Colors.orange.withOpacity(0.15),
+                                child: Icon(Icons.local_shipping,
+                                    color: Colors.orange[700]),
                               ),
                               title: Row(
                                 children: [
                                   Expanded(
-                                    child: Text(sender ?? trackingNumber ?? 'Package'),
+                                    child: Text(
+                                        sender ?? trackingNumber ?? 'Package'),
                                   ),
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: Colors.orange.withOpacity(0.15),
                                       borderRadius: BorderRadius.circular(12),
@@ -1114,16 +1178,18 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                                 children: [
                                   if (sender != null && sender.isNotEmpty)
                                     Text('From: $sender'),
-                                  if (trackingNumber != null && trackingNumber.isNotEmpty)
+                                  if (trackingNumber != null &&
+                                      trackingNumber.isNotEmpty)
                                     Text('Tracking: $trackingNumber'),
                                   Text('Expected: $expectedLabel'),
                                 ],
                               ),
                               trailing: IconButton(
                                 icon: const Icon(Icons.local_shipping),
-                                onPressed: trailingUrl == null || trailingUrl.isEmpty
-                                    ? null
-                                    : () => _openUri(trailingUrl),
+                                onPressed:
+                                    trailingUrl == null || trailingUrl.isEmpty
+                                        ? null
+                                        : () => _openUri(trailingUrl),
                               ),
                             ),
                           );
@@ -1132,7 +1198,9 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                     const SizedBox(height: 16),
                   ],
                   if (!_isSearchActive && mail.isNotEmpty) ...[
-                    const Text('Mail Pieces', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text('Mail Pieces',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     for (final m in mail)
                       Builder(
@@ -1141,28 +1209,34 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                             return const SizedBox.shrink();
                           }
                           final mailPiece = Map<String, dynamic>.from(m as Map);
-                          final imageSource = (mailPiece['imageDataUrl'] as String?) ??
-                              (mailPiece['thumbnailUrl'] as String?);
+                          final imageSource =
+                              (mailPiece['imageDataUrl'] as String?) ??
+                                  (mailPiece['thumbnailUrl'] as String?);
                           final hasAttachment = _hasAttachment(imageSource);
                           final summary = ((mailPiece['summary'] as String?) ??
-                              (mailPiece['subject'] as String?) ??
-                              '').trim();
-                          final senderName = (mailPiece['sender'] as String?)?.trim();
-                          final displayTitle = (senderName != null && senderName.isNotEmpty)
-                              ? senderName
-                              : (summary.isNotEmpty ? summary : 'Mail');
+                                  (mailPiece['subject'] as String?) ??
+                                  '')
+                              .trim();
+                          final senderName =
+                              (mailPiece['sender'] as String?)?.trim();
+                          final displayTitle =
+                              (senderName != null && senderName.isNotEmpty)
+                                  ? senderName
+                                  : (summary.isNotEmpty ? summary : 'Mail');
                           mailPiece['type'] ??= 'mail';
                           final actions = mailPiece['actions'];
                           final actionsMap = actions is Map<String, dynamic>
                               ? Map<String, dynamic>.from(actions as Map)
                               : <String, dynamic>{};
-                          final dashboardUrl = actionsMap['dashboard'] as String?;
+                          final dashboardUrl =
+                              actionsMap['dashboard'] as String?;
                           final trackUrl = actionsMap['track'] as String?;
                           final trailingUrl = dashboardUrl ?? trackUrl;
 
                           return Card(
                             child: ListTile(
-                              onTap: () => _showMailItemDetails(Map<String, dynamic>.from(mailPiece)),
+                              onTap: () => _showMailItemDetails(
+                                  Map<String, dynamic>.from(mailPiece)),
                               leading: _buildMailImage(imageSource),
                               title: Row(
                                 children: [
@@ -1175,7 +1249,8 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                                   ],
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: Colors.blue.withOpacity(0.15),
                                       borderRadius: BorderRadius.circular(12),
@@ -1191,21 +1266,25 @@ class _UspsTestScreenState extends State<UspsTestScreen> {
                                   ),
                                 ],
                               ),
-                              subtitle: summary.isNotEmpty && summary != displayTitle
-                                  ? Text(summary)
-                                  : const SizedBox.shrink(),
+                              subtitle:
+                                  summary.isNotEmpty && summary != displayTitle
+                                      ? Text(summary)
+                                      : const SizedBox.shrink(),
                               trailing: IconButton(
                                 icon: const Icon(Icons.open_in_new),
-                                onPressed: trailingUrl == null || trailingUrl.isEmpty
-                                    ? null
-                                    : () => _openUri(trailingUrl),
+                                onPressed:
+                                    trailingUrl == null || trailingUrl.isEmpty
+                                        ? null
+                                        : () => _openUri(trailingUrl),
                               ),
                             ),
                           );
                         },
                       ),
                   ],
-                  if ((mail.isEmpty && pkgs.isEmpty) && digest != null && !_isSearchActive)
+                  if ((mail.isEmpty && pkgs.isEmpty) &&
+                      digest != null &&
+                      !_isSearchActive)
                     const Center(child: Text('No items in digest')),
                 ],
               ),

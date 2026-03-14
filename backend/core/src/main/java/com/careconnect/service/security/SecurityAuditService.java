@@ -1,12 +1,13 @@
 package com.careconnect.service.security;
 
 import org.springframework.stereotype.Service;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.time.LocalDateTime;
 
 @Service
-@Slf4j
 public class SecurityAuditService {
+    private static final Logger log = LoggerFactory.getLogger(SecurityAuditService.class);
 
     public void logSanitizationAction(Long userId, String conversationId, String actionType, String details) {
         log.warn("SECURITY_AUDIT - Sanitization Action: userId={}, conversationId={}, action={}, details={}, timestamp={}",

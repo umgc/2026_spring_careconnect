@@ -168,58 +168,57 @@ public class ConnectionRequestService {
         // Use frontend base URL from application properties
         String baseUrl = frontendBaseUrl;
         
-        String emailBody = """
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #2c3e50; text-align: center;">CareConnect Connection Request</h2>
-                
-                <p style="font-size: 16px; line-height: 1.6; color: #333;">
-                    Hello %s,
-                </p>
-                
-                <p style="font-size: 16px; line-height: 1.6; color: #333;">
-                    %s would like to connect with you on CareConnect as your caregiver.
-                </p>
-                
-                %s
-                
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="%s/approve-connection?token=%s" 
-                       style="background-color: #2ecc71; 
-                              color: white; 
-                              padding: 10px 20px; 
-                              text-decoration: none; 
-                              border-radius: 5px; 
-                              font-weight: bold; 
-                              margin-right: 10px;">
-                        Approve
-                    </a>
-                    
-                    <a href="%s/reject-connection?token=%s" 
-                       style="background-color: #e74c3c; 
-                              color: white; 
-                              padding: 10px 20px; 
-                              text-decoration: none; 
-                              border-radius: 5px; 
-                              font-weight: bold;">
-                        Reject
-                    </a>
-                </div>
-                
-                <p style="font-size: 14px; color: #666; text-align: center;">
-                    If you didn't expect this connection request, you can safely ignore it.
-                </p>
-                
-                <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-                
-                <p style="font-size: 12px; color: #999; text-align: center;">
-                    This is an automated message from CareConnect. Please do not reply to this email.
-                </p>
-            </div>
-            """.formatted(
+        String emailBody = String.format(
+                "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n" +
+                "    <h2 style=\"color: #2c3e50; text-align: center;\">CareConnect Connection Request</h2>\n" +
+                "    \n" +
+                "    <p style=\"font-size: 16px; line-height: 1.6; color: #333;\">\n" +
+                "        Hello %s,\n" +
+                "    </p>\n" +
+                "    \n" +
+                "    <p style=\"font-size: 16px; line-height: 1.6; color: #333;\">\n" +
+                "        %s would like to connect with you on CareConnect as your caregiver.\n" +
+                "    </p>\n" +
+                "    \n" +
+                "    %s\n" +
+                "    \n" +
+                "    <div style=\"text-align: center; margin: 30px 0;\">\n" +
+                "        <a href=\"%s/approve-connection?token=%s\" \n" +
+                "           style=\"background-color: #2ecc71; \n" +
+                "                  color: white; \n" +
+                "                  padding: 10px 20px; \n" +
+                "                  text-decoration: none; \n" +
+                "                  border-radius: 5px; \n" +
+                "                  font-weight: bold; \n" +
+                "                  margin-right: 10px;\">\n" +
+                "            Approve\n" +
+                "        </a>\n" +
+                "        \n" +
+                "        <a href=\"%s/reject-connection?token=%s\" \n" +
+                "           style=\"background-color: #e74c3c; \n" +
+                "                  color: white; \n" +
+                "                  padding: 10px 20px; \n" +
+                "                  text-decoration: none; \n" +
+                "                  border-radius: 5px; \n" +
+                "                  font-weight: bold;\">\n" +
+                "            Reject\n" +
+                "        </a>\n" +
+                "    </div>\n" +
+                "    \n" +
+                "    <p style=\"font-size: 14px; color: #666; text-align: center;\">\n" +
+                "        If you didn't expect this connection request, you can safely ignore it.\n" +
+                "    </p>\n" +
+                "    \n" +
+                "    <hr style=\"border: none; border-top: 1px solid #eee; margin: 30px 0;\">\n" +
+                "    \n" +
+                "    <p style=\"font-size: 12px; color: #999; text-align: center;\">\n" +
+                "        This is an automated message from CareConnect. Please do not reply to this email.\n" +
+                "    </p>\n" +
+                "</div>\n",
                 patient.getName(),
                 caregiver.getName(),
-                request.getMessage() != null && !request.getMessage().isEmpty() ? 
-                    "<p style=\"font-size: 16px; line-height: 1.6; color: #333; font-style: italic;\">" + 
+                request.getMessage() != null && !request.getMessage().isEmpty() ?
+                    "<p style=\"font-size: 16px; line-height: 1.6; color: #333; font-style: italic;\">" +
                     "\"" + request.getMessage() + "\"</p>" : "",
                 baseUrl,
                 request.getToken(),
@@ -242,33 +241,32 @@ public class ConnectionRequestService {
                         (accepted ? "Accepted" : "Declined") + 
                         " by " + patient.getName();
         
-        String emailBody = """
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #2c3e50; text-align: center;">Connection Request %s</h2>
-                
-                <p style="font-size: 16px; line-height: 1.6; color: #333;">
-                    Hello %s,
-                </p>
-                
-                <p style="font-size: 16px; line-height: 1.6; color: #333;">
-                    %s has %s your connection request on CareConnect.
-                </p>
-                
-                %s
-                
-                <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-                
-                <p style="font-size: 12px; color: #999; text-align: center;">
-                    This is an automated message from CareConnect. Please do not reply to this email.
-                </p>
-            </div>
-            """.formatted(
+        String emailBody = String.format(
+                "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n" +
+                "    <h2 style=\"color: #2c3e50; text-align: center;\">Connection Request %s</h2>\n" +
+                "    \n" +
+                "    <p style=\"font-size: 16px; line-height: 1.6; color: #333;\">\n" +
+                "        Hello %s,\n" +
+                "    </p>\n" +
+                "    \n" +
+                "    <p style=\"font-size: 16px; line-height: 1.6; color: #333;\">\n" +
+                "        %s has %s your connection request on CareConnect.\n" +
+                "    </p>\n" +
+                "    \n" +
+                "    %s\n" +
+                "    \n" +
+                "    <hr style=\"border: none; border-top: 1px solid #eee; margin: 30px 0;\">\n" +
+                "    \n" +
+                "    <p style=\"font-size: 12px; color: #999; text-align: center;\">\n" +
+                "        This is an automated message from CareConnect. Please do not reply to this email.\n" +
+                "    </p>\n" +
+                "</div>\n",
                 accepted ? "Accepted" : "Declined",
                 caregiver.getName(),
                 patient.getName(),
                 accepted ? "accepted" : "declined",
-                accepted ? 
-                    "<p style=\"font-size: 16px; line-height: 1.6; color: #333;\">You can now see and manage their care through the CareConnect platform.</p>" : 
+                accepted ?
+                    "<p style=\"font-size: 16px; line-height: 1.6; color: #333;\">You can now see and manage their care through the CareConnect platform.</p>" :
                     "<p style=\"font-size: 16px; line-height: 1.6; color: #333;\">If you believe this was a mistake, you may send another request at a later time.</p>"
             );
         

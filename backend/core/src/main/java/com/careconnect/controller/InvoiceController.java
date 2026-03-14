@@ -4,10 +4,15 @@ import com.careconnect.dto.chat.AiRequest;
 import com.careconnect.dto.invoice.InvoiceDto;
 import com.careconnect.dto.invoice.InvoiceResponseDto;
 import com.careconnect.dto.invoice.PaymentDto;
+import com.careconnect.model.User;
 import com.careconnect.model.invoice.Invoice;
+import com.careconnect.security.AuthorizationService;
+import com.careconnect.security.UnauthorizedException;
+import com.careconnect.service.invoice.LlmExtractionService;
 import com.careconnect.service.invoice.InvoiceService;
 import com.careconnect.service.invoice.LlmExtractionService;
 import com.careconnect.service.invoice.TextractService;
+import com.careconnect.util.SecurityUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
@@ -18,7 +23,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
+import java.time.LocalDate;
+import java.math.BigDecimal;
+
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/v1/api/invoices")
@@ -29,17 +39,23 @@ public class InvoiceController {
     private final TextractService textractService;
     private final LlmExtractionService llmExtractionService;
     private final ObjectMapper objectMapper;
-
+    private final SecurityUtil securityUtil;
+    private final AuthorizationService authorizationService;
     public InvoiceController(
             InvoiceService service,
             TextractService textractService,
             LlmExtractionService llmExtractionService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            SecurityUtil securityUtil,
+            AuthorizationService authorizationService
     ) {
         this.service = service;
         this.textractService = textractService;
         this.llmExtractionService = llmExtractionService;
         this.objectMapper = objectMapper;
+        this.securityUtil = securityUtil;
+        this.authorizationService = authorizationService;
+
     }
 
     // ==============================
@@ -59,8 +75,9 @@ public class InvoiceController {
             @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int pageSize
-    ) {
-
+    ) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         Sort s = InvoiceService.resolveSort(sort);
         Pageable pageable = PageRequest.of(page, pageSize, s);
 
@@ -85,26 +102,32 @@ public class InvoiceController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<InvoiceDto> get(@PathVariable String id) {
-        return service.get(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<InvoiceDto> get(@PathVariable String id) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
+        return service.get(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<InvoiceDto> create(@RequestBody InvoiceDto dto) {
+    public ResponseEntity<InvoiceDto> create(@RequestBody InvoiceDto dto) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         InvoiceDto created = service.create(dto);
         return ResponseEntity.status(201).body(created);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<InvoiceDto> update(@PathVariable String id, @RequestBody InvoiceDto dto) {
+    public ResponseEntity<InvoiceDto> update(@PathVariable String id, @RequestBody InvoiceDto dto) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         InvoiceDto updated = service.update(id, dto);
         return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id) {
+    public ResponseEntity<Void> delete(@PathVariable String id) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
@@ -118,7 +141,9 @@ public class InvoiceController {
             @PathVariable String id,
             @RequestBody PaymentDto dto,
             java.security.Principal principal
-    ) {
+    ) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         String actor = principal != null ? principal.getName() : "system";
         InvoiceDto updated = service.recordPayment(id, dto, actor);
         return ResponseEntity.ok(updated);
@@ -128,7 +153,9 @@ public class InvoiceController {
     public ResponseEntity<InvoiceDto> removePayment(
             @PathVariable String id,
             @PathVariable String paymentId
-    ) {
+    ) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         InvoiceDto updated = service.deletePayment(id, paymentId);
         return ResponseEntity.ok(updated);
     }
@@ -138,8 +165,9 @@ public class InvoiceController {
     // ==============================
 
     @PostMapping(value = "/extract-llm", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> extractWithLlm(@RequestParam("files") List<MultipartFile> files) {
-
+    public ResponseEntity<?> extractWithLlm(@RequestParam("files") List<MultipartFile> files) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         if (isFileListInvalid(files)) {
             return ResponseEntity.badRequest().body("Please provide at least one valid file.");
         }
@@ -197,24 +225,9 @@ public class InvoiceController {
         }
     }
 
-    // ==============================
-    // Helpers
-    // ==============================
-
-    private boolean isFileListInvalid(List<MultipartFile> files) {
-        return files == null
-                || files.isEmpty()
-                || files.stream().allMatch(MultipartFile::isEmpty);
-    }
-
-    private static OffsetDateTime parseDate(String s) {
-        return s == null || s.isBlank() ? null : OffsetDateTime.parse(s);
-    }
-
-    private static BigDecimal parseDecimal(String s) {
-        return s == null || s.isBlank() ? null : new BigDecimal(s);
-    }
-
+    /**
+     * Helper method to validate the list of uploaded files.
+     */
     public static final class JsonSanitizer {
         private JsonSanitizer() {}
 
@@ -235,5 +248,21 @@ public class InvoiceController {
             }
             return null;
         }
+    }
+
+    private OffsetDateTime parseDate(String value) {
+        if (value == null || value.isBlank()) return null;
+        return LocalDate.parse(value)
+                .atStartOfDay()
+                .atOffset(ZoneOffset.UTC);
+    }
+
+    private BigDecimal parseDecimal(String value) {
+       if (value == null || value.isBlank()) return null;
+        return new BigDecimal(value);
+    }
+
+    private boolean isFileListInvalid(List<MultipartFile> files) {
+        return files == null || files.isEmpty();
     }
 }

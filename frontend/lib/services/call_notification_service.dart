@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import '../widgets/incoming_call_popup.dart';
-import '../widgets/hybrid_video_call_widget.dart';
 import '../config/env_constant.dart';
 import '../services/auth_token_manager.dart';
 
@@ -21,6 +21,8 @@ class CallNotificationService {
   static bool _isIncomingDialogVisible = false;
   static final Map<String, DateTime> _suppressedIncomingCallIds =
       <String, DateTime>{};
+  static final Map<String, Completer<bool>> _pendingOutgoingInvitations =
+      <String, Completer<bool>>{};
 
   // Stream controllers for call events
   static final StreamController<Map<String, dynamic>> _incomingCallController =
@@ -49,7 +51,9 @@ class CallNotificationService {
       );
       _context = context;
 
-      debugPrint('🔔 Initializing CallNotificationService for $userRole: $userId');
+      debugPrint(
+        '🔔 Initializing CallNotificationService for $userRole: $userId',
+      );
 
       if (_isConnected && _currentUserId == userId && _channel != null) {
         // Reuse existing connection, only refresh context/role references
@@ -74,17 +78,8 @@ class CallNotificationService {
       }
 
       // Authenticate and join user room
-      _channel!.sink.add(
-        _encode({
-          'type': 'authenticate',
-          'token': token,
-        }),
-      );
-      _channel!.sink.add(
-        _encode({
-          'type': 'join-user-room',
-        }),
-      );
+      _channel!.sink.add(_encode({'type': 'authenticate', 'token': token}));
+      _channel!.sink.add(_encode({'type': 'join-user-room'}));
 
       // Listen for messages
       _channel!.stream.listen(
@@ -126,9 +121,45 @@ class CallNotificationService {
             final declinedCallId = (data['callId'] ?? '').toString();
             if (declinedCallId.isNotEmpty) {
               _suppressIncomingCallId(declinedCallId);
+              if (_activeCallId == declinedCallId) {
+                _activeCallId = null;
+              }
             }
             _notifyCallDeclined(data);
+          } else if (type == 'call-invitation-sent') {
+            final callId = (data['callId'] ?? '').toString();
+            final pending = _pendingOutgoingInvitations.remove(callId);
+            if (pending != null && !pending.isCompleted) {
+              pending.complete(true);
+            }
+          } else if (type == 'call-invitation-failed') {
+            final callId = (data['callId'] ?? '').toString();
+            final reason = (data['reason'] ?? 'Recipient unavailable')
+                .toString()
+                .trim();
+            final recipientName = (data['recipientName'] ?? '')
+                .toString()
+                .trim();
+            final recipientRole = (data['recipientRole'] ?? '')
+                .toString()
+                .trim();
+            final recipientLabel = recipientName.isNotEmpty
+                ? recipientName
+                : (_roleLabel(recipientRole) ?? 'Recipient');
+            final pending = _pendingOutgoingInvitations.remove(callId);
+            if (pending != null && !pending.isCompleted) {
+              pending.complete(false);
+            }
+            if (_activeCallId == callId) {
+              _activeCallId = null;
+            }
+            _showCallFeedback(
+              '$recipientLabel is unavailable: $reason.',
+              backgroundColor: Colors.orange.shade800,
+            );
           } else if (type == 'sentiment-update') {
+            _incomingCallController.add(data);
+          } else if (type == 'sentiment-channel-state') {
             _incomingCallController.add(data);
           }
         },
@@ -155,12 +186,14 @@ class CallNotificationService {
 
     // Extract call information
     final callId = (callData['callId'] ?? '').toString();
-    final callerId = (callData['senderId'] ?? callData['callerId'] ?? '').toString();
+    final callerId = (callData['senderId'] ?? callData['callerId'] ?? '')
+        .toString();
     final callerRole =
-      (callData['senderRole'] ?? callData['callerRole'] ?? 'PATIENT').toString();
+        (callData['senderRole'] ?? callData['callerRole'] ?? 'PATIENT')
+            .toString();
     final callerName = _normalizeDisplayName(
       (callData['senderName'] ?? callData['callerName'] ?? 'Unknown Caller')
-        .toString(),
+          .toString(),
       roleFallback: callerRole,
       genericFallback: 'Unknown Caller',
     );
@@ -170,7 +203,9 @@ class CallNotificationService {
     _pruneSuppressedIncomingCallIds();
 
     if (_activeCallId == callId || _isIncomingCallSuppressed(callId)) {
-      debugPrint('⏭️ Suppressing duplicate incoming call popup for callId: $callId');
+      debugPrint(
+        '⏭️ Suppressing duplicate incoming call popup for callId: $callId',
+      );
       return;
     }
 
@@ -179,7 +214,9 @@ class CallNotificationService {
         debugPrint('⏭️ Incoming popup already visible for callId: $callId');
         return;
       }
-      debugPrint('⏭️ Ignoring incoming call while another incoming popup is visible');
+      debugPrint(
+        '⏭️ Ignoring incoming call while another incoming popup is visible',
+      );
       return;
     }
 
@@ -266,19 +303,20 @@ class CallNotificationService {
     _dismissIncomingCallPopup(dialogContext: dialogContext);
 
     // Navigate to video call screen
-    Navigator.of(_context!).push(
-      MaterialPageRoute(
-        builder: (context) => HybridVideoCallWidget(
-          userId: _currentUserId!,
-          callId: callId,
-          recipientId: callerId,
-          isInitiator: false, // This user is joining the call
-          isVideoEnabled: isVideoCall,
-          isAudioEnabled: true,
-          userName: _getCurrentUserName(),
-          recipientName: callerName,
-        ),
-      ),
+    final userName = Uri.encodeComponent(_getCurrentUserName());
+    final recipientName = Uri.encodeComponent(callerName);
+    final role = Uri.encodeComponent((_currentUserRole ?? '').toUpperCase());
+    _context!.push(
+      '/video-call-chime'
+      '?userId=$_currentUserId'
+      '&callId=${Uri.encodeComponent(callId)}'
+      '&recipientId=${Uri.encodeComponent(callerId)}'
+      '&userRole=$role'
+      '&userName=$userName'
+      '&recipientName=$recipientName'
+      '&initiator=false'
+      '&video=${isVideoCall ? 'true' : 'false'}'
+      '&audio=true',
     );
   }
 
@@ -358,7 +396,7 @@ class CallNotificationService {
 
     final declinedByName = _normalizeDisplayName(
       (data['declinedByName'] ?? data['senderName'] ?? 'The recipient')
-        .toString(),
+          .toString(),
       genericFallback: 'The recipient',
     );
     final reason = (data['reason'] ?? 'declined').toString();
@@ -421,6 +459,7 @@ class CallNotificationService {
     required String recipientRole, // 'CAREGIVER' or 'PATIENT'
     required String callId,
     required bool isVideoCall,
+    String? callType,
   }) async {
     if (!_isConnected || _channel == null) {
       debugPrint('❌ Cannot send call invitation - not connected');
@@ -441,6 +480,73 @@ class CallNotificationService {
         'recipientId': recipientId,
         'recipientRole': recipientRole,
         'isVideoCall': isVideoCall,
+        'callType': (callType ?? 'general'),
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      _channel!.sink.add(_encode(msg));
+      _activeCallId = callId;
+
+      final completer = Completer<bool>();
+      _pendingOutgoingInvitations[callId] = completer;
+
+      _showCallFeedback(
+        'Calling $recipientRole… waiting for response.',
+        backgroundColor: Colors.blue.shade700,
+      );
+
+      final delivered = await completer.future.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          _pendingOutgoingInvitations.remove(callId);
+          if (_activeCallId == callId) {
+            _activeCallId = null;
+          }
+          _showCallFeedback(
+            '${_roleLabel(recipientRole) ?? 'Recipient'} did not confirm availability. They may be offline.',
+            backgroundColor: Colors.orange.shade800,
+          );
+          return false;
+        },
+      );
+
+      return delivered;
+    } catch (e) {
+      debugPrint('❌ Error sending call invitation: $e');
+      _pendingOutgoingInvitations.remove(callId);
+      _showCallFeedback(
+        'Failed to send call invitation. Please try again.',
+        backgroundColor: Colors.red.shade700,
+      );
+      return false;
+    }
+  }
+
+  static Future<bool> sendSentimentChannelState({
+    required String callId,
+    required String otherPartyId,
+    required String channel,
+    required bool muted,
+    String? captureMode,
+  }) async {
+    if (!_isConnected || _channel == null) {
+      return false;
+    }
+
+    final normalizedChannel = channel.trim().toLowerCase();
+    if (normalizedChannel != 'text' &&
+        normalizedChannel != 'voice' &&
+        normalizedChannel != 'video') {
+      return false;
+    }
+
+    try {
+      final msg = {
+        'type': 'sentiment-channel-state',
+        'callId': callId,
+        'otherPartyId': otherPartyId,
+        'channel': normalizedChannel,
+        'muted': muted,
+        'captureMode': captureMode,
         'timestamp': DateTime.now().toIso8601String(),
       };
       _channel!.sink.add(_encode(msg));
@@ -451,12 +557,52 @@ class CallNotificationService {
       );
       return true;
     } catch (e) {
-      debugPrint('❌ Error sending call invitation: $e');
-      _showCallFeedback(
-        'Failed to send call invitation. Please try again.',
-        backgroundColor: Colors.red.shade700,
-      );
+      debugPrint('❌ Error sending channel state: $e');
       return false;
+    }
+  }
+
+  static Future<bool> sendEndCallSignal({
+    required String callId,
+    required String otherPartyId,
+  }) async {
+    if (!_isConnected || _channel == null) {
+      return false;
+    }
+
+    final normalizedCallId = callId.trim();
+    final normalizedOther = otherPartyId.trim();
+    if (normalizedCallId.isEmpty || normalizedOther.isEmpty) {
+      return false;
+    }
+
+    try {
+      final msg = {
+        'type': 'end-call',
+        'callId': normalizedCallId,
+        'otherPartyId': normalizedOther,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      _channel!.sink.add(_encode(msg));
+      _suppressIncomingCallId(normalizedCallId, duration: const Duration(seconds: 45));
+      if (_activeCallId == normalizedCallId) {
+        _activeCallId = null;
+      }
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error sending end-call signal: $e');
+      return false;
+    }
+  }
+
+  static void clearActiveCall([String? callId]) {
+    final normalized = callId?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      _activeCallId = null;
+      return;
+    }
+    if (_activeCallId == normalized) {
+      _activeCallId = null;
     }
   }
 
@@ -533,6 +679,12 @@ class CallNotificationService {
     _currentIncomingCallId = null;
     _isIncomingDialogVisible = false;
     _suppressedIncomingCallIds.clear();
+    for (final pending in _pendingOutgoingInvitations.values) {
+      if (!pending.isCompleted) {
+        pending.complete(false);
+      }
+    }
+    _pendingOutgoingInvitations.clear();
 
     // Keep stream controller alive for app lifetime.
   }

@@ -2,6 +2,7 @@ package com.careconnect.dto;
 
 import com.careconnect.model.Medication.MedicationType;
 import lombok.Builder;
+import java.time.Instant;
 
 @Builder
 public record MedicationDTO(
@@ -17,6 +18,6 @@ public record MedicationDTO(
         String startDate,
         String endDate,
         String notes,
-        Boolean isActive
-        // TODO - add lastTaken time field
+        Boolean isActive,
+        Instant lastTaken
 ) {}

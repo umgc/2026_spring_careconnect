@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.service.GoogleOAuthService;
 import com.careconnect.repository.EmailCredentialRepository;
 // import com.careconnect.model.EmailCredential;
@@ -25,6 +28,9 @@ public class EmailOAuthController {
     @Value("${google.oauth.redirect-uri}") String redirectUri;
     @Value("${google.oauth.scope}")        String scope;
     @Value("${google.oauth.frontend-url}") String frontendBaseUrl;
+
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
 
     @GetMapping("/google/start")
     public ResponseEntity<Void> start(@RequestParam String userId, @RequestParam(required = false) String returnUrl) {
@@ -54,6 +60,9 @@ public class EmailOAuthController {
         System.out.println("[OAuth] AUTH URL = " + authUrl);
         return ResponseEntity.status(302).location(URI.create(authUrl)).build();
     }
+
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
 
     @GetMapping("/google/callback")
     public ResponseEntity<Void> callback(@RequestParam String code, @RequestParam String state) {

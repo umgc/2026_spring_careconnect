@@ -78,8 +78,25 @@ public class EvvOfflineSyncService {
             queueItem.markSynced();
             offlineQueueRepository.save(queueItem);
             
-            audit.log(record, queueItem.getCaregiverId(), "OFFLINE_SYNCED", 
-                java.util.Map.of("queueItemId", queueItem.getId()));
+            // Build audit details with location information
+            var auditDetails = new java.util.HashMap<String, Object>();
+            auditDetails.put("queueItemId", queueItem.getId());
+            auditDetails.put("operationType", queueItem.getOperationType());
+            // Include location data if available
+            if (record.getLocationLat() != null || record.getLocationLng() != null) {
+                auditDetails.put("locationLat", record.getLocationLat());
+                auditDetails.put("locationLng", record.getLocationLng());
+                auditDetails.put("locationSource", record.getLocationSource());
+            }
+            if (record.getCheckinLocationLat() != null || record.getCheckinLocationLng() != null) {
+                auditDetails.put("checkinLocationLat", record.getCheckinLocationLat());
+                auditDetails.put("checkinLocationLng", record.getCheckinLocationLng());
+            }
+            if (record.getCheckoutLocationLat() != null || record.getCheckoutLocationLng() != null) {
+                auditDetails.put("checkoutLocationLat", record.getCheckoutLocationLat());
+                auditDetails.put("checkoutLocationLng", record.getCheckoutLocationLng());
+            }
+            audit.log(record, queueItem.getCaregiverId(), "OFFLINE_SYNCED", auditDetails);
             
         } catch (Exception e) {
             queueItem.markFailed(e.getMessage());

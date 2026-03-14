@@ -1,12 +1,49 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/env_constant.dart';
 
+/// Platform-aware key-value storage.
+///
+/// On native platforms, delegates to [FlutterSecureStorage].
+/// On web, delegates to [SharedPreferences] because FlutterSecureStorage
+/// requires HTTPS and fails on plain HTTP hosts (e.g. S3 static sites).
+class _StorageAdapter {
+  static const FlutterSecureStorage _secure = FlutterSecureStorage(
+    webOptions: WebOptions.defaultOptions,
+  );
+
+  static Future<String?> read(String key) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    }
+    return _secure.read(key: key);
+  }
+
+  static Future<void> write(String key, String value) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+      return;
+    }
+    await _secure.write(key: key, value: value);
+  }
+
+  static Future<void> delete(String key) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+      return;
+    }
+    await _secure.delete(key: key);
+  }
+}
+
 class AuthTokenManager {
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
   static const String _jwtTokenKey = 'jwt_token';
   static const String _userSessionKey = 'user_session';
   static const String _tokenExpiryKey = 'token_expiry';
@@ -17,10 +54,10 @@ class AuthTokenManager {
     required Map<String, dynamic> userSession,
   }) async {
     try {
-      await _storage.write(key: _jwtTokenKey, value: jwtToken);
-      await _storage.write(
-        key: _userSessionKey,
-        value: jsonEncode(userSession),
+      await _StorageAdapter.write(_jwtTokenKey, jwtToken);
+      await _StorageAdapter.write(
+        _userSessionKey,
+        jsonEncode(userSession),
       );
 
       // Extract expiry from JWT if possible (optional)
@@ -31,18 +68,16 @@ class AuthTokenManager {
             utf8.decode(base64Url.decode(base64Url.normalize(tokenParts[1]))),
           );
           if (payload['exp'] != null) {
-            await _storage.write(
-              key: _tokenExpiryKey,
-              value: payload['exp'].toString(),
+            await _StorageAdapter.write(
+              _tokenExpiryKey,
+              payload['exp'].toString(),
             );
           }
         } catch (e) {
           // JWT parsing failed, continue without expiry tracking
-          // This is not critical for functionality
         }
       }
     } catch (e) {
-      // Re-throw to let callers handle the error appropriately
       throw Exception('Failed to save authentication data: ${e.toString()}');
     }
   }
@@ -50,13 +85,12 @@ class AuthTokenManager {
   // Get JWT token
   static Future<String?> getJwtToken() async {
     try {
-      final token = await _storage.read(key: _jwtTokenKey);
+      final token = await _StorageAdapter.read(_jwtTokenKey);
       if (token != null && await _isTokenValid(token)) {
         return token;
       }
       return null;
     } catch (e) {
-      // Return null on any error - let the app handle missing authentication
       return null;
     }
   }
@@ -64,7 +98,7 @@ class AuthTokenManager {
   // Get user session data
   static Future<Map<String, dynamic>?> getUserSession() async {
     try {
-      final sessionData = await _storage.read(key: _userSessionKey);
+      final sessionData = await _StorageAdapter.read(_userSessionKey);
       if (sessionData != null) {
         return jsonDecode(sessionData);
       }
@@ -77,20 +111,18 @@ class AuthTokenManager {
   // Check if token is valid (not expired)
   static Future<bool> _isTokenValid(String token) async {
     try {
-      final expiryStr = await _storage.read(key: _tokenExpiryKey);
+      final expiryStr = await _StorageAdapter.read(_tokenExpiryKey);
       if (expiryStr != null) {
         final expiry = int.parse(expiryStr);
         final currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-        // Add buffer time (5 minutes) to prevent edge cases
-        const bufferTime = 5 * 60; // 5 minutes in seconds
+        const bufferTime = 5 * 60;
         return currentTime < (expiry - bufferTime);
       }
 
-      // If no expiry info, try to validate with backend
       return await _validateTokenWithBackend(token);
     } catch (e) {
-      return false; // Assume invalid on error for security
+      return false;
     }
   }
 
@@ -129,14 +161,14 @@ class AuthTokenManager {
 
   static Future<void> clearAuthData() async {
     try {
-      await _storage.delete(key: _jwtTokenKey);
-      await _storage.delete(key: _userSessionKey);
-      await _storage.delete(key: _tokenExpiryKey);
-      await _storage.delete(key: 'last_activity');
+      await _StorageAdapter.delete(_jwtTokenKey);
+      await _StorageAdapter.delete(_userSessionKey);
+      await _StorageAdapter.delete(_tokenExpiryKey);
+      await _StorageAdapter.delete('last_activity');
 
       // Also clear old session data for migration
-      await _storage.delete(key: 'session');
-      await _storage.delete(key: 'authCookie');
+      await _StorageAdapter.delete('session');
+      await _StorageAdapter.delete('authCookie');
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('session_cookie');
@@ -154,7 +186,7 @@ class AuthTokenManager {
   // Validate current session and clean up if invalid
   static Future<bool> validateCurrentSession() async {
     try {
-      final token = await _storage.read(key: _jwtTokenKey);
+      final token = await _StorageAdapter.read(_jwtTokenKey);
       if (token == null) {
         return false;
       }
@@ -193,7 +225,7 @@ class AuthTokenManager {
   static Future<void> updateLastActivity() async {
     try {
       final currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      await _storage.write(key: 'last_activity', value: currentTime.toString());
+      await _StorageAdapter.write('last_activity', currentTime.toString());
     } catch (e) {
       print('Error updating last activity: $e');
     }
@@ -202,7 +234,7 @@ class AuthTokenManager {
   // Check if session has been inactive for too long
   static Future<bool> isSessionStale({int maxInactiveMinutes = 60}) async {
     try {
-      final lastActivityStr = await _storage.read(key: 'last_activity');
+      final lastActivityStr = await _StorageAdapter.read('last_activity');
       if (lastActivityStr == null) {
         return false; // No activity recorded yet
       }

@@ -13,6 +13,14 @@ class PatientDashboard extends StatefulWidget {
 }
 
 class _PatientDashboardState extends State<PatientDashboard> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   final caregivers = [
     {
       'name': 'Arnold Simpson',
@@ -35,8 +43,10 @@ class _PatientDashboardState extends State<PatientDashboard> {
       drawer: const CommonDrawer(currentRoute: '/dashboard'),
       body: SafeArea(
         child: Scrollbar(
+          controller: _scrollController,
           thumbVisibility: true,
           child: SingleChildScrollView(
+            controller: _scrollController,
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

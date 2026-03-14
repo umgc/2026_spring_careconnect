@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:care_connect_app/features/auth/presentation/pages/sign_up_screen.dart';
 import 'package:care_connect_app/features/health/caregiver-patient-list/models/patient-info.dart';
 import 'package:care_connect_app/features/health/caregiver-patient-list/widgets/patient-info-card.dart';
+import 'package:care_connect_app/features/social/presentation/pages/chat_room_screen.dart';
 import 'package:care_connect_app/widgets/default_app_header.dart';
 import 'package:care_connect_app/features/health/caregiver-patient-list/page/patient_details_page.dart';
 import 'package:care_connect_app/providers/user_provider.dart';
@@ -101,8 +102,14 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
         final List<dynamic> data = jsonDecode(response.body);
         final rows = data.whereType<Map<String, dynamic>>().toList();
         final moodByUserId = await _loadLatestMoodByPatientUserId(rows);
+        final unreadByUserId =
+            await _loadInboxUnreadByUserId(userProvider.user!.id);
+
+        if (!mounted) return;
+
         final patients = rows
-            .map((json) => _patientFromJson(json, moodByUserId))
+            .map((json) => _patientFromJson(json, moodByUserId,
+                unreadByUserId: unreadByUserId))
             .toList();
 
         setState(() {
@@ -131,17 +138,18 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
   /// Converts API JSON response to Patient model
   Patient _patientFromJson(
     Map<String, dynamic> json,
-    Map<int, _MoodSnapshot> moodByUserId,
-  ) {
+    Map<int, _MoodSnapshot> moodByUserId, {
+    Map<int, bool> unreadByUserId = const {},
+  }) {
     final patient = json['patient'] ?? {};
     final link = json['link'] ?? {};
     final patientUserId = _safeInt(link['patientUserId']);
-    final moodSnapshot = patientUserId == null
-        ? null
-        : moodByUserId[patientUserId];
+    final moodSnapshot =
+        patientUserId == null ? null : moodByUserId[patientUserId];
 
     return Patient(
       id: patient['id']?.toString() ?? '',
+      patientUserId: patientUserId,
       firstName: patient['firstName'] ?? '',
       lastName: patient['lastName'] ?? '',
       lastUpdated: DateTime.now(), // TODO: Use actual lastUpdated from API
@@ -152,7 +160,10 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
       mood: moodSnapshot?.label ?? _unknownMoodLabel,
       moodEmoji: moodSnapshot?.emoji ?? _unknownMoodEmoji,
       isUrgent: false, // TODO: Determine urgency based on patient status
-      messageCount: 0, // TODO: Fetch actual unread message count
+      messageCount:
+          (patientUserId != null && (unreadByUserId[patientUserId] ?? false))
+              ? 1
+              : 0,
     );
   }
 
@@ -236,6 +247,26 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
     if (l.contains('fair') || l.contains('neutral')) return '😐';
     if (l.contains('poor') || l.contains('sad')) return '😟';
     return _unknownMoodEmoji;
+  }
+
+  /// Fetches the inbox for [userId] and returns a map of peerId → hasUnread.
+  Future<Map<int, bool>> _loadInboxUnreadByUserId(int userId) async {
+    try {
+      final data = await ApiService.getInbox(userId);
+      final result = <int, bool>{};
+      for (final entry in data) {
+        if (entry is Map<String, dynamic>) {
+          final peerId = (entry['peerId'] as num?)?.toInt();
+          final hasUnread = entry['hasUnread'] as bool? ?? false;
+          if (peerId != null) {
+            result[peerId] = hasUnread;
+          }
+        }
+      }
+      return result;
+    } catch (_) {
+      return const {};
+    }
   }
 
   /// Handles search text changes and filters the patient list.
@@ -631,44 +662,66 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
                       ),
                     )
                   : _filteredPatients.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.search_off,
-                            size: 64,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No patients found',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _filteredPatients.length,
-                      itemBuilder: (context, index) {
-                        final patient = _filteredPatients[index];
-                        return PatientCard(
-                          patient: patient,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => PatientDetailsPage(
-                                  patientId: patient.id,
-                                  isCaregiver: true, // or patient: patient
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off,
+                                size: 64,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No patients found',
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _filteredPatients.length,
+                          itemBuilder: (context, index) {
+                            final patient = _filteredPatients[index];
+                            return PatientCard(
+                              patient: patient,
+                              onMessageTap: () {
+                                final peerUserId = patient.patientUserId;
+                                if (peerUserId == null || peerUserId <= 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Unable to open chat for this patient.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ChatRoomScreen(
+                                      peerUserId: peerUserId,
+                                      peerName: patient.fullName,
+                                    ),
+                                  ),
+                                );
+                              },
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => PatientDetailsPage(
+                                      patientId: patient.id,
+                                      isCaregiver: true, // or patient: patient
+                                    ),
+                                  ),
+                                );
+                              },
                             );
                           },
-                        );
-                      },
-                    ),
+                        ),
             ),
           ],
         ),

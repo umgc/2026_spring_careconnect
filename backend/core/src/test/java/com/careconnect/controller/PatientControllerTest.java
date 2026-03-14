@@ -7,7 +7,9 @@ import com.careconnect.model.Medication.MedicationType;
 import com.careconnect.model.Patient;
 import com.careconnect.model.User;
 import com.careconnect.repository.UserRepository;
+import com.careconnect.security.AuthorizationService;
 import com.careconnect.security.Role;
+import com.careconnect.util.SecurityUtil;
 import com.careconnect.service.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -50,6 +52,8 @@ class PatientControllerTest {
     @MockitoBean private UserRepository userRepository;
     @MockitoBean private MoodPainLogService moodPainLogService;
     @MockitoBean private MedicationService medicationService;
+    @MockitoBean private SecurityUtil securityUtil;
+    @MockitoBean private AuthorizationService authorizationService;
 
     private ObjectMapper objectMapper;
 
@@ -62,7 +66,7 @@ class PatientControllerTest {
     private Patient patient;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
         patientUser = buildUser(1L, "patient@test.com",   Role.PATIENT);
@@ -73,12 +77,16 @@ class PatientControllerTest {
         patient = new Patient();
         patient.setId(10L);
         patient.setUser(patientUser);
+
+        // Stub securityUtil.resolveCurrentUser() so that any controller-level
+        // or filter-level calls do not NPE. Default to patientUser.
+        when(securityUtil.resolveCurrentUser()).thenReturn(patientUser);
     }
- 
+
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
     private User buildUser(Long id, String email, Role role) {
-        User u = new User();
+        final User u = new User();
         u.setId(id);
         u.setEmail(email);
         u.setRole(role);
@@ -89,8 +97,8 @@ class PatientControllerTest {
         when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
     }
 
-    private MoodPainLogResponse sampleLog() {
-        MoodPainLogResponse temp = new MoodPainLogResponse();
+    private MoodPainLogResponse sampleLog() throws Exception {
+        final MoodPainLogResponse temp = new MoodPainLogResponse();
         temp.setId(1L);
         temp.setMoodValue(7);
         temp.setPainValue(3);
@@ -99,8 +107,8 @@ class PatientControllerTest {
         return temp;
     }
 
-    private MedicationDTO sampleMedication() {
-        MedicationDTO temp = MedicationDTO.builder()
+    private MedicationDTO sampleMedication() throws Exception {
+        final MedicationDTO temp = MedicationDTO.builder()
             .id(1L)
             .patientId(10L)
             .medicationName("Aspirin")
@@ -219,9 +227,9 @@ class PatientControllerTest {
         void patientDeniedOtherRecord() throws Exception {
             mockCurrentUser(patientUser);
 
-            Patient otherPatient = new Patient();
+            final Patient otherPatient = new Patient();
             otherPatient.setId(99L);
-            User otherUser = buildUser(99L, "other@test.com", Role.PATIENT);
+            final User otherUser = buildUser(99L, "other@test.com", Role.PATIENT);
             otherPatient.setUser(otherUser);
 
             when(patientService.getPatientById(99L)).thenReturn(otherPatient);
@@ -274,6 +282,13 @@ class PatientControllerTest {
     @DisplayName("PUT /{patientId}")
     class UpdatePatient {
 
+        // Minimal JSON body for a Patient update request.
+        // Using a hand-crafted string avoids serialisation round-trip issues
+        // caused by read-only computed properties on the User model (e.g.
+        // permissions, isAdmin, isFamilyMember) that have no matching setter,
+        // which would trigger HttpMessageNotReadableException.
+        private static final String PATIENT_JSON = "{\"id\":10}";
+
         @Test
         @WithMockUser(username = "patient@test.com")
         @DisplayName("Patient can update their own record")
@@ -285,7 +300,7 @@ class PatientControllerTest {
             mockMvc.perform(put("/v1/api/patients/10")
                             .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(patient)))
+                            .content(PATIENT_JSON))
                     .andExpect(status().isOk());
         }
 
@@ -298,7 +313,7 @@ class PatientControllerTest {
             mockMvc.perform(put("/v1/api/patients/10")
                             .with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(patient)))
+                            .content(PATIENT_JSON))
                     .andExpect(status().isForbidden());
         }
     }
@@ -337,7 +352,7 @@ class PatientControllerTest {
         void returnsPrimaryProvider() throws Exception {
             mockCurrentUser(patientUser);
 
-            Map<String, Object> providerData = Map.of(
+            final Map<String, Object> providerData = Map.of(
                     "name", "Dr. Jane Smith",
                     "specialty", "General Practice",
                     "phone", "555-9876"
@@ -411,7 +426,7 @@ class PatientControllerTest {
         private FamilyMemberRegistration registration;
 
         @BeforeEach
-        void init() {
+        void init() throws Exception {
             registration = new FamilyMemberRegistration(
                     "Jane", "Doe", "jane@example.com",
                     "555-1234", new AddressDto("123 ABC St.", null,
@@ -426,7 +441,7 @@ class PatientControllerTest {
         void patientRegisters() throws Exception {
             mockCurrentUser(patientUser);
             when(patientService.getPatientById(10L)).thenReturn(patient);
-            FamilyMemberLinkResponse resp = mock(FamilyMemberLinkResponse.class);
+            final FamilyMemberLinkResponse resp = mock(FamilyMemberLinkResponse.class);
             when(familyMemberService.registerFamilyMember(any(), eq(1L))).thenReturn(resp);
 
             mockMvc.perform(post("/v1/api/patients/10/family-members")
@@ -521,7 +536,7 @@ class PatientControllerTest {
         private MoodPainLogRequest validRequest;
 
         @BeforeEach
-        void init() {
+        void init() throws Exception {
             validRequest = new MoodPainLogRequest(7, 3, "Feeling okay", LocalDateTime.now().minusHours(1));
         }
 
@@ -585,7 +600,7 @@ class PatientControllerTest {
         @DisplayName("Returns paginated logs")
         void returnsPaginatedLogs() throws Exception {
             mockCurrentUser(patientUser);
-            Page<MoodPainLogResponse> page = new PageImpl<>(List.of(sampleLog()), PageRequest.of(0, 10), 1);
+            final Page<MoodPainLogResponse> page = new PageImpl<>(List.of(sampleLog()), PageRequest.of(0, 10), 1);
             when(moodPainLogService.getMoodPainLogsWithPagination(patientUser, 0, 10)).thenReturn(page);
 
             mockMvc.perform(get("/v1/api/patients/mood-pain-log/paginated?page=0&size=10"))
@@ -612,8 +627,8 @@ class PatientControllerTest {
         @DisplayName("Returns logs within date range")
         void returnsLogsInDateRange() throws Exception {
             mockCurrentUser(patientUser);
-            LocalDateTime start = LocalDateTime.now().minusDays(7);
-            LocalDateTime end   = LocalDateTime.now();
+            final LocalDateTime start = LocalDateTime.now().minusDays(7);
+            final LocalDateTime end   = LocalDateTime.now();
             when(moodPainLogService.getMoodPainLogsByDateRange(patientUser, start, end))
                     .thenReturn(List.of(sampleLog()));
 
@@ -710,9 +725,9 @@ class PatientControllerTest {
         @DisplayName("Patient can view their own analytics")
         void patientViewsAnalytics() throws Exception {
             mockCurrentUser(patientUser);
-            LocalDateTime start = LocalDateTime.now().minusDays(30);
-            LocalDateTime end   = LocalDateTime.now();
-            MoodPainAnalyticsDTO analytics = mock(MoodPainAnalyticsDTO.class);
+            final LocalDateTime start = LocalDateTime.now().minusDays(30);
+            final LocalDateTime end   = LocalDateTime.now();
+            final MoodPainAnalyticsDTO analytics = mock(MoodPainAnalyticsDTO.class);
             when(moodPainLogService.getMoodPainAnalytics(patientUser, start, end)).thenReturn(analytics);
 
             mockMvc.perform(get("/v1/api/patients/mood-pain-log/analytics")
@@ -726,8 +741,8 @@ class PatientControllerTest {
         @DisplayName("Caregiver cannot view analytics endpoint")
         void caregiverCannotViewAnalytics() throws Exception {
             mockCurrentUser(caregiverUser);
-            LocalDateTime start = LocalDateTime.now().minusDays(30);
-            LocalDateTime end   = LocalDateTime.now();
+            final LocalDateTime start = LocalDateTime.now().minusDays(30);
+            final LocalDateTime end   = LocalDateTime.now();
 
             mockMvc.perform(get("/v1/api/patients/mood-pain-log/analytics")
                             .param("startDate", start.toString())
@@ -853,6 +868,49 @@ class PatientControllerTest {
             mockMvc.perform(delete("/v1/api/patients/10/medications/1").with(csrf()))
                     .andExpect(status().isForbidden());
         }
+
+        @Test
+        @WithMockUser(username = "patient@test.com")
+        @DisplayName("Patient can mark medication as taken")
+        void patientMarksMedicationTaken() throws Exception {
+            mockCurrentUser(patientUser);
+            when(patientService.getPatientById(10L)).thenReturn(patient);
+            when(medicationService.updateMedicationLastTaken(eq(10L), eq(1L), any()))
+                    .thenReturn(sampleMedication());
+
+            mockMvc.perform(put("/v1/api/patients/10/medications/1/last-taken")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"lastTaken\":\"2026-03-12T12:00:00Z\"}"))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @WithMockUser(username = "patient@test.com")
+        @DisplayName("Patient can clear medication taken status")
+        void patientClearsMedicationTakenStatus() throws Exception {
+            mockCurrentUser(patientUser);
+            when(patientService.getPatientById(10L)).thenReturn(patient);
+            when(medicationService.clearMedicationLastTaken(10L, 1L))
+                    .thenReturn(sampleMedication());
+
+            mockMvc.perform(delete("/v1/api/patients/10/medications/1/last-taken")
+                            .with(csrf()))
+                    .andExpect(status().isNoContent());
+        }
+
+        @Test
+        @WithMockUser(username = "family@test.com")
+        @DisplayName("Family member cannot mark medication as taken")
+        void familyMemberCannotMarkMedicationTaken() throws Exception {
+            mockCurrentUser(familyUser);
+
+            mockMvc.perform(put("/v1/api/patients/10/medications/1/last-taken")
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"lastTaken\":\"2026-03-12T12:00:00Z\"}"))
+                    .andExpect(status().isForbidden());
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -869,7 +927,7 @@ class PatientControllerTest {
         void patientGetsOwnProfile() throws Exception {
             mockCurrentUser(patientUser);
             when(patientService.getPatientById(10L)).thenReturn(patient);
-            PatientProfileDTO dto = mock(PatientProfileDTO.class);
+            final PatientProfileDTO dto = mock(PatientProfileDTO.class);
             when(patientService.getPatientProfile(10L)).thenReturn(Optional.of(dto));
 
             mockMvc.perform(get("/v1/api/patients/10/profile"))
@@ -894,8 +952,8 @@ class PatientControllerTest {
         void patientUpdatesProfile() throws Exception {
             mockCurrentUser(patientUser);
             when(patientService.getPatientById(10L)).thenReturn(patient);
-            PatientProfileUpdateDTO updateDTO = mock(PatientProfileUpdateDTO.class);
-            PatientProfileDTO updatedDTO = mock(PatientProfileDTO.class);
+            // PatientProfileUpdateDTO updateDTO = mock(PatientProfileUpdateDTO.class);
+            final PatientProfileDTO updatedDTO = mock(PatientProfileDTO.class);
             when(patientService.updatePatientProfile(eq(10L), any())).thenReturn(updatedDTO);
 
             mockMvc.perform(put("/v1/api/patients/10/profile")
@@ -920,7 +978,7 @@ class PatientControllerTest {
         void patientGetsEnhancedProfile() throws Exception {
             mockCurrentUser(patientUser);
             when(patientService.getPatientById(10L)).thenReturn(patient);
-            EnhancedPatientProfileDTO dto = mock(EnhancedPatientProfileDTO.class);
+            final EnhancedPatientProfileDTO dto = mock(EnhancedPatientProfileDTO.class);
             when(patientService.getEnhancedPatientProfile(10L)).thenReturn(Optional.of(dto));
 
             mockMvc.perform(get("/v1/api/patients/10/profile/enhanced"))
@@ -949,8 +1007,8 @@ class PatientControllerTest {
         @WithMockUser(username = "patient@test.com")
         @DisplayName("PATIENT accessing another patient's record — returns false")
         void patient_otherRecord_denied() throws Exception {
-            User otherPatientUser = buildUser(99L, "other@test.com", Role.PATIENT);
-            Patient otherPatient = new Patient();
+            final User otherPatientUser = buildUser(99L, "other@test.com", Role.PATIENT);
+            final Patient otherPatient = new Patient();
             otherPatient.setId(20L);
             otherPatient.setUser(otherPatientUser);
 
@@ -967,7 +1025,7 @@ class PatientControllerTest {
         @WithMockUser(username = "caregiver@test.com")
         @DisplayName("CAREGIVER found in patient's caregiver list — returns true")
         void caregiver_inList_granted() throws Exception {
-            Caregiver caregiver = new Caregiver();
+            final Caregiver caregiver = new Caregiver();
             caregiver.setUser(caregiverUser); // caregiverUser.getId() == 2L
 
             when(userRepository.findByEmail("caregiver@test.com")).thenReturn(Optional.of(caregiverUser));
@@ -983,8 +1041,8 @@ class PatientControllerTest {
         @WithMockUser(username = "caregiver@test.com")
         @DisplayName("CAREGIVER not in patient's caregiver list — returns false")
         void caregiver_notInList_denied() throws Exception {
-            User otherCaregiverUser = buildUser(99L, "other-caregiver@test.com", Role.CAREGIVER);
-            Caregiver unrelatedCaregiver = new Caregiver();
+            final User otherCaregiverUser = buildUser(99L, "other-caregiver@test.com", Role.CAREGIVER);
+            final Caregiver unrelatedCaregiver = new Caregiver();
             unrelatedCaregiver.setUser(otherCaregiverUser);
 
             when(userRepository.findByEmail("caregiver@test.com")).thenReturn(Optional.of(caregiverUser));
@@ -1001,7 +1059,7 @@ class PatientControllerTest {
         @WithMockUser(username = "family@test.com")
         @DisplayName("FAMILY_MEMBER found in patient's family member list — returns true")
         void familyMember_inList_granted() throws Exception {
-            FamilyMemberLinkResponse link = mock(FamilyMemberLinkResponse.class);
+            final FamilyMemberLinkResponse link = mock(FamilyMemberLinkResponse.class);
             when(link.familyUserId()).thenReturn(3L); // matches familyUser.getId()
 
             when(userRepository.findByEmail("family@test.com")).thenReturn(Optional.of(familyUser));

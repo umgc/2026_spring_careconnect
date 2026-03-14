@@ -7,7 +7,5 @@ AppDatabase? _startupDb;
 Future<void> initializeLocalDbOnStartup() async {
   _startupDb ??= AppDatabase();
   final db = _startupDb!;
-  // Opening a connection once at startup triggers Drift's built-in table
-  // creation/migration strategy for all tables declared in AppDatabase.
-  await db.customSelect('SELECT 1').getSingle();
+  await db.ensureOfflineSyncTable();
 }

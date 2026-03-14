@@ -30,29 +30,23 @@ import org.springframework.context.annotation.Configuration;
         info = @Info(
                 title = "CareConnect Backend API",
                 version = "1.0.0",
-                description = """
-            CareConnect Backend API provides comprehensive healthcare management services including:
-            
-            ## Features
-            - **Authentication & Authorization**: JWT-based authentication with Google OAuth integration
-            - **User Management**: Patient and caregiver registration, profile management
-            - **Feed Management**: Social feed for patients and caregivers
-            - **Comments System**: Interactive commenting on posts
-            - **Gamification**: Points and achievements system
-            - **Payment Integration**: Stripe-based payment processing
-            - **Email Services**: Multi-provider email support (SendGrid, Mailgun, Mailtrap, etc.)
-            - **File Upload**: Image and document upload capabilities
-            
-            ## Authentication
-            Most endpoints require JWT authentication. Use the `/api/auth/login` endpoint to obtain a token.
-            For Google OAuth, use the `/api/auth/google` endpoint.
-            
-            ## Rate Limiting
-            API endpoints are rate-limited to ensure fair usage and system stability.
-            
-            ## Error Handling
-            All API responses follow a consistent error format with appropriate HTTP status codes.
-            """,
+                description = "CareConnect Backend API provides comprehensive healthcare management services including:\n\n"
+                        + "## Features\n"
+                        + "- **Authentication & Authorization**: JWT-based authentication with Google OAuth integration\n"
+                        + "- **User Management**: Patient and caregiver registration, profile management\n"
+                        + "- **Feed Management**: Social feed for patients and caregivers\n"
+                        + "- **Comments System**: Interactive commenting on posts\n"
+                        + "- **Gamification**: Points and achievements system\n"
+                        + "- **Payment Integration**: Stripe-based payment processing\n"
+                        + "- **Email Services**: Multi-provider email support (SendGrid, Mailgun, Mailtrap, etc.)\n"
+                        + "- **File Upload**: Image and document upload capabilities\n\n"
+                        + "## Authentication\n"
+                        + "Most endpoints require JWT authentication. Use the `/api/auth/login` endpoint to obtain a token.\n"
+                        + "For Google OAuth, use the `/api/auth/google` endpoint.\n\n"
+                        + "## Rate Limiting\n"
+                        + "API endpoints are rate-limited to ensure fair usage and system stability.\n\n"
+                        + "## Error Handling\n"
+                        + "All API responses follow a consistent error format with appropriate HTTP status codes.\n",
                 contact = @Contact(
                         name = "CareConnect Development Team",
                         email = "support@careconnect.com",
@@ -81,19 +75,15 @@ import org.springframework.context.annotation.Configuration;
 )
 @SecurityScheme(
         name = "JWT Authentication",
-        description = """
-        JWT token authentication. 
-        
-        **How to authenticate:**
-        1. Use the `/v1/api/auth/login` endpoint to obtain a JWT token
-        2. Include the token in the Authorization header as: `Bearer {your-jwt-token}`
-        3. The token is valid for 3 hours
-        
-        **Example:**
-        ```
-        Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-        ```
-        """,
+        description = "JWT token authentication.\n\n"
+                + "**How to authenticate:**\n"
+                + "1. Use the `/v1/api/auth/login` endpoint to obtain a JWT token\n"
+                + "2. Include the token in the Authorization header as: `Bearer {your-jwt-token}`\n"
+                + "3. The token is valid for 3 hours\n\n"
+                + "**Example:**\n"
+                + "```\n"
+                + "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\n"
+                + "```\n",
         scheme = "bearer",
         type = SecuritySchemeType.HTTP,
         bearerFormat = "JWT",
@@ -101,32 +91,25 @@ import org.springframework.context.annotation.Configuration;
 )
 @SecurityScheme(
         name = "Basic Authentication",
-        description = """
-        Basic HTTP authentication for testing purposes.
-        
-        **How to authenticate:**
-        1. Use username (email) and password
-        2. Format: `username:password` encoded in Base64
-        3. Include in Authorization header as: `Basic {base64-encoded-credentials}`
-        
-        **Example:**
-        ```
-        Authorization: Basic dXNlckBleGFtcGxlLmNvbTpwYXNzd29yZA==
-        ```
-        """,
+        description = "Basic HTTP authentication for testing purposes.\n\n"
+                + "**How to authenticate:**\n"
+                + "1. Use username (email) and password\n"
+                + "2. Format: `username:password` encoded in Base64\n"
+                + "3. Include in Authorization header as: `Basic {base64-encoded-credentials}`\n\n"
+                + "**Example:**\n"
+                + "```\n"
+                + "Authorization: Basic dXNlckBleGFtcGxlLmNvbTpwYXNzd29yZA==\n"
+                + "```\n",
         type = SecuritySchemeType.HTTP,
         scheme = "basic"
 )
 @SecurityScheme(
         name = "Cookie Authentication",
-        description = """
-        Cookie-based authentication using HttpOnly cookies.
-        
-        **How it works:**
-        1. Login through `/v1/api/auth/login` - sets an HttpOnly cookie automatically
-        2. Browser automatically includes the cookie in subsequent requests
-        3. Useful for web applications and testing in browser
-        """,
+        description = "Cookie-based authentication using HttpOnly cookies.\n\n"
+                + "**How it works:**\n"
+                + "1. Login through `/v1/api/auth/login` - sets an HttpOnly cookie automatically\n"
+                + "2. Browser automatically includes the cookie in subsequent requests\n"
+                + "3. Useful for web applications and testing in browser\n",
         type = SecuritySchemeType.APIKEY,
         in = SecuritySchemeIn.COOKIE,
         paramName = "AUTH"

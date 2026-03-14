@@ -60,6 +60,9 @@ public class Medication {
     @Column(name = "approval_status", length = 20, nullable = false)
     private String approvalStatus = "PENDING";
 
+    @Column(name = "last_taken")
+    private Instant lastTaken;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

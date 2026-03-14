@@ -18,6 +18,130 @@ const bool _allowExternalSdkFallback = bool.fromEnvironment(
   defaultValue: !kReleaseMode,
 );
 
+final Map<String, html.IFrameElement> _activeMeetingIframes =
+    <String, html.IFrameElement>{};
+
+Future<bool> requestChimeCameraSwitch({String? meetingId}) async {
+  Iterable<html.IFrameElement> targets;
+  if (meetingId != null && meetingId.trim().isNotEmpty) {
+    final frame = _activeMeetingIframes[meetingId.trim()];
+    if (frame == null) return false;
+    targets = [frame];
+  } else {
+    targets = _activeMeetingIframes.values;
+  }
+
+  var posted = false;
+  for (final frame in targets) {
+    final win = frame.contentWindow;
+    if (win == null) continue;
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': 'switch-camera',
+      if (meetingId != null && meetingId.trim().isNotEmpty)
+        'meetingId': meetingId.trim(),
+    }, '*');
+    posted = true;
+  }
+
+  return posted;
+}
+
+Future<bool> requestChimeAudioToggle({
+  required bool muted,
+  String? meetingId,
+}) async {
+  Iterable<html.IFrameElement> targets;
+  if (meetingId != null && meetingId.trim().isNotEmpty) {
+    final frame = _activeMeetingIframes[meetingId.trim()];
+    if (frame == null) return false;
+    targets = [frame];
+  } else {
+    targets = _activeMeetingIframes.values;
+  }
+
+  var posted = false;
+  for (final frame in targets) {
+    final win = frame.contentWindow;
+    if (win == null) continue;
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': 'toggle-audio',
+      'muted': muted,
+      if (meetingId != null && meetingId.trim().isNotEmpty)
+        'meetingId': meetingId.trim(),
+    }, '*');
+    posted = true;
+  }
+  return posted;
+}
+
+Future<bool> requestChimeVideoToggle({
+  required bool muted,
+  String? meetingId,
+}) async {
+  Iterable<html.IFrameElement> targets;
+  if (meetingId != null && meetingId.trim().isNotEmpty) {
+    final frame = _activeMeetingIframes[meetingId.trim()];
+    if (frame == null) return false;
+    targets = [frame];
+  } else {
+    targets = _activeMeetingIframes.values;
+  }
+
+  var posted = false;
+  for (final frame in targets) {
+    final win = frame.contentWindow;
+    if (win == null) continue;
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': 'toggle-video',
+      'muted': muted,
+      if (meetingId != null && meetingId.trim().isNotEmpty)
+        'meetingId': meetingId.trim(),
+    }, '*');
+    posted = true;
+  }
+  return posted;
+}
+
+Future<bool> requestChimeSentimentChannelRestart({
+  required String channel,
+  String? meetingId,
+}) async {
+  final normalizedChannel = channel.trim().toLowerCase();
+  if (normalizedChannel != 'text' &&
+      normalizedChannel != 'voice' &&
+      normalizedChannel != 'video') {
+    return false;
+  }
+
+  Iterable<html.IFrameElement> targets;
+  if (meetingId != null && meetingId.trim().isNotEmpty) {
+    final frame = _activeMeetingIframes[meetingId.trim()];
+    if (frame == null) return false;
+    targets = [frame];
+  } else {
+    targets = _activeMeetingIframes.values;
+  }
+
+  var posted = false;
+  for (final frame in targets) {
+    final win = frame.contentWindow;
+    if (win == null) continue;
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': 'restart-sentiment-channel',
+      'channel': normalizedChannel,
+      if (meetingId != null && meetingId.trim().isNotEmpty)
+        'meetingId': meetingId.trim(),
+    }, '*');
+    posted = true;
+  }
+
+  return posted;
+}
+
 Widget buildChimeMeetingEmbed({
   required String meetingId,
   required String attendeeId,
@@ -31,8 +155,11 @@ Widget buildChimeMeetingEmbed({
   int sentimentCaptureIntervalMs = 15000,
   VoidCallback? onEndCallRequested,
   void Function(String transcript)? onTranscriptSample,
-  void Function(String audioBase64, String audioFormat)? onAudioSample,
+  void Function(String status, String? detail)? onTranscriptStatus,
+  void Function(double averageLevel, double speechRatio, double variability)?
+  onVoiceMetricsSample,
   void Function(String imageBase64)? onVideoSample,
+  void Function(String channel, bool muted)? onSentimentChannelState,
 }) {
   return _ChimeMeetingEmbedWeb(
     meetingId: meetingId,
@@ -47,8 +174,10 @@ Widget buildChimeMeetingEmbed({
     sentimentCaptureIntervalMs: sentimentCaptureIntervalMs,
     onEndCallRequested: onEndCallRequested,
     onTranscriptSample: onTranscriptSample,
-    onAudioSample: onAudioSample,
+    onTranscriptStatus: onTranscriptStatus,
+    onVoiceMetricsSample: onVoiceMetricsSample,
     onVideoSample: onVideoSample,
+    onSentimentChannelState: onSentimentChannelState,
   );
 }
 
@@ -65,8 +194,11 @@ class _ChimeMeetingEmbedWeb extends StatefulWidget {
   final int sentimentCaptureIntervalMs;
   final VoidCallback? onEndCallRequested;
   final void Function(String transcript)? onTranscriptSample;
-  final void Function(String audioBase64, String audioFormat)? onAudioSample;
+  final void Function(String status, String? detail)? onTranscriptStatus;
+  final void Function(double averageLevel, double speechRatio, double variability)?
+  onVoiceMetricsSample;
   final void Function(String imageBase64)? onVideoSample;
+  final void Function(String channel, bool muted)? onSentimentChannelState;
 
   const _ChimeMeetingEmbedWeb({
     required this.meetingId,
@@ -81,8 +213,10 @@ class _ChimeMeetingEmbedWeb extends StatefulWidget {
     required this.sentimentCaptureIntervalMs,
     required this.onEndCallRequested,
     required this.onTranscriptSample,
-    required this.onAudioSample,
+    required this.onTranscriptStatus,
+    required this.onVoiceMetricsSample,
     required this.onVideoSample,
+    required this.onSentimentChannelState,
   });
 
   @override
@@ -93,6 +227,19 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
   late final String _viewType;
   StreamSubscription<html.MessageEvent>? _messageSubscription;
   String? _guardMessage;
+
+  void _postIframeAction(String action, [Map<String, dynamic>? payload]) {
+    final iframe = _activeMeetingIframes[widget.meetingId];
+    final win = iframe?.contentWindow;
+    if (win == null) return;
+
+    win.postMessage({
+      'source': 'careconnect-flutter',
+      'action': action,
+      if (payload != null) ...payload,
+      'meetingId': widget.meetingId,
+    }, '*');
+  }
 
   @override
   void initState() {
@@ -108,11 +255,13 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
       'mediaPlacement': widget.mediaPlacement,
       'mediaRegion': widget.mediaRegion ?? 'us-east-1',
       'externalUserId':
-          widget.externalUserId ?? 'careconnect-${widget.attendeeId.substring(0, 8)}',
+          widget.externalUserId ??
+          'careconnect-${widget.attendeeId.substring(0, 8)}',
       'videoEnabled': widget.videoEnabled,
       'audioEnabled': widget.audioEnabled,
       'enableAutoSentimentCapture': widget.enableAutoSentimentCapture,
       'sentimentCaptureIntervalMs': widget.sentimentCaptureIntervalMs,
+      'preferChimeNativeVoiceAnalysis': true,
       'sdkUrl': _chimeSdkUrl,
       'allowExternalSdkFallback': _allowExternalSdkFallback,
     };
@@ -125,6 +274,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         final level = data['level'] ?? 'info';
         final message = data['message'] ?? '';
         debugPrint('[CareConnect][Chime][$level] $message');
+        _emitTranscriptStatusFromLog(level.toString(), message.toString());
 
         if (!mounted) return;
         if (data['action'] == 'end-call-request') {
@@ -133,23 +283,53 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         }
 
         if (data['action'] == 'sentiment-transcript') {
-          final payload = data['payload'];
-          if (payload is Map) {
-            final transcript = (payload['text'] ?? '').toString().trim();
-            if (transcript.isNotEmpty) {
-              widget.onTranscriptSample?.call(transcript);
+          final rawPayload = data['payload'];
+          Map<String, dynamic> payload = const {};
+          if (rawPayload is Map<String, dynamic>) {
+            payload = rawPayload;
+          } else if (rawPayload is Map) {
+            payload = rawPayload.map((k, v) => MapEntry(k.toString(), v));
+          } else if (rawPayload is String && rawPayload.trim().isNotEmpty) {
+            try {
+              final decoded = jsonDecode(rawPayload);
+              if (decoded is Map) {
+                payload = decoded.map((k, v) => MapEntry(k.toString(), v));
+              }
+            } catch (_) {}
+          }
+          final transcript = (payload['text'] ?? '').toString().trim();
+          if (transcript.isNotEmpty) {
+            debugPrint(
+              '[CareConnect][Transcript][web] received len=${transcript.length}',
+            );
+            final source = (payload['source'] ?? '').toString().toLowerCase();
+            if (source.contains('speech')) {
+              widget.onTranscriptStatus?.call('FALLBACK', 'Speech recognition');
+            } else {
+              widget.onTranscriptStatus?.call('CONNECTED', 'Live transcript');
             }
+            widget.onTranscriptSample?.call(transcript);
           }
           return;
         }
 
-        if (data['action'] == 'sentiment-audio-sample') {
+        if (data['action'] == 'sentiment-voice-metrics') {
           final payload = data['payload'];
           if (payload is Map) {
-            final audioBase64 = (payload['audioBase64'] ?? '').toString().trim();
-            final audioFormat = (payload['audioFormat'] ?? 'wav').toString().trim();
-            if (audioBase64.isNotEmpty) {
-              widget.onAudioSample?.call(audioBase64, audioFormat.isEmpty ? 'wav' : audioFormat);
+            final averageLevel =
+                double.tryParse((payload['averageLevel'] ?? '').toString());
+            final speechRatio =
+                double.tryParse((payload['speechRatio'] ?? '').toString());
+            final variability =
+                double.tryParse((payload['variability'] ?? '').toString());
+            if (averageLevel != null &&
+                speechRatio != null &&
+                variability != null) {
+              widget.onVoiceMetricsSample?.call(
+                averageLevel,
+                speechRatio,
+                variability,
+              );
             }
           }
           return;
@@ -158,9 +338,26 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         if (data['action'] == 'sentiment-video-sample') {
           final payload = data['payload'];
           if (payload is Map) {
-            final imageBase64 = (payload['imageBase64'] ?? '').toString().trim();
+            final imageBase64 = (payload['imageBase64'] ?? '')
+                .toString()
+                .trim();
             if (imageBase64.isNotEmpty) {
               widget.onVideoSample?.call(imageBase64);
+            }
+          }
+          return;
+        }
+
+        if (data['action'] == 'sentiment-channel-state') {
+          final payload = data['payload'];
+          if (payload is Map) {
+            final channel = (payload['channel'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
+            final muted = payload['muted'] == true;
+            if (channel == 'text' || channel == 'voice' || channel == 'video') {
+              widget.onSentimentChannelState?.call(channel, muted);
             }
           }
           return;
@@ -194,6 +391,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         ..style.height = '100%'
         ..setAttribute('allow', 'camera; microphone; autoplay; fullscreen')
         ..srcdoc = _buildMeetingHtml(configJson);
+      _activeMeetingIframes[widget.meetingId] = iframe;
       return iframe;
     });
   }
@@ -219,7 +417,14 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
       }
 
       final stream = await mediaDevices.getUserMedia({
-        'audio': needAudio,
+        'audio': needAudio
+            ? {
+                'echoCancellation': true,
+                'noiseSuppression': true,
+                'autoGainControl': true,
+                'channelCount': 1,
+              }
+            : false,
         'video': needVideo,
       });
 
@@ -253,7 +458,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           _guardMessage = guardMessage;
         });
       }
-      debugPrint('[CareConnect][Chime][warn] getUserMedia permission check failed: $e');
+      debugPrint(
+        '[CareConnect][Chime][warn] getUserMedia permission check failed: $e',
+      );
     }
   }
 
@@ -292,8 +499,35 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
   @override
   void dispose() {
+    _postIframeAction('teardown', {'reason': 'flutter-widget-dispose'});
     _messageSubscription?.cancel();
+    _activeMeetingIframes.remove(widget.meetingId);
     super.dispose();
+  }
+
+  void _emitTranscriptStatusFromLog(String level, String message) {
+    if (message.isEmpty || widget.onTranscriptStatus == null) {
+      return;
+    }
+    final lower = message.toLowerCase();
+    if (lower.contains('chime transcript capture subscribed')) {
+      widget.onTranscriptStatus!.call('AWAITING', 'Subscribed, waiting for transcript');
+      return;
+    }
+    if (lower.contains('speech transcription capture started')) {
+      widget.onTranscriptStatus!.call('FALLBACK', 'Speech recognition');
+      return;
+    }
+    if (lower.contains('speechrecognition api unavailable') ||
+        lower.contains('speech recognition error: not-allowed') ||
+        lower.contains('speech recognition error: service-not-allowed')) {
+      widget.onTranscriptStatus!.call('BLOCKED', 'Microphone or browser blocked');
+      return;
+    }
+    if (level.toLowerCase() == 'warn' &&
+        lower.contains('no usable transcript text captured')) {
+      widget.onTranscriptStatus!.call('FALLBACK', 'No live transcript text');
+    }
   }
 
   String _buildMeetingHtml(String configJson) {
@@ -318,7 +552,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
       }
       #controls {
         position:absolute; left:50%; transform:translateX(-50%); bottom:16px;
-        display:flex; gap:clamp(12px, 1.8vw, 20px); align-items:center;
+        display:none !important;
+        gap:clamp(12px, 1.8vw, 20px); align-items:center;
         padding:0;
         background:transparent;
         border:none;
@@ -446,26 +681,261 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         const camBtn = document.getElementById('camBtn');
         const shouldAutoSentimentCapture =
           !!config.enableAutoSentimentCapture && (!!config.audioEnabled || !!config.videoEnabled);
+        const preferChimeNativeVoiceAnalysis = config.preferChimeNativeVoiceAnalysis !== false;
         const sentimentCaptureIntervalMs =
           Number(config.sentimentCaptureIntervalMs) > 0
             ? Math.max(3000, Number(config.sentimentCaptureIntervalMs))
             : 15000;
         let isAudioMuted = !config.audioEnabled;
         let isVideoMuted = !config.videoEnabled;
+        let audioVideo = null;
+        let switchVideoInputRef = null;
+        let updateControlButtonsRef = null;
         let availableVideoInputs = [];
         let sentimentAudioRecorder = null;
         let sentimentAudioStream = null;
+        let sentimentAudioContext = null;
+        let sentimentAudioSourceNode = null;
+        let sentimentAudioProcessorNode = null;
+        let sentimentAudioSilenceGain = null;
+        let sentimentAudioFlushTimer = null;
+        let sentimentAudioPcmChunks = [];
         let sentimentVideoTimer = null;
+        let sentimentVideoCanvas = null;
+        let sentimentVideoCtx = null;
         let speechRecognizer = null;
         let speechRestartTimer = null;
+        let speechPermissionDenied = false;
         let lastTranscriptSignature = '';
         let lastTranscriptAt = 0;
+        let chimeTranscriptHandler = null;
+        let chimeTranscriptActive = false;
+        let voiceMetricsTimer = null;
+        let voiceFrames = 0;
+        let voiceSpeechFrames = 0;
+        let voiceSum = 0;
+        let voiceSumSquares = 0;
+        let volumeIndicatorHandler = null;
+        let flutterMessageHandler = null;
+        let meetingObserver = null;
+        let isShuttingDown = false;
+        const maxQueuedSentimentAudioChunks = 96;
 
         function setStatus(msg) { statusEl.textContent = msg; }
         function report(level, msg) {
           try {
             window.parent.postMessage({ source: 'careconnect-chime', level, message: msg }, '*');
           } catch (_) {}
+        }
+
+        function resolveSdkFingerprint(sdk) {
+          try {
+            if (!sdk) {
+              return 'missing-sdk';
+            }
+
+            const candidates = [];
+            try {
+              if (sdk.Versioning && sdk.Versioning.sdkVersion) {
+                candidates.push('Versioning.sdkVersion=' + String(sdk.Versioning.sdkVersion));
+              }
+            } catch (_) {}
+            try {
+              if (sdk.version) {
+                candidates.push('version=' + String(sdk.version));
+              }
+            } catch (_) {}
+            try {
+              if (sdk.sdkVersion) {
+                candidates.push('sdkVersion=' + String(sdk.sdkVersion));
+              }
+            } catch (_) {}
+
+            const keyCount = (() => {
+              try {
+                return Object.keys(sdk).length;
+              } catch (_) {
+                return -1;
+              }
+            })();
+
+            candidates.push(
+              'keys=' + String(keyCount) +
+                ',hasDefaultMeetingSession=' + String(typeof sdk.DefaultMeetingSession === 'function') +
+                ',hasTranscriptEventConverter=' + String(!!sdk.TranscriptEventConverter),
+            );
+
+            return candidates.join('|');
+          } catch (_) {
+            return 'fingerprint-error';
+          }
+        }
+
+        function extractTranscriptTextFromChimeEvent(transcriptEvent) {
+          try {
+            const results = transcriptEvent && transcriptEvent.transcript && transcriptEvent.transcript.results
+              ? transcriptEvent.transcript.results
+              : [];
+            if (!Array.isArray(results) || results.length === 0) {
+              return '';
+            }
+
+            const lines = [];
+            for (const result of results) {
+              if (!result || result.isPartial === true) {
+                continue;
+              }
+              const alternatives = Array.isArray(result.alternatives) ? result.alternatives : [];
+              if (alternatives.length === 0) {
+                continue;
+              }
+              const items = Array.isArray(alternatives[0].items) ? alternatives[0].items : [];
+              const text = items
+                .map((item) => (item && item.content ? String(item.content) : ''))
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+              if (text.length > 0) {
+                lines.push(text);
+              }
+            }
+
+            return lines.join(' ').trim();
+          } catch (_) {
+            return '';
+          }
+        }
+
+        function stopChimeTranscriptCapture() {
+          if (!audioVideo || !chimeTranscriptHandler) {
+            chimeTranscriptActive = false;
+            return;
+          }
+
+          try {
+            if (typeof audioVideo.realtimeUnsubscribeFromTranscriptEvent === 'function') {
+              audioVideo.realtimeUnsubscribeFromTranscriptEvent(chimeTranscriptHandler);
+            }
+          } catch (_) {}
+
+          chimeTranscriptHandler = null;
+          chimeTranscriptActive = false;
+        }
+
+        function startChimeTranscriptCapture() {
+          if (!shouldAutoSentimentCapture) {
+            return false;
+          }
+          if (!audioVideo || typeof audioVideo.realtimeSubscribeToTranscriptEvent !== 'function') {
+            return false;
+          }
+
+          stopChimeTranscriptCapture();
+          chimeTranscriptHandler = (transcriptEvent) => {
+            const text = extractTranscriptTextFromChimeEvent(transcriptEvent);
+            if (text.length > 0) {
+              emitTranscriptSample(text, 'chime-transcript');
+            }
+          };
+
+          try {
+            audioVideo.realtimeSubscribeToTranscriptEvent(chimeTranscriptHandler);
+            chimeTranscriptActive = true;
+            report('info', 'Chime transcript capture subscribed');
+            return true;
+          } catch (transcriptErr) {
+            report('warn', 'Chime transcript subscribe failed: ' + String(transcriptErr));
+            chimeTranscriptHandler = null;
+            chimeTranscriptActive = false;
+            return false;
+          }
+        }
+
+        function resetVoiceMetricBuffers() {
+          voiceFrames = 0;
+          voiceSpeechFrames = 0;
+          voiceSum = 0;
+          voiceSumSquares = 0;
+        }
+
+        function stopChimeVoiceMetricsCapture() {
+          if (voiceMetricsTimer) {
+            clearInterval(voiceMetricsTimer);
+            voiceMetricsTimer = null;
+          }
+
+          if (audioVideo && volumeIndicatorHandler &&
+              typeof audioVideo.realtimeUnsubscribeFromVolumeIndicator === 'function') {
+            try {
+              audioVideo.realtimeUnsubscribeFromVolumeIndicator(config.attendeeId, volumeIndicatorHandler);
+            } catch (_) {}
+          }
+
+          volumeIndicatorHandler = null;
+          resetVoiceMetricBuffers();
+        }
+
+        function startChimeVoiceMetricsCapture() {
+          if (!shouldAutoSentimentCapture || isAudioMuted || !config.audioEnabled) {
+            return false;
+          }
+          if (!audioVideo || typeof audioVideo.realtimeSubscribeToVolumeIndicator !== 'function') {
+            return false;
+          }
+
+          stopChimeVoiceMetricsCapture();
+          volumeIndicatorHandler = (attendeeId, volume) => {
+            if (isAudioMuted) {
+              return;
+            }
+            if (!attendeeId || attendeeId !== config.attendeeId) {
+              return;
+            }
+
+            const value = Math.max(0, Math.min(1, Number(volume) || 0));
+            voiceFrames += 1;
+            voiceSum += value;
+            voiceSumSquares += value * value;
+            if (value > 0.1) {
+              voiceSpeechFrames += 1;
+            }
+          };
+
+          try {
+            audioVideo.realtimeSubscribeToVolumeIndicator(config.attendeeId, volumeIndicatorHandler);
+          } catch (metricErr) {
+            report('warn', 'Chime volume subscribe failed: ' + String(metricErr));
+            volumeIndicatorHandler = null;
+            return false;
+          }
+
+          const emitIntervalMs = Math.max(2500, Math.min(sentimentCaptureIntervalMs, 5000));
+          voiceMetricsTimer = setInterval(() => {
+            if (isAudioMuted) {
+              resetVoiceMetricBuffers();
+              return;
+            }
+            if (voiceFrames <= 0) {
+              return;
+            }
+
+            const avg = voiceSum / voiceFrames;
+            const variance = Math.max(0, (voiceSumSquares / voiceFrames) - (avg * avg));
+            const stdDev = Math.sqrt(variance);
+            const speakingRatio = voiceSpeechFrames / voiceFrames;
+
+            emitAction('sentiment-voice-metrics', {
+              averageLevel: Number(avg.toFixed(4)),
+              speechRatio: Number(speakingRatio.toFixed(4)),
+              variability: Number(Math.min(1, stdDev * 3).toFixed(4)),
+              capturedAt: new Date().toISOString(),
+            });
+
+            resetVoiceMetricBuffers();
+          }, emitIntervalMs);
+
+          report('info', 'Chime voice metrics capture started (' + emitIntervalMs + 'ms)');
+          return true;
         }
 
         function emitAction(action, payload) {
@@ -481,6 +951,207 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             );
           } catch (_) {}
         }
+
+        function emitSentimentChannelState(channel, muted, reason) {
+          emitAction('sentiment-channel-state', {
+            channel,
+            muted: !!muted,
+            reason: reason || 'local-control',
+            capturedAt: new Date().toISOString(),
+          });
+        }
+
+        function teardownMeeting(reason) {
+          if (isShuttingDown) {
+            return;
+          }
+          isShuttingDown = true;
+
+          stopAutoSentimentCapture();
+
+          if (audioVideo) {
+            try {
+              if (meetingObserver && typeof audioVideo.removeObserver === 'function') {
+                audioVideo.removeObserver(meetingObserver);
+              }
+            } catch (_) {}
+
+            try {
+              if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                audioVideo.stopLocalVideoTile();
+              }
+            } catch (_) {}
+
+            try {
+              if (typeof audioVideo.stop === 'function') {
+                audioVideo.stop();
+              }
+            } catch (_) {}
+          }
+
+          if (remoteAudio) {
+            try {
+              remoteAudio.pause();
+            } catch (_) {}
+            remoteAudio.srcObject = null;
+          }
+          if (localVideo) {
+            localVideo.srcObject = null;
+          }
+          if (remoteVideo) {
+            remoteVideo.srcObject = null;
+          }
+
+          if (flutterMessageHandler) {
+            try {
+              window.removeEventListener('message', flutterMessageHandler);
+            } catch (_) {}
+            flutterMessageHandler = null;
+          }
+
+          meetingObserver = null;
+          audioVideo = null;
+          sentimentVideoCtx = null;
+          sentimentVideoCanvas = null;
+          report('info', 'Meeting teardown completed: ' + String(reason || 'unknown'));
+        }
+
+        flutterMessageHandler = async (event) => {
+          const data = event && event.data ? event.data : null;
+          if (!data || data.source !== 'careconnect-flutter') {
+            return;
+          }
+
+          if (data.action === 'teardown') {
+            teardownMeeting(data.reason || 'flutter-teardown');
+            return;
+          }
+
+          if (data.action === 'toggle-audio') {
+            try {
+              if (!audioVideo) {
+                report('warn', 'Audio toggle requested before meeting session was ready');
+                return;
+              }
+
+              const muted = !!data.muted;
+              if (muted) {
+                if (typeof audioVideo.realtimeMuteLocalAudio === 'function') {
+                  audioVideo.realtimeMuteLocalAudio();
+                } else if (typeof audioVideo.muteLocalAudio === 'function') {
+                  audioVideo.muteLocalAudio();
+                }
+              } else {
+                if (typeof audioVideo.realtimeUnmuteLocalAudio === 'function') {
+                  audioVideo.realtimeUnmuteLocalAudio();
+                } else if (typeof audioVideo.unmuteLocalAudio === 'function') {
+                  audioVideo.unmuteLocalAudio();
+                }
+              }
+              isAudioMuted = muted;
+              if (shouldAutoSentimentCapture) {
+                if (muted) {
+                  stopAutoSentimentCapture();
+                } else {
+                  await startAutoSentimentCapture();
+                }
+              }
+              if (typeof updateControlButtonsRef === 'function') {
+                updateControlButtonsRef();
+              }
+              emitSentimentChannelState('voice', muted, 'flutter-overlay');
+              report('info', 'Flutter overlay audio ' + (muted ? 'muted' : 'unmuted'));
+            } catch (audioErr) {
+              report('warn', 'Flutter overlay audio toggle failed: ' + String(audioErr));
+            }
+            return;
+          }
+
+          if (data.action === 'toggle-video') {
+            try {
+              if (!audioVideo) {
+                report('warn', 'Video toggle requested before meeting session was ready');
+                return;
+              }
+
+              const muted = !!data.muted;
+              if (muted) {
+                if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                  audioVideo.stopLocalVideoTile();
+                }
+                localVideoBound = false;
+                isVideoMuted = true;
+                if (sentimentVideoTimer) {
+                  clearInterval(sentimentVideoTimer);
+                  sentimentVideoTimer = null;
+                }
+              } else {
+                if (typeof audioVideo.startLocalVideoTile === 'function') {
+                  audioVideo.startLocalVideoTile();
+                }
+                localVideoBound = false;
+                isVideoMuted = false;
+                if (shouldAutoSentimentCapture) {
+                  startVideoSentimentCapture();
+                }
+              }
+              if (typeof updateControlButtonsRef === 'function') {
+                updateControlButtonsRef();
+              }
+              emitSentimentChannelState('video', muted, 'flutter-overlay');
+              report('info', 'Flutter overlay video ' + (muted ? 'stopped' : 'started'));
+            } catch (videoErr) {
+              report('warn', 'Flutter overlay video toggle failed: ' + String(videoErr));
+            }
+            return;
+          }
+
+          if (data.action === 'switch-camera') {
+            try {
+              if (!audioVideo) {
+                report('warn', 'Camera switch requested before meeting session was ready');
+                return;
+              }
+
+              if (typeof audioVideo.listVideoInputDevices === 'function') {
+                availableVideoInputs = await audioVideo.listVideoInputDevices();
+              }
+              const switched =
+                typeof switchVideoInputRef === 'function'
+                  ? await switchVideoInputRef('flutter-overlay')
+                  : false;
+              if (switched) {
+                localVideoBound = false;
+                ensureLocalVideoTile();
+                report('info', 'Camera switched by Flutter overlay');
+              } else {
+                report('warn', 'Flutter overlay requested camera switch but no alternative camera was found');
+              }
+              if (typeof updateControlButtonsRef === 'function') {
+                updateControlButtonsRef();
+              }
+            } catch (switchErr) {
+              report('warn', 'Flutter overlay camera switch failed: ' + String(switchErr));
+            }
+          }
+
+          if (data.action === 'restart-sentiment-channel') {
+            try {
+              const channel = String(data.channel || '').trim().toLowerCase();
+              const restarted = await restartSentimentChannelCapture(channel, 'flutter-restart-request');
+              if (restarted) {
+                report('info', 'Sentiment channel restarted: ' + channel);
+              } else {
+                report('warn', 'Sentiment channel restart skipped or failed: ' + channel);
+              }
+            } catch (restartErr) {
+              report('warn', 'Sentiment channel restart failed: ' + String(restartErr));
+            }
+            return;
+          }
+        };
+
+        window.addEventListener('message', flutterMessageHandler);
 
         function normalizeAudioFormat(mimeType) {
           const lower = String(mimeType || '').toLowerCase();
@@ -509,7 +1180,136 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           });
         }
 
-        function emitTranscriptSample(rawText) {
+        function bytesToBase64(bytes) {
+          let binary = '';
+          const chunkSize = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+          }
+          return btoa(binary);
+        }
+
+        function encodeMonoWavBase64(float32Samples, sampleRate) {
+          const channels = 1;
+          const bitsPerSample = 16;
+          const bytesPerSample = bitsPerSample / 8;
+          const dataSize = float32Samples.length * bytesPerSample;
+          const wavBuffer = new ArrayBuffer(44 + dataSize);
+          const view = new DataView(wavBuffer);
+
+          function writeAscii(offset, text) {
+            for (let i = 0; i < text.length; i += 1) {
+              view.setUint8(offset + i, text.charCodeAt(i));
+            }
+          }
+
+          writeAscii(0, 'RIFF');
+          view.setUint32(4, 36 + dataSize, true);
+          writeAscii(8, 'WAVE');
+          writeAscii(12, 'fmt ');
+          view.setUint32(16, 16, true);
+          view.setUint16(20, 1, true);
+          view.setUint16(22, channels, true);
+          view.setUint32(24, sampleRate, true);
+          view.setUint32(28, sampleRate * channels * bytesPerSample, true);
+          view.setUint16(32, channels * bytesPerSample, true);
+          view.setUint16(34, bitsPerSample, true);
+          writeAscii(36, 'data');
+          view.setUint32(40, dataSize, true);
+
+          let offset = 44;
+          for (let i = 0; i < float32Samples.length; i += 1) {
+            const clamped = Math.max(-1, Math.min(1, float32Samples[i]));
+            const pcm = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+            view.setInt16(offset, pcm | 0, true);
+            offset += 2;
+          }
+
+          return bytesToBase64(new Uint8Array(wavBuffer));
+        }
+
+        function downsamplePcm(float32Samples, inputRate, outputRate) {
+          if (!float32Samples || float32Samples.length === 0) {
+            return new Float32Array(0);
+          }
+          if (!inputRate || !outputRate || outputRate >= inputRate) {
+            return float32Samples;
+          }
+
+          const ratio = inputRate / outputRate;
+          const outputLength = Math.max(1, Math.floor(float32Samples.length / ratio));
+          const output = new Float32Array(outputLength);
+          let offset = 0;
+
+          for (let i = 0; i < outputLength; i += 1) {
+            const nextOffset = Math.min(float32Samples.length, Math.floor((i + 1) * ratio));
+            let sum = 0;
+            let count = 0;
+            for (let j = offset; j < nextOffset; j += 1) {
+              sum += float32Samples[j];
+              count += 1;
+            }
+            output[i] = count > 0 ? sum / count : 0;
+            offset = nextOffset;
+          }
+
+          return output;
+        }
+
+        async function convertBlobToWavBase64(blob, targetSampleRate, maxDurationMs) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) {
+            throw new Error('AudioContext unavailable');
+          }
+
+          const sourceBuffer = await blob.arrayBuffer();
+          const decodeContext = new AudioCtx();
+          let decoded;
+
+          try {
+            decoded = await decodeContext.decodeAudioData(sourceBuffer.slice(0));
+          } finally {
+            try {
+              await decodeContext.close();
+            } catch (_) {}
+          }
+
+          const outputRate = Number(targetSampleRate) > 0 ? Number(targetSampleRate) : 16000;
+          const durationCapMs = Number(maxDurationMs) > 0 ? Number(maxDurationMs) : 5000;
+          const maxFrameCount = Math.max(1, Math.floor((durationCapMs / 1000) * outputRate));
+          const frameCount = Math.max(1, Math.min(maxFrameCount, Math.ceil(decoded.duration * outputRate)));
+          const offline = new OfflineAudioContext(1, frameCount, outputRate);
+          const source = offline.createBufferSource();
+          source.buffer = decoded;
+          source.connect(offline.destination);
+          source.start(0);
+          const rendered = await offline.startRendering();
+
+          return encodeMonoWavBase64(rendered.getChannelData(0), outputRate);
+        }
+
+        async function toModelAudioPayload(blob, recorderMime) {
+          // Legacy WAV conversion helper kept for compatibility; voice analysis uses metrics.
+          try {
+            const wavBase64 = await convertBlobToWavBase64(blob, 8000, 1500);
+            if (wavBase64 && wavBase64.length >= 512) {
+              return { audioBase64: wavBase64, audioFormat: 'wav' };
+            }
+          } catch (wavErr) {
+            report(
+              'warn',
+              'WAV conversion failed; skipping voice sample. recorderMime=' +
+                String(recorderMime || 'unknown') +
+                ', error=' +
+                String(wavErr),
+            );
+          }
+
+          return { audioBase64: '', audioFormat: 'wav' };
+        }
+
+        function emitTranscriptSample(rawText, source) {
           const text = String(rawText || '').trim();
           if (text.length < 8) {
             return;
@@ -525,12 +1325,14 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           lastTranscriptAt = now;
           emitAction('sentiment-transcript', {
             text,
-            source: 'speech-recognition',
+            source: source || 'speech-recognition',
             capturedAt: new Date().toISOString(),
           });
         }
 
         function stopAutoSentimentCapture() {
+          stopChimeTranscriptCapture();
+          stopChimeVoiceMetricsCapture();
           if (speechRestartTimer) {
             clearTimeout(speechRestartTimer);
             speechRestartTimer = null;
@@ -568,8 +1370,92 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           }
         }
 
+        function stopSpeechRecognitionCapture() {
+          if (speechRestartTimer) {
+            clearTimeout(speechRestartTimer);
+            speechRestartTimer = null;
+          }
+
+          if (speechRecognizer) {
+            try {
+              speechRecognizer.onresult = null;
+              speechRecognizer.onerror = null;
+              speechRecognizer.onend = null;
+              speechRecognizer.stop();
+            } catch (_) {}
+            speechRecognizer = null;
+          }
+        }
+
+        function stopAudioSentimentCapture() {
+          if (sentimentAudioFlushTimer) {
+            clearInterval(sentimentAudioFlushTimer);
+            sentimentAudioFlushTimer = null;
+          }
+
+          sentimentAudioPcmChunks = [];
+
+          if (sentimentAudioRecorder) {
+            try {
+              if (sentimentAudioRecorder.state !== 'inactive') {
+                sentimentAudioRecorder.stop();
+              }
+            } catch (_) {}
+            sentimentAudioRecorder = null;
+          }
+
+          if (sentimentAudioProcessorNode) {
+            try {
+              sentimentAudioProcessorNode.onaudioprocess = null;
+              sentimentAudioProcessorNode.disconnect();
+            } catch (_) {}
+            sentimentAudioProcessorNode = null;
+          }
+
+          if (sentimentAudioSourceNode) {
+            try {
+              sentimentAudioSourceNode.disconnect();
+            } catch (_) {}
+            sentimentAudioSourceNode = null;
+          }
+
+          if (sentimentAudioSilenceGain) {
+            try {
+              sentimentAudioSilenceGain.disconnect();
+            } catch (_) {}
+            sentimentAudioSilenceGain = null;
+          }
+
+          if (sentimentAudioContext) {
+            try {
+              sentimentAudioContext.close();
+            } catch (_) {}
+            sentimentAudioContext = null;
+          }
+
+          if (sentimentAudioStream) {
+            try {
+              sentimentAudioStream.getTracks().forEach((track) => track.stop());
+            } catch (_) {}
+            sentimentAudioStream = null;
+          }
+        }
+
+        function stopVideoSentimentCapture() {
+          if (sentimentVideoTimer) {
+            clearInterval(sentimentVideoTimer);
+            sentimentVideoTimer = null;
+          }
+        }
+
         function startSpeechRecognitionCapture() {
           if (!shouldAutoSentimentCapture) {
+            return;
+          }
+          if (speechPermissionDenied) {
+            return;
+          }
+          if (chimeTranscriptActive) {
             return;
           }
 
@@ -593,12 +1479,17 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
               }
             }
             if (transcript.trim()) {
-              emitTranscriptSample(transcript.trim());
+              emitTranscriptSample(transcript.trim(), 'speech-recognition');
             }
           };
 
           speechRecognizer.onerror = (event) => {
-            report('warn', 'Speech recognition error: ' + String(event && event.error ? event.error : 'unknown'));
+            const errorCode = String(event && event.error ? event.error : 'unknown');
+            report('warn', 'Speech recognition error: ' + errorCode);
+            if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+              speechPermissionDenied = true;
+              stopSpeechRecognitionCapture();
+            }
           };
 
           speechRecognizer.onend = () => {
@@ -629,65 +1520,111 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           if (!shouldAutoSentimentCapture) {
             return;
           }
+          if (isAudioMuted) {
+            return;
+          }
           if (!config.audioEnabled) {
             return;
           }
-          if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            report('warn', 'MediaRecorder API unavailable; voice sentiment auto-capture disabled.');
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            report('warn', 'getUserMedia API unavailable; voice sentiment auto-capture disabled.');
             return;
           }
 
           try {
-            sentimentAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            sentimentAudioStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: 1,
+              },
+              video: false,
+            });
 
-            const mimeCandidates = [
-              'audio/webm;codecs=opus',
-              'audio/webm',
-              'audio/ogg;codecs=opus',
-              'audio/mp4',
-            ];
-
-            let selectedMime = '';
-            if (typeof MediaRecorder.isTypeSupported === 'function') {
-              for (const candidate of mimeCandidates) {
-                if (MediaRecorder.isTypeSupported(candidate)) {
-                  selectedMime = candidate;
-                  break;
-                }
-              }
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) {
+              report('warn', 'AudioContext unavailable; voice sentiment auto-capture disabled.');
+              return;
             }
 
-            sentimentAudioRecorder = selectedMime
-              ? new MediaRecorder(sentimentAudioStream, { mimeType: selectedMime })
-              : new MediaRecorder(sentimentAudioStream);
+            sentimentAudioContext = new AudioCtx();
+            sentimentAudioSourceNode = sentimentAudioContext.createMediaStreamSource(sentimentAudioStream);
+            sentimentAudioProcessorNode = sentimentAudioContext.createScriptProcessor(4096, 1, 1);
+            sentimentAudioSilenceGain = sentimentAudioContext.createGain();
+            sentimentAudioSilenceGain.gain.value = 0;
+            sentimentAudioPcmChunks = [];
 
-            sentimentAudioRecorder.ondataavailable = async (event) => {
-              if (!event.data || event.data.size === 0) {
+            sentimentAudioProcessorNode.onaudioprocess = (event) => {
+              if (isAudioMuted) {
+                return;
+              }
+              const channelData = event.inputBuffer && event.inputBuffer.numberOfChannels > 0
+                ? event.inputBuffer.getChannelData(0)
+                : null;
+              if (!channelData || channelData.length === 0) {
+                return;
+              }
+              sentimentAudioPcmChunks.push(new Float32Array(channelData));
+              if (sentimentAudioPcmChunks.length > maxQueuedSentimentAudioChunks) {
+                sentimentAudioPcmChunks.splice(
+                  0,
+                  sentimentAudioPcmChunks.length - maxQueuedSentimentAudioChunks,
+                );
+              }
+            };
+
+            sentimentAudioSourceNode.connect(sentimentAudioProcessorNode);
+            sentimentAudioProcessorNode.connect(sentimentAudioSilenceGain);
+            sentimentAudioSilenceGain.connect(sentimentAudioContext.destination);
+
+            const audioChunkMs = Math.max(2500, Math.min(sentimentCaptureIntervalMs, 4000));
+            const targetSampleRate = 8000;
+
+            sentimentAudioFlushTimer = setInterval(() => {
+              if (isAudioMuted) {
+                sentimentAudioPcmChunks = [];
+                return;
+              }
+              if (!sentimentAudioPcmChunks || sentimentAudioPcmChunks.length === 0) {
                 return;
               }
 
               try {
-                const audioBase64 = await blobToBase64(event.data);
+                const totalSamples = sentimentAudioPcmChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+                if (totalSamples <= 0) {
+                  sentimentAudioPcmChunks = [];
+                  return;
+                }
+
+                const merged = new Float32Array(totalSamples);
+                let writeOffset = 0;
+                for (const chunk of sentimentAudioPcmChunks) {
+                  merged.set(chunk, writeOffset);
+                  writeOffset += chunk.length;
+                }
+                sentimentAudioPcmChunks = [];
+
+                const inputRate = sentimentAudioContext && sentimentAudioContext.sampleRate
+                  ? sentimentAudioContext.sampleRate
+                  : 48000;
+                const downsampled = downsamplePcm(merged, inputRate, targetSampleRate);
+                if (!downsampled || downsampled.length < 512) {
+                  return;
+                }
+
+                const audioBase64 = encodeMonoWavBase64(downsampled, targetSampleRate);
                 if (!audioBase64 || audioBase64.length < 512) {
                   return;
                 }
 
-                const recorderMime = sentimentAudioRecorder && sentimentAudioRecorder.mimeType
-                  ? sentimentAudioRecorder.mimeType
-                  : selectedMime;
-
-                emitAction('sentiment-audio-sample', {
-                  audioBase64,
-                  audioFormat: normalizeAudioFormat(recorderMime),
-                  capturedAt: new Date().toISOString(),
-                });
+                // Legacy raw-audio sentiment emission is intentionally disabled.
               } catch (audioEmitErr) {
-                report('warn', 'Failed processing sentiment audio chunk: ' + String(audioEmitErr));
+                report('warn', 'Failed processing PCM voice chunk: ' + String(audioEmitErr));
               }
-            };
+            }, audioChunkMs);
 
-            sentimentAudioRecorder.start(sentimentCaptureIntervalMs);
-            report('info', 'Voice sentiment capture started (' + sentimentCaptureIntervalMs + 'ms chunks)');
+            report('info', 'Voice sentiment capture started (' + audioChunkMs + 'ms PCM chunks)');
           } catch (audioCaptureErr) {
             report('warn', 'Unable to start voice sentiment capture: ' + String(audioCaptureErr));
             if (sentimentAudioStream) {
@@ -701,25 +1638,40 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
         function captureVideoSampleFrame() {
           try {
+            if (isVideoMuted) {
+              return;
+            }
+
             if (!localVideo || localVideo.readyState < 2 || localVideo.videoWidth === 0 || localVideo.videoHeight === 0) {
               return;
             }
 
-            const canvas = document.createElement('canvas');
             const maxWidth = 640;
             const scale = Math.min(1, maxWidth / localVideo.videoWidth);
             const width = Math.max(1, Math.floor(localVideo.videoWidth * scale));
             const height = Math.max(1, Math.floor(localVideo.videoHeight * scale));
-            canvas.width = width;
-            canvas.height = height;
 
-            const ctx = canvas.getContext('2d', { alpha: false });
-            if (!ctx) {
+            if (!sentimentVideoCanvas) {
+              sentimentVideoCanvas = document.createElement('canvas');
+            }
+            if (
+              sentimentVideoCanvas.width !== width ||
+              sentimentVideoCanvas.height !== height
+            ) {
+              sentimentVideoCanvas.width = width;
+              sentimentVideoCanvas.height = height;
+              sentimentVideoCtx = null;
+            }
+
+            if (!sentimentVideoCtx) {
+              sentimentVideoCtx = sentimentVideoCanvas.getContext('2d', { alpha: false });
+            }
+            if (!sentimentVideoCtx) {
               return;
             }
 
-            ctx.drawImage(localVideo, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.68);
+            sentimentVideoCtx.drawImage(localVideo, 0, 0, width, height);
+            const dataUrl = sentimentVideoCanvas.toDataURL('image/jpeg', 0.68);
             const commaIndex = dataUrl.indexOf(',');
             if (commaIndex <= 0) {
               return;
@@ -741,7 +1693,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         }
 
         function startVideoSentimentCapture() {
-          if (!shouldAutoSentimentCapture || !config.videoEnabled) {
+          if (!shouldAutoSentimentCapture || !config.videoEnabled || isVideoMuted) {
             return;
           }
           if (sentimentVideoTimer) {
@@ -755,13 +1707,70 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           report('info', 'Video sentiment capture started (' + sentimentCaptureIntervalMs + 'ms frames)');
         }
 
+        async function restartTextSentimentCapture(reason) {
+          const chimeStarted = startChimeTranscriptCapture();
+          if (!chimeStarted) {
+            startSpeechRecognitionCapture();
+            emitSentimentChannelState('text', false, reason || 'speech-fallback-started');
+            return true;
+          }
+          emitSentimentChannelState('text', false, reason || 'channel-restart');
+          return true;
+        }
+
+        async function restartVoiceSentimentCapture(reason) {
+          if (!shouldAutoSentimentCapture || isAudioMuted || !config.audioEnabled) {
+            return false;
+          }
+
+          const restarted = startChimeVoiceMetricsCapture();
+          if (restarted) {
+            emitSentimentChannelState('voice', false, reason || 'channel-restart');
+          }
+          return restarted;
+        }
+
+        function restartVideoSentimentCapture(reason) {
+          if (!shouldAutoSentimentCapture || isVideoMuted || !config.videoEnabled) {
+            return false;
+          }
+
+          stopVideoSentimentCapture();
+          startVideoSentimentCapture();
+          const restarted = !!sentimentVideoTimer;
+          if (restarted) {
+            emitSentimentChannelState('video', false, reason || 'channel-restart');
+          }
+          return restarted;
+        }
+
+        async function restartSentimentChannelCapture(channel, reason) {
+          const normalized = String(channel || '').trim().toLowerCase();
+          if (normalized === 'voice') {
+            return restartVoiceSentimentCapture(reason);
+          }
+          if (normalized === 'video') {
+            return restartVideoSentimentCapture(reason);
+          }
+          if (normalized === 'text') {
+            return restartTextSentimentCapture(reason);
+          }
+          return false;
+        }
+
         async function startAutoSentimentCapture() {
           if (!shouldAutoSentimentCapture) {
             return;
           }
-          await startAudioSentimentCapture();
+
+          const chimeTranscriptStarted = startChimeTranscriptCapture();
+          if (!chimeTranscriptStarted) {
+            startSpeechRecognitionCapture();
+          }
+          startChimeVoiceMetricsCapture();
+
           startVideoSentimentCapture();
-          startSpeechRecognitionCapture();
+          emitSentimentChannelState('text', false, 'capture-started');
         }
 
         function iconSvg(name) {
@@ -807,6 +1816,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           }
         }
 
+        updateControlButtonsRef = updateControlButtons;
+
         async function loadChimeSdk() {
           if (window.AmazonChimeSDK || window.ChimeSDK) {
             return window.AmazonChimeSDK || window.ChimeSDK;
@@ -816,8 +1827,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           if (config.allowExternalSdkFallback) {
             scriptUrls.push(
-              'https://unpkg.com/amazon-chime-sdk-js@3.20.0/build/amazon-chime-sdk.min.js',
-              'https://cdn.jsdelivr.net/npm/amazon-chime-sdk-js@3.20.0/build/amazon-chime-sdk.min.js'
+              'https://unpkg.com/amazon-chime-sdk-js@3.26.0/build/amazon-chime-sdk.min.js',
+              'https://cdn.jsdelivr.net/npm/amazon-chime-sdk-js@3.26.0/build/amazon-chime-sdk.min.js'
             );
           }
 
@@ -852,8 +1863,8 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
 
           const moduleUrls = [
             config.sdkUrl,
-            'https://esm.run/amazon-chime-sdk-js@3.20.0',
-            'https://ga.jspm.io/npm:amazon-chime-sdk-js@3.20.0/build/index.js'
+            'https://esm.run/amazon-chime-sdk-js@3.26.0',
+            'https://ga.jspm.io/npm:amazon-chime-sdk-js@3.26.0/build/index.js'
           ];
 
           for (const moduleUrl of moduleUrls) {
@@ -876,6 +1887,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
         try {
           report('info', 'Initializing Chime media session');
           const ChimeSDK = await loadChimeSdk();
+          report('info', 'Chime SDK fingerprint: ' + resolveSdkFingerprint(ChimeSDK));
           const meetingResponse = {
             Meeting: {
               MeetingId: config.meetingId,
@@ -906,19 +1918,34 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           const deviceController = new ChimeSDK.DefaultDeviceController(logger);
           const meetingConfig = new ChimeSDK.MeetingSessionConfiguration(meetingResponse, attendeeResponse);
           const meetingSession = new ChimeSDK.DefaultMeetingSession(meetingConfig, logger, deviceController);
-          const audioVideo = meetingSession.audioVideo;
+          audioVideo = meetingSession.audioVideo;
           let localVideoBound = false;
           let localVideoStartAttempts = 0;
           let localVideoRetryTimer = null;
           let videoPublishRecoveryAttempts = 0;
           let localTileId = null;
           let remoteTileId = null;
+          let remoteParticipantPresent = false;
           availableVideoInputs = [];
           let activeVideoDeviceId = null;
           let localVideoHealthTimer = null;
 
+          function updateParticipantStatus() {
+            if (remoteTileId !== null) {
+              setStatus('Connected with participant');
+              return;
+            }
+
+            if (remoteParticipantPresent) {
+              setStatus('Connected with participant (audio only)');
+              return;
+            }
+
+            setStatus('In call lobby: waiting for the other person to join...');
+          }
+
           function ensureLocalVideoTile() {
-            if (!config.videoEnabled || localVideoBound) {
+            if (!config.videoEnabled || isVideoMuted || localVideoBound) {
               return;
             }
             if (typeof audioVideo.startLocalVideoTile === 'function') {
@@ -940,7 +1967,7 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           }
 
           async function recoverVideoPublish() {
-            if (!config.videoEnabled || localVideoBound) {
+            if (!config.videoEnabled || isVideoMuted || localVideoBound) {
               return;
             }
 
@@ -1017,8 +2044,10 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             return false;
           }
 
+          switchVideoInputRef = switchVideoInput;
+
           function scheduleLocalVideoHealthCheck() {
-            if (!config.videoEnabled) return;
+            if (!config.videoEnabled || isVideoMuted) return;
             if (localVideoHealthTimer) {
               clearTimeout(localVideoHealthTimer);
               localVideoHealthTimer = null;
@@ -1060,7 +2089,15 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
                 }
               }
               isAudioMuted = muted;
+              if (shouldAutoSentimentCapture) {
+                if (muted) {
+                  stopAutoSentimentCapture();
+                } else {
+                  await startAutoSentimentCapture();
+                }
+              }
               updateControlButtons();
+              emitSentimentChannelState('voice', muted, 'embed-control');
               report('info', 'Local audio ' + (muted ? 'muted' : 'unmuted'));
             } catch (audioToggleErr) {
               report('warn', 'Failed to toggle local audio: ' + String(audioToggleErr));
@@ -1075,14 +2112,28 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
                 }
                 localVideoBound = false;
                 isVideoMuted = true;
+                if (sentimentVideoTimer) {
+                  clearInterval(sentimentVideoTimer);
+                  sentimentVideoTimer = null;
+                }
               } else {
+                if (!activeVideoDeviceId && typeof audioVideo.listVideoInputDevices === 'function') {
+                  availableVideoInputs = await audioVideo.listVideoInputDevices();
+                  if (availableVideoInputs.length > 0) {
+                    await selectVideoInput(availableVideoInputs[0].deviceId);
+                  }
+                }
                 if (typeof audioVideo.startLocalVideoTile === 'function') {
                   audioVideo.startLocalVideoTile();
                 }
                 ensureLocalVideoTile();
                 isVideoMuted = false;
+                if (shouldAutoSentimentCapture) {
+                  startVideoSentimentCapture();
+                }
               }
               updateControlButtons();
+              emitSentimentChannelState('video', muted, 'embed-control');
               report('info', 'Local video ' + (muted ? 'stopped' : 'started'));
             } catch (videoToggleErr) {
               report('warn', 'Failed to toggle local video: ' + String(videoToggleErr));
@@ -1152,17 +2203,29 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
             });
           }
 
-          audioVideo.addObserver({
+          meetingObserver = {
             audioVideoDidStart: () => {
-              setStatus('In call lobby: waiting for the other person to join...');
-              ensureLocalVideoTile();
+              updateParticipantStatus();
+
+              if (isAudioMuted) {
+                setLocalAudioMuted(true);
+              }
+
+              if (!isVideoMuted) {
+                ensureLocalVideoTile();
+              } else if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                audioVideo.stopLocalVideoTile();
+              }
+
               report('info', 'audioVideoDidStart');
 
-              setTimeout(() => {
-                if (!localVideoBound) {
-                  recoverVideoPublish();
-                }
-              }, 1800);
+              if (!isVideoMuted) {
+                setTimeout(() => {
+                  if (!localVideoBound && !isVideoMuted) {
+                    recoverVideoPublish();
+                  }
+                }, 1800);
+              }
             },
             audioVideoDidStop: (sessionStatus) => {
               setStatus('Disconnected');
@@ -1193,6 +2256,15 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
               );
 
               if (isLocalTile) {
+                if (isVideoMuted) {
+                  if (typeof audioVideo.stopLocalVideoTile === 'function') {
+                    audioVideo.stopLocalVideoTile();
+                  }
+                  localVideoBound = false;
+                  report('info', 'Local tile update ignored because video is muted by user intent');
+                  return;
+                }
+
                 localVideoBound = true;
                 if (localVideoRetryTimer) {
                   clearTimeout(localVideoRetryTimer);
@@ -1205,11 +2277,12 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
                 scheduleLocalVideoHealthCheck();
                 report('info', 'Local video tile bound');
               } else {
+                remoteParticipantPresent = true;
                 if (remoteTileId !== tileState.tileId) {
                   remoteTileId = tileState.tileId;
                   bindAndPlayVideo(tileState.tileId, remoteVideo, 'remote');
                 }
-                setStatus('Connected with participant');
+                updateParticipantStatus();
                 report('info', 'Remote video tile bound');
               }
             },
@@ -1220,10 +2293,34 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
               }
               if (tileId === remoteTileId) {
                 remoteTileId = null;
-                setStatus('In call lobby: waiting for the other person to rejoin...');
+                updateParticipantStatus();
               }
             }
-          });
+          };
+
+          audioVideo.addObserver(meetingObserver);
+
+          if (typeof audioVideo.realtimeSubscribeToAttendeeIdPresence === 'function') {
+            audioVideo.realtimeSubscribeToAttendeeIdPresence((attendeeId, present, externalUserId, dropped) => {
+              if (!attendeeId || attendeeId === config.attendeeId) {
+                return;
+              }
+
+              remoteParticipantPresent = !!present;
+              if (!remoteParticipantPresent) {
+                remoteTileId = null;
+              }
+
+              updateParticipantStatus();
+              report(
+                'info',
+                'Presence update: attendee=' + attendeeId +
+                  ', present=' + String(!!present) +
+                  ', dropped=' + String(!!dropped) +
+                  ', externalUserId=' + String(externalUserId || ''),
+              );
+            });
+          }
 
           if (config.audioEnabled) {
             const audioInputs = await audioVideo.listAudioInputDevices();
@@ -1284,9 +2381,9 @@ class _ChimeMeetingEmbedWebState extends State<_ChimeMeetingEmbedWeb> {
           report('info', 'audioVideo.start() invoked');
           await startAutoSentimentCapture();
 
-          if (config.videoEnabled) {
+          if (config.videoEnabled && !isVideoMuted) {
             setTimeout(() => {
-              if (!localVideoBound) {
+              if (!localVideoBound && !isVideoMuted) {
                 ensureLocalVideoTile();
               }
             }, 900);

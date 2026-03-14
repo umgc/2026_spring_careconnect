@@ -19,30 +19,20 @@
         Optional<User> findByVerificationToken(String token);
         List<User> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(String name, String email);
         Optional<User> findByStripeCustomerId(String stripeCustomerId);
-        @Query("""
-        SELECT u.id FROM User u
-        JOIN Friendship f ON 
-            (f.user1.id = :userId AND f.user2.id = u.id OR  
-             f.user2.id = :userId AND f.user1.id = u.id)
-        WHERE f.status = 'CONFIRMED'
-        """)
+        @Query("SELECT u.id FROM User u " +
+               "JOIN Friendship f ON " +
+               "(f.user1.id = :userId AND f.user2.id = u.id OR " +
+               "f.user2.id = :userId AND f.user1.id = u.id) " +
+               "WHERE f.status = 'CONFIRMED'")
         List<Long> findConfirmedFriendIds(@Param("userId") Long userId);
 
-        @Query("""
-        SELECT new com.careconnect.dto.LeaderboardEntry(
-            u.id,
-            p.lastName,
-            p.firstName,
-            xp.xp,
-            xp.level,
-            u.profileImageUrl
-        )
-        FROM User u
-        JOIN XPProgress xp ON xp.userId = u.id
-        JOIN Patient p ON p.user.id = u.id
-        WHERE u.leaderboardOptIn = true
-        ORDER BY xp.xp DESC
-        """)
+        @Query("SELECT new com.careconnect.dto.LeaderboardEntry(" +
+               "u.id, p.lastName, p.firstName, xp.xp, xp.level, u.profileImageUrl) " +
+               "FROM User u " +
+               "JOIN XPProgress xp ON xp.userId = u.id " +
+               "JOIN Patient p ON p.user.id = u.id " +
+               "WHERE u.leaderboardOptIn = true " +
+               "ORDER BY xp.xp DESC")
         List<LeaderboardEntry> findLeaderboard();
 
     }

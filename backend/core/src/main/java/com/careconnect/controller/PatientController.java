@@ -28,6 +28,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +59,10 @@ public class PatientController {
 
     @Autowired
     private MedicationService medicationService;
-    
+
+    @Autowired
+    private PatientRiskService patientRiskService;
+
     // Helper method to get current user
     private User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -143,8 +147,7 @@ public class PatientController {
 
     @PutMapping("/{patientId}")
     public ResponseEntity<Patient> updatePatient(@PathVariable Long patientId, @RequestBody Patient updatedPatient) {
-        User currentUser = getCurrentUser();
-        
+        User currentUser = getCurrentUser();  
         // Family members have read-only access, cannot update
         if (currentUser.getRole() == Role.FAMILY_MEMBER) {
             throw new AppException(HttpStatus.FORBIDDEN, "Family members have read-only access");
@@ -156,6 +159,69 @@ public class PatientController {
         
         Patient updatedResult = patientService.updatePatient(patientId, updatedPatient);
         return ResponseEntity.ok(updatedResult);
+    }
+
+    // --- Known Risks (client risk flags) ---
+    @GetMapping("/{patientId}/risks")
+    @Operation(summary = "Get flagged risks for a patient", description = "Returns all currently flagged risks for the patient (client)")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "List of flagged risks"),
+        @ApiResponse(responseCode = "403", description = "Access denied"),
+        @ApiResponse(responseCode = "404", description = "Patient not found")
+    })
+    public ResponseEntity<List<PatientRiskResponseDto>> getPatientRisks(@PathVariable Long patientId) {
+        User currentUser = getCurrentUser();
+        Patient patient = patientService.getPatientById(patientId);
+        validatePatientAccess(patient.getUser().getId(), currentUser);
+        List<PatientRiskResponseDto> list = patientRiskService.getFlaggedRisksForPatient(patientId).stream()
+                .map(PatientRiskResponseDto::from)
+                .toList();
+        return ResponseEntity.ok(list);
+    }
+
+    @PostMapping("/{patientId}/risks")
+    @Operation(summary = "Flag a risk for a patient", description = "Caregiver flags a risk type for the client. Body: { \"riskTypeId\": <id> }")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "Risk flagged"),
+        @ApiResponse(responseCode = "403", description = "Access denied"),
+        @ApiResponse(responseCode = "404", description = "Patient or risk type not found"),
+        @ApiResponse(responseCode = "409", description = "Risk already flagged for this patient")
+    })
+    public ResponseEntity<PatientRiskResponseDto> flagPatientRisk(
+            @PathVariable Long patientId,
+            @RequestBody FlagRiskRequestDto body) {
+        User currentUser = getCurrentUser();
+        if (currentUser.getRole() == Role.FAMILY_MEMBER) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Family members cannot flag risks");
+        }
+        Patient patient = patientService.getPatientById(patientId);
+        validatePatientAccess(patient.getUser().getId(), currentUser);
+        if (body.getRiskTypeId() == null) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "riskTypeId is required");
+        }
+        PatientRiskResponseDto dto = PatientRiskResponseDto.from(
+                patientRiskService.flagRisk(patientId, body.getRiskTypeId(), currentUser.getId()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    @DeleteMapping("/{patientId}/risks/{riskId}")
+    @Operation(summary = "Unflag a risk for a patient", description = "Removes the risk flag for the client")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Risk unflagged"),
+        @ApiResponse(responseCode = "403", description = "Access denied"),
+        @ApiResponse(responseCode = "404", description = "Patient or risk flag not found")
+    })
+    public ResponseEntity<Void> unflagPatientRisk(
+            @PathVariable Long patientId,
+            @PathVariable Long riskId) {
+        User currentUser = getCurrentUser();
+        if (currentUser.getRole() == Role.FAMILY_MEMBER) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Family members cannot unflag risks");
+        }
+        Patient patient = patientService.getPatientById(patientId);
+        validatePatientAccess(patient.getUser().getId(), currentUser);
+        patientRiskService.unflagRisk(patientId, riskId, currentUser.getId());
+        return ResponseEntity.noContent().build();
     }
 
     // 3. Get all family members for a patient
@@ -289,30 +355,26 @@ public class PatientController {
     @PostMapping("/mood-pain-log")
     @Operation(
         summary = "📊 Create mood & pain log entry",
-        description = """
-            Create a new mood and pain log entry for the current patient.
-            
-            **Requirements:**
-            - Must be authenticated as a PATIENT
-            - Mood value: 1-10 scale (1 = worst, 10 = best)
-            - Pain value: 0-10 scale:
-              • 0 = No pain
-              • 1 = Pain is very mild, barely noticeable. Most of the time you don't think about it
-              • 2 = Minor pain. It's annoying. You may have sharp pain now and then
-              • 3 = Noticeable pain. It may distract you, but you can get used to it
-              • 4 = Moderate pain. If you are involved in an activity, you're able to ignore the pain for a while. But it is still distracting
-              • 5 = Moderately strong pain. You can't ignore it for more than a few minutes. But, with effort, you can still work or do some social activities
-              • 6 = Moderately stronger pain. You avoid some of your normal daily activities. You have trouble concentrating
-              • 7 = Strong pain. It keeps you from doing normal activities
-              • 8 = Very strong pain. It's hard to do anything at all
-              • 9 = Pain that is very hard to tolerate. You can't carry on a conversation
-              • 10 = Worst pain possible
-            - Timestamp cannot be in the future
-            
-            **Usage:**
-            This endpoint allows patients to track their daily mood and pain levels,
-            providing valuable data for caregivers and healthcare providers.
-            """,
+        description = "Create a new mood and pain log entry for the current patient.\n\n"
+            + "**Requirements:**\n"
+            + "- Must be authenticated as a PATIENT\n"
+            + "- Mood value: 1-10 scale (1 = worst, 10 = best)\n"
+            + "- Pain value: 0-10 scale:\n"
+            + "  0 = No pain\n"
+            + "  1 = Pain is very mild, barely noticeable. Most of the time you don't think about it\n"
+            + "  2 = Minor pain. It's annoying. You may have sharp pain now and then\n"
+            + "  3 = Noticeable pain. It may distract you, but you can get used to it\n"
+            + "  4 = Moderate pain. If you are involved in an activity, you're able to ignore the pain for a while. But it is still distracting\n"
+            + "  5 = Moderately strong pain. You can't ignore it for more than a few minutes. But, with effort, you can still work or do some social activities\n"
+            + "  6 = Moderately stronger pain. You avoid some of your normal daily activities. You have trouble concentrating\n"
+            + "  7 = Strong pain. It keeps you from doing normal activities\n"
+            + "  8 = Very strong pain. It's hard to do anything at all\n"
+            + "  9 = Pain that is very hard to tolerate. You can't carry on a conversation\n"
+            + "  10 = Worst pain possible\n"
+            + "- Timestamp cannot be in the future\n\n"
+            + "**Usage:**\n"
+            + "This endpoint allows patients to track their daily mood and pain levels, "
+            + "providing valuable data for caregivers and healthcare providers.",
         tags = {"Patient Management", "📊 Mood & Pain Tracking"}
     )
     @ApiResponses({
@@ -453,16 +515,13 @@ public class PatientController {
     @GetMapping("/mood-pain-log/analytics")
     @Operation(
         summary = "📈 Get mood & pain analytics",
-        description = """
-            Get detailed analytics for mood and pain data including trends, averages, and time series data.
-            
-            **Features:**
-            - Average mood and pain levels over the period
-            - Trend analysis (improving/declining)
-            - Min/max values
-            - Entry counts
-            - Time series data for charts
-            """,
+        description = "Get detailed analytics for mood and pain data including trends, averages, and time series data.\n\n"
+            + "**Features:**\n"
+            + "- Average mood and pain levels over the period\n"
+            + "- Trend analysis (improving/declining)\n"
+            + "- Min/max values\n"
+            + "- Entry counts\n"
+            + "- Time series data for charts",
         tags = {"Patient Management", "📊 Mood & Pain Tracking"}
     )
     public ResponseEntity<MoodPainAnalyticsDTO> getMoodPainAnalytics(
@@ -700,7 +759,8 @@ public class PatientController {
                 medicationDTO.startDate(),
                 medicationDTO.endDate(),
                 medicationDTO.notes(),
-                true // Set as active by default
+                true, // Set as active by default
+                null
         );
 
         MedicationDTO createdMedication = medicationService.createMedication(medicationWithPatientId);
@@ -731,6 +791,60 @@ public class PatientController {
 
         // Deactivate the medication (soft delete)
         medicationService.deactivateMedication(patientID, medicationId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{patientID}/medications/{medicationId}/last-taken")
+    @Operation(summary = "Mark medication as taken",
+            description = "Persist last taken timestamp for medication reminder tracking")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Medication taken time updated successfully"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Patient or medication not found")
+    })
+    public ResponseEntity<MedicationDTO> updateMedicationLastTaken(
+            @PathVariable Long patientID,
+            @PathVariable Long medicationId,
+            @RequestBody(required = false) MedicationLastTakenUpdateDTO request) {
+        User currentUser = getCurrentUser();
+
+        // Family members have read-only access, cannot modify medications
+        if (currentUser.getRole() == Role.FAMILY_MEMBER) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Family members have read-only access");
+        }
+
+        Patient patient = patientService.getPatientById(patientID);
+        validatePatientAccess(patient.getUser().getId(), currentUser);
+
+        final Instant lastTaken = request != null && request.lastTaken() != null
+                ? request.lastTaken()
+                : Instant.now();
+        MedicationDTO updated = medicationService.updateMedicationLastTaken(patientID, medicationId, lastTaken);
+        return ResponseEntity.ok(updated);
+    }
+
+    @DeleteMapping("/{patientID}/medications/{medicationId}/last-taken")
+    @Operation(summary = "Clear medication taken status",
+            description = "Clear persisted last taken timestamp for medication reminder tracking")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Medication taken status cleared successfully"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Patient or medication not found")
+    })
+    public ResponseEntity<Void> clearMedicationLastTaken(
+            @PathVariable Long patientID,
+            @PathVariable Long medicationId) {
+        User currentUser = getCurrentUser();
+
+        // Family members have read-only access, cannot modify medications
+        if (currentUser.getRole() == Role.FAMILY_MEMBER) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Family members have read-only access");
+        }
+
+        Patient patient = patientService.getPatientById(patientID);
+        validatePatientAccess(patient.getUser().getId(), currentUser);
+
+        medicationService.clearMedicationLastTaken(patientID, medicationId);
         return ResponseEntity.noContent().build();
     }
 

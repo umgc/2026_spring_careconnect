@@ -5,11 +5,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Base64;
-import java.util.Date;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 class JwtTokenProviderTest {
@@ -19,13 +14,13 @@ class JwtTokenProviderTest {
     private final long testExpirationMs = 3600000; // 1 hour
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         jwtTokenProvider = new JwtTokenProvider(testSecret, testExpirationMs);
     }
 
     @Test
     @DisplayName("Should create valid token with correct claims")
-    void createToken_ShouldCreateValidToken() {
+    void createToken_ShouldCreateValidToken() throws Exception {
         // Given
         String email = "test@example.com";
         Role role = Role.PATIENT;
@@ -42,7 +37,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should validate valid token successfully")
-    void validateToken_ShouldReturnTrueForValidToken() {
+    void validateToken_ShouldReturnTrueForValidToken() throws Exception {
         // Given
         String email = "user@test.com";
         Role role = Role.ADMIN;
@@ -54,7 +49,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should reject invalid token")
-    void validateToken_ShouldReturnFalseForInvalidToken() {
+    void validateToken_ShouldReturnFalseForInvalidToken() throws Exception {
         // Given
         String invalidToken = "invalid.jwt.token";
 
@@ -64,7 +59,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should reject null or empty token")
-    void validateToken_ShouldReturnFalseForNullOrEmptyToken() {
+    void validateToken_ShouldReturnFalseForNullOrEmptyToken() throws Exception {
         // When & Then
         assertFalse(jwtTokenProvider.validateToken(null));
         assertFalse(jwtTokenProvider.validateToken(""));
@@ -73,7 +68,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should extract username from token")
-    void getUsername_ShouldReturnCorrectUsername() {
+    void getUsername_ShouldReturnCorrectUsername() throws Exception {
         // Given
         String email = "patient@example.com";
         Role role = Role.PATIENT;
@@ -88,7 +83,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should extract role from token")
-    void getRole_ShouldReturnCorrectRole() {
+    void getRole_ShouldReturnCorrectRole() throws Exception {
         // Given
         String email = "caregiver@test.com";
         Role role = Role.CAREGIVER;
@@ -103,7 +98,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should extract claims from token")
-    void getClaims_ShouldReturnClaims() {
+    void getClaims_ShouldReturnClaims() throws Exception {
         // Given
         String email = "admin@test.com";
         Role role = Role.ADMIN;
@@ -123,7 +118,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("getEmailFromToken should return same as getUsername")
-    void getEmailFromToken_ShouldReturnSameAsGetUsername() {
+    void getEmailFromToken_ShouldReturnSameAsGetUsername() throws Exception {
         // Given
         String email = "family@test.com";
         Role role = Role.FAMILY_MEMBER;
@@ -140,7 +135,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should determine if token needs renewal when close to expiration")
-    void needsRenewal_ShouldReturnTrueWhenCloseToExpiration() {
+    void needsRenewal_ShouldReturnTrueWhenCloseToExpiration() throws Exception {
         // Given - create a token that expires in 10 seconds
         JwtTokenProvider shortLivedProvider = new JwtTokenProvider(testSecret, 10000); // 10 seconds
         String email = "test@example.com";
@@ -159,7 +154,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should not need renewal for fresh token")
-    void needsRenewal_ShouldReturnFalseForFreshToken() {
+    void needsRenewal_ShouldReturnFalseForFreshToken() throws Exception {
         // Given
         String email = "fresh@test.com";
         Role role = Role.PATIENT;
@@ -175,7 +170,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should refresh token with new timestamps")
-    void refresh_ShouldCreateNewTokenWithUpdatedExpiration() {
+    void refresh_ShouldCreateNewTokenWithUpdatedExpiration() throws Exception {
         // Given
         String email = "refresh@test.com";
         Role role = Role.ADMIN;
@@ -217,7 +212,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should handle all role types correctly")
-    void createToken_ShouldHandleAllRoleTypes() {
+    void createToken_ShouldHandleAllRoleTypes() throws Exception {
         String email = "test@example.com";
 
         for (Role role : Role.values()) {
@@ -230,7 +225,7 @@ class JwtTokenProviderTest {
 
     @Test
     @DisplayName("Should reject token with wrong secret")
-    void validateToken_ShouldRejectTokenWithWrongSecret() {
+    void validateToken_ShouldRejectTokenWithWrongSecret() throws Exception {
         // Given - create token with one provider
         String email = "test@example.com";
         Role role = Role.PATIENT;

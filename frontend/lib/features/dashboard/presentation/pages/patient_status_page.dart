@@ -25,10 +25,31 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
   bool loading = true;
   String? error;
 
+  /// Flagged risk names for the persistent alert banner (from GET patient or GET risks).
+  List<String> _flaggedRiskNames = [];
+
+  // In-Home personalization fields
+  final _likesController = TextEditingController();
+  final _dislikesController = TextEditingController();
+  final _habitsController = TextEditingController();
+  final _phobiasController = TextEditingController();
+  String? _preferredCommunicationMethod; // verbal | visual | written | gesture
+  bool _isSavingPersonalization = false;
+  bool _isEditingPersonalization = false;
+
   @override
   void initState() {
     super.initState();
     fetchData();
+  }
+
+  @override
+  void dispose() {
+    _likesController.dispose();
+    _dislikesController.dispose();
+    _habitsController.dispose();
+    _phobiasController.dispose();
+    super.dispose();
   }
 
   Future<void> fetchData() async {
@@ -123,6 +144,54 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
 
       patient = Patient.fromJson(patientData);
 
+      // Extract flagged risks for the persistent banner
+      if (user.role.toUpperCase() == 'CAREGIVER' ||
+          user.role.toUpperCase() == 'FAMILY_LINK') {
+        final raw = responseData['flaggedRisks'] ?? responseData['flagged_risks'];
+        if (raw is List) {
+          _flaggedRiskNames = raw
+              .map((e) => e is Map ? (e['riskTypeName'] as String?) : null)
+              .whereType<String>()
+              .toList();
+        } else {
+          // Fallback: fetch risks from API if response shape differs or backend omits field
+          try {
+            final risksRes = await ApiService.getPatientRisks(patientId);
+            if (risksRes.statusCode == 200) {
+              final list = json.decode(risksRes.body) as List?;
+              _flaggedRiskNames = list
+                  ?.map((e) =>
+                      e is Map ? (e['riskTypeName'] as String?) : null)
+                  .whereType<String>()
+                  .toList() ??
+                  [];
+            } else {
+              _flaggedRiskNames = [];
+            }
+          } catch (_) {
+            _flaggedRiskNames = [];
+          }
+        }
+      } else {
+        // Patient view: fetch risks from API
+        try {
+          final risksRes = await ApiService.getPatientRisks(patientId);
+          if (risksRes.statusCode == 200) {
+            final list = json.decode(risksRes.body) as List?;
+            _flaggedRiskNames = list
+                ?.map((e) =>
+                    e is Map ? (e['riskTypeName'] as String?) : null)
+                .whereType<String>()
+                .toList() ??
+                [];
+          } else {
+            _flaggedRiskNames = [];
+          }
+        } catch (_) {
+          _flaggedRiskNames = [];
+        }
+      }
+
       // Fetch vitals summary - always use analytics endpoint
       final vitalsUrl =
           '${ApiConstants.analytics}/dashboard?patientId=$patientId&days=7';
@@ -148,6 +217,8 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
       final vitalsData = json.decode(vitalsRes.body);
       vitals = DashboardAnalytics.fromJson(vitalsData);
 
+      _populatePersonalizationControllers();
+
       setState(() {
         loading = false;
       });
@@ -158,6 +229,302 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
         loading = false;
       });
     }
+  }
+
+  void _populatePersonalizationControllers() {
+    final p = patient;
+    if (p == null) return;
+
+    String? read(String? v) => (v == null || v.isEmpty) ? null : v;
+
+    _likesController.text = read(p.likes) ?? '';
+    _dislikesController.text = read(p.dislikes) ?? '';
+    _habitsController.text = read(p.habits) ?? '';
+    _phobiasController.text = read(p.phobias) ?? '';
+
+    final normalized =
+        (p.preferredCommunicationMethod ?? '').trim().toLowerCase();
+    const allowed = {'verbal', 'visual', 'written', 'gesture'};
+    _preferredCommunicationMethod =
+        allowed.contains(normalized) ? normalized : null;
+  }
+
+  Future<void> _saveInHomePersonalization() async {
+    final p = patient;
+    if (p == null) return;
+
+    setState(() => _isSavingPersonalization = true);
+    try {
+      final payload = <String, dynamic>{
+        'likes': _likesController.text.trim(),
+        'dislikes': _dislikesController.text.trim(),
+        'habits': _habitsController.text.trim(),
+        'phobias': _phobiasController.text.trim(),
+        'preferredCommunicationMethod': _preferredCommunicationMethod,
+      };
+
+      final resp = await ApiService.updatePatientProfile(p.id, payload);
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final data = (body['data'] ?? body) as Map<String, dynamic>;
+
+        setState(() {
+          patient = p.copyWith(
+            likes: data['likes'] as String?,
+            dislikes: data['dislikes'] as String?,
+            habits: data['habits'] as String?,
+            phobias: data['phobias'] as String?,
+            preferredCommunicationMethod:
+                data['preferredCommunicationMethod'] as String?,
+          );
+        });
+        _populatePersonalizationControllers();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Personalization saved')),
+          );
+          setState(() {
+            _isEditingPersonalization = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Save failed: ${resp.statusCode}'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingPersonalization = false);
+      }
+    }
+  }
+
+  Widget _buildInHomePersonalizationSection() {
+    final p = patient;
+    if (p == null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final canEdit = true; // caregivers typically see this screen
+
+    InputDecoration deco(String label) => InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        );
+
+    Widget row({
+      required IconData icon,
+      required String label,
+      required TextEditingController controller,
+    }) {
+      if (_isEditingPersonalization) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 10, right: 8),
+              child: Icon(icon,
+                  size: 20, color: theme.colorScheme.primary.withOpacity(0.8)),
+            ),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                enabled: canEdit,
+                maxLines: 2,
+                decoration: deco(label),
+              ),
+            ),
+          ],
+        );
+      } else {
+        final value = controller.text.trim();
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 8),
+              child: Icon(icon,
+                  size: 20, color: theme.colorScheme.primary.withOpacity(0.8)),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value.isEmpty ? 'Not set' : value,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      }
+    }
+
+    return _buildInfoSection(
+      'Personalization',
+      Icons.favorite_outline,
+      [],
+      customContent: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Personalization',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+                    if (canEdit)
+                      ElevatedButton.icon(
+                        onPressed: _isSavingPersonalization
+                            ? null
+                            : () {
+                                if (_isEditingPersonalization) {
+                                  _saveInHomePersonalization();
+                                } else {
+                                  setState(() {
+                                    _isEditingPersonalization = true;
+                                  });
+                                }
+                              },
+                        icon: _isSavingPersonalization
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Icon(
+                                _isEditingPersonalization
+                                    ? Icons.check
+                                    : Icons.edit,
+                              ),
+                        label: Text(
+                          _isEditingPersonalization ? 'Save' : 'Edit',
+                        ),
+                      ),
+            ],
+          ),
+          const SizedBox(height: 12),
+                row(
+                  icon: Icons.thumb_up_alt_outlined,
+                  label: 'Likes',
+                  controller: _likesController,
+                ),
+                const SizedBox(height: 12),
+                row(
+                  icon: Icons.thumb_down_alt_outlined,
+                  label: 'Dislikes',
+                  controller: _dislikesController,
+                ),
+                const SizedBox(height: 12),
+                row(
+                  icon: Icons.repeat_rounded,
+                  label: 'Habits',
+                  controller: _habitsController,
+                ),
+                const SizedBox(height: 12),
+                row(
+                  icon: Icons.warning_amber_outlined,
+                  label: 'Phobias',
+                  controller: _phobiasController,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, right: 8),
+                      child: Icon(
+                        Icons.chat_bubble_outline,
+                        size: 20,
+                        color: theme.colorScheme.primary.withOpacity(0.8),
+                      ),
+                    ),
+                    Expanded(
+                      child: _isEditingPersonalization
+                          ? DropdownButtonFormField<String>(
+                              value: _preferredCommunicationMethod,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'verbal',
+                                  child: Text('Verbal'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'visual',
+                                  child: Text('Visual'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'written',
+                                  child: Text('Written'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'gesture',
+                                  child: Text('Gesture'),
+                                ),
+                              ],
+                              onChanged: (v) => setState(
+                                        () =>
+                                            _preferredCommunicationMethod = v,
+                                      ),
+                              decoration:
+                                  deco('Preferred communication method'),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Preferred communication method',
+                                  style:
+                                      theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  (_preferredCommunicationMethod ?? '')
+                                          .isEmpty
+                                      ? 'Not set'
+                                      : _preferredCommunicationMethod!
+                                          .substring(0, 1)
+                                          .toUpperCase() +
+                                          _preferredCommunicationMethod!
+                                              .substring(1),
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+        ],
+      ),
+    );
   }
 
   Widget _buildInfoSection(
@@ -376,6 +743,36 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
     );
   }
 
+  /// Persistent risk alert banner shown at top of dashboard when client has flagged risks.
+  Widget _buildRiskBanner() {
+    if (_flaggedRiskNames.isEmpty) return const SizedBox.shrink();
+    final names = _flaggedRiskNames.join(', ');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      color: Colors.red.shade700,
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 24),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Known Risks: $names',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
@@ -388,10 +785,30 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBarHelper.createAppBar(context, title: 'Patient Status'),
       drawer: const CommonDrawer(currentRoute: '/patient'),
-      body: SingleChildScrollView(
-        child: Card(
-          margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          elevation: 3,
+      body: _buildDashboardBody(context, isMobile, isCaregiver),
+    );
+  }
+
+  Widget _buildDashboardBody(
+      BuildContext context, bool isMobile, bool isCaregiver) {
+    if (loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(error!, textAlign: TextAlign.center),
+        ),
+      );
+    }
+    if (patient == null) {
+      return const Center(child: Text('No patient data'));
+    }
+    final scrollContent = SingleChildScrollView(
+      child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        elevation: 3,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           padding: EdgeInsets.all(isMobile ? 16 : 24),
@@ -509,6 +926,9 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
                           ]),
                           const SizedBox(height: 16),
                         ],
+                        // Personalization Section (In-Home)
+                        _buildInHomePersonalizationSection(),
+                        const SizedBox(height: 16),
                         // Medical Information Section
                         _buildMedicalInfoSection(),
                         const SizedBox(height: 16),
@@ -564,6 +984,9 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
                           ]),
                           const SizedBox(height: 24),
                         ],
+                        // Personalization Section (In-Home)
+                        _buildInHomePersonalizationSection(),
+                        const SizedBox(height: 24),
                         // Medical Information Section
                         _buildMedicalInfoSection(),
                         const SizedBox(height: 24),
@@ -593,9 +1016,19 @@ class _PatientStatusPageState extends State<PatientStatusPage> {
           ),
         ),
       ),
-    )
-  );
-}
+    );
+
+    if (_flaggedRiskNames.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildRiskBanner(),
+          Expanded(child: scrollContent),
+        ],
+      );
+    }
+    return scrollContent;
+  }
 
   Widget buildVitalsSummary(DashboardAnalytics? vitals) {
     if (vitals == null) {

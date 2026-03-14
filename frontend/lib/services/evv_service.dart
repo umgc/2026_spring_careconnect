@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../features/dashboard/models/patient_model.dart';
+import 'auth_token_manager.dart';
 
 import 'package:care_connect_app/services/api_service.dart';
 
@@ -162,13 +163,27 @@ class EvvService {
     }
   }
 
-  // Get headers (no authentication required since backend was modified)
+  // Get headers with JWT authentication
   Future<Map<String, String>> _getHeaders() async {
-    print('🔍 EVV Service: Using headers without authentication (backend modified)');
-    
-    return {
+    final headers = <String, String>{
       'Content-Type': 'application/json',
     };
+
+    try {
+      // Retrieve stored JWT token
+      final jwtToken = await AuthTokenManager.getJwtToken();
+      
+      if (jwtToken != null && jwtToken.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $jwtToken';
+        print('✅ EVV Service: JWT token added to headers');
+      } else {
+        print('⚠️  EVV Service: No JWT token found. Authentication may fail.');
+      }
+    } catch (e) {
+      print('❌ EVV Service: Error retrieving JWT token: $e');
+    }
+
+    return headers;
   }
 
 
@@ -209,6 +224,10 @@ class EvvService {
       'stateCode': request.stateCode,
       'deviceInfo': deviceInfo,
       'scheduledVisitId': request.scheduledVisitId,
+      if (request.checkinNoGpsReason != null) 'checkinNoGpsReason': request.checkinNoGpsReason,
+      if (request.checkoutNoGpsReason != null) 'checkoutNoGpsReason': request.checkoutNoGpsReason,
+      if (request.checkinAccuracyM != null) 'checkinAccuracyM': request.checkinAccuracyM,
+      if (request.checkoutAccuracyM != null) 'checkoutAccuracyM': request.checkoutAccuracyM,
     });
     
     print('📤 EVV Service: Request body: $body');
@@ -704,6 +723,12 @@ class EvvRecordRequest {
   // Optional link to scheduled visit
   final int? scheduledVisitId;
 
+  // EVV location detail fields
+  final String? checkinNoGpsReason;
+  final String? checkoutNoGpsReason;
+  final double? checkinAccuracyM;
+  final double? checkoutAccuracyM;
+
   EvvRecordRequest({
     required this.serviceType,
     required this.patientId,
@@ -722,6 +747,10 @@ class EvvRecordRequest {
     this.checkoutLocationSource,
     required this.stateCode,
     this.scheduledVisitId,
+    this.checkinNoGpsReason,
+    this.checkoutNoGpsReason,
+    this.checkinAccuracyM,
+    this.checkoutAccuracyM,
   });
 }
 

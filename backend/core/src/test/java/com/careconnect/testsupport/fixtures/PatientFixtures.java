@@ -42,7 +42,7 @@ public final class PatientFixtures {
      * </p>
      */
     public static Patient patientWithId(Long id) {
-        Patient patient = basicPatient();
+        final Patient patient = basicPatient();
         patient.setId(id);
         return patient;
     }

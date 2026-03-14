@@ -15,23 +15,19 @@ public interface SymptomEntryRepository extends JpaRepository<SymptomEntry, Long
     List<SymptomEntry> findByPatientIdOrderByTakenAtDesc(Long patientId);
 
     // Already existing analytics queries:
-    @Query("""
-           SELECT COUNT(s)
-           FROM   SymptomEntry s
-           WHERE  s.patient.id = :patientId
-             AND  s.takenAt BETWEEN :from AND :to
-             AND  s.completed = true
-           """)
+    @Query("SELECT COUNT(s) " +
+           "FROM SymptomEntry s " +
+           "WHERE s.patient.id = :patientId " +
+           "AND s.takenAt BETWEEN :from AND :to " +
+           "AND s.completed = true")
     long countCompleted(@Param("patientId") Long patientId,
                         @Param("from") Instant from,
                         @Param("to") Instant to);
 
-    @Query("""
-           SELECT COUNT(s)
-           FROM   SymptomEntry s
-           WHERE  s.patient.id = :patientId
-             AND  s.takenAt BETWEEN :from AND :to
-           """)
+    @Query("SELECT COUNT(s) " +
+           "FROM SymptomEntry s " +
+           "WHERE s.patient.id = :patientId " +
+           "AND s.takenAt BETWEEN :from AND :to")
     long countTotal(@Param("patientId") Long patientId,
                     @Param("from") Instant from,
                     @Param("to") Instant to);

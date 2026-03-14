@@ -34,10 +34,32 @@ class _CheckinLocationPageState extends State<CheckinLocationPage> {
   bool _isGettingLocation = false;
   Position? _currentPosition;
 
+  // EVV federal compliance: track GPS failures and capture reason
+  bool _gpsAttemptFailed = false;
+  String? _selectedNoGpsReason;
+  final TextEditingController _manualAddressController = TextEditingController();
+  bool _showManualEntry = false;
+
+  static const List<Map<String, String>> _noGpsReasons = [
+    {'value': 'HOME_VISIT_ADDRESS_USED', 'label': 'Home visit – patient address used'},
+    {'value': 'GPS_SERVICE_DISABLED',   'label': 'GPS/location service disabled'},
+    {'value': 'PERMISSION_DENIED',       'label': 'Location permission not granted'},
+    {'value': 'GPS_TIMEOUT',             'label': 'GPS signal timed out'},
+    {'value': 'INDOOR_LOCATION',         'label': 'Indoors – no GPS signal'},
+    {'value': 'COMMUNITY_VISIT',         'label': 'Community or facility visit'},
+    {'value': 'OTHER',                   'label': 'Other'},
+  ];
+
   @override
   void initState() {
     super.initState();
     _loadPatientDetails();
+  }
+
+  @override
+  void dispose() {
+    _manualAddressController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPatientDetails() async {
@@ -110,6 +132,10 @@ class _CheckinLocationPageState extends State<CheckinLocationPage> {
       // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
+        setState(() {
+          _isGettingLocation = false;
+          _gpsAttemptFailed = true;
+        });
         _showLocationError('Location services are disabled. Please enable location services in your device settings.');
         return;
       }
@@ -119,12 +145,20 @@ class _CheckinLocationPageState extends State<CheckinLocationPage> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
+          setState(() {
+            _isGettingLocation = false;
+            _gpsAttemptFailed = true;
+          });
           _showLocationError('Location permissions are denied. Please enable location permissions to use GPS location.');
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _isGettingLocation = false;
+          _gpsAttemptFailed = true;
+        });
         _showLocationError('Location permissions are permanently denied. Please enable location permissions in your device settings.');
         return;
       }
@@ -140,24 +174,113 @@ class _CheckinLocationPageState extends State<CheckinLocationPage> {
         _isGettingLocation = false;
       });
 
-      // Navigate to Visit in Progress with GPS coordinates
+      // Navigate to Visit in Progress with GPS coordinates and accuracy
       _navigateToVisitProgress(
-        locationType: 'gps',
+        locationType: 'GPS',
         latitude: position.latitude,
         longitude: position.longitude,
+        accuracyM: position.accuracy,
       );
 
     } catch (e) {
       setState(() {
         _isGettingLocation = false;
+        _gpsAttemptFailed = true;
       });
-      _showLocationError('Failed to get current location: ${e.toString()}');
+      _showLocationError('Failed to get current location: ${e.toString()}. Please select an alternative location option.');
     }
   }
 
   void _usePatientAddress() {
+    _showNoGpsReasonDialog(
+      defaultReason: _gpsAttemptFailed ? null : 'HOME_VISIT_ADDRESS_USED',
+      onConfirm: (reason) {
+        _navigateToVisitProgress(
+          locationType: 'PATIENT_ADDRESS',
+          noGpsReason: reason,
+        );
+      },
+    );
+  }
+
+  void _useManualAddress() {
+    if (_manualAddressController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter an address before continuing.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    if (_selectedNoGpsReason == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a reason for manual location entry.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     _navigateToVisitProgress(
-      locationType: 'patient_address',
+      locationType: 'MANUAL',
+      noGpsReason: _selectedNoGpsReason,
+      manualAddress: _manualAddressController.text.trim(),
+    );
+  }
+
+  void _showNoGpsReasonDialog({
+    String? defaultReason,
+    required void Function(String reason) onConfirm,
+  }) {
+    String? selected = defaultReason;
+    showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Location Reason Required'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Federal EVV regulations require a reason when GPS is not used. Please select the applicable reason:',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: selected,
+                decoration: const InputDecoration(
+                  labelText: 'Reason *',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: _noGpsReasons.map((r) => DropdownMenuItem(
+                  value: r['value'],
+                  child: Text(r['label']!, style: const TextStyle(fontSize: 13)),
+                )).toList(),
+                onChanged: (v) => setDialogState(() => selected = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selected == null
+                  ? null
+                  : () {
+                      Navigator.of(ctx).pop();
+                      onConfirm(selected!);
+                    },
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -165,6 +288,9 @@ class _CheckinLocationPageState extends State<CheckinLocationPage> {
     required String locationType,
     double? latitude,
     double? longitude,
+    double? accuracyM,
+    String? noGpsReason,
+    String? manualAddress,
   }) {
     final queryParams = {
       'patientId': widget.patientId.toString(),
@@ -176,7 +302,15 @@ class _CheckinLocationPageState extends State<CheckinLocationPage> {
       queryParams['latitude'] = latitude.toString();
       queryParams['longitude'] = longitude.toString();
     }
-    
+    if (accuracyM != null) {
+      queryParams['accuracyM'] = accuracyM.toString();
+    }
+    if (noGpsReason != null) {
+      queryParams['noGpsReason'] = noGpsReason;
+    }
+    if (manualAddress != null) {
+      queryParams['manualAddress'] = manualAddress;
+    }
     if (widget.scheduledVisitId != null) {
       queryParams['scheduledVisitId'] = widget.scheduledVisitId.toString();
     }
@@ -400,6 +534,91 @@ class _CheckinLocationPageState extends State<CheckinLocationPage> {
             onPressed: _getCurrentLocation,
             isLoading: _isGettingLocation,
             isPrimary: false,
+          ),
+          const SizedBox(height: 16),
+
+          // Enter Manual Location Card
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.edit_location_alt, color: Colors.orange[600]!, size: 24),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Enter Manual Location',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Use when GPS is unavailable. Enter the visit address manually.',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _manualAddressController,
+                  decoration: InputDecoration(
+                    labelText: 'Visit Address',
+                    hintText: '123 Main St, City, State 12345',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    prefixIcon: const Icon(Icons.home_work),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _selectedNoGpsReason,
+                  decoration: InputDecoration(
+                    labelText: 'Reason GPS Not Used',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    prefixIcon: const Icon(Icons.info_outline),
+                  ),
+                  items: _noGpsReasons
+                      .map((r) => DropdownMenuItem<String>(
+                            value: r['value'],
+                            child: Text(r['label']!),
+                          ))
+                      .toList(),
+                  onChanged: (val) => setState(() => _selectedNoGpsReason = val),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _useManualAddress,
+                    icon: const Icon(Icons.check_circle),
+                    label: const Text('Use Manual Address'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange[600],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
 

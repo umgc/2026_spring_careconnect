@@ -79,6 +79,7 @@ public class MedicationService {
                 .startDate(medicationDTO.startDate())
                 .endDate(medicationDTO.endDate())
                 .notes(medicationDTO.notes())
+                .lastTaken(medicationDTO.lastTaken())
                 .isActive(medicationDTO.isActive() != null ? medicationDTO.isActive() : false)
                 .approvalStatus("PENDING")
                 .createdAt(Instant.now())
@@ -107,6 +108,7 @@ public class MedicationService {
                 .startDate(medicationDTO.startDate())
                 .endDate(medicationDTO.endDate())
                 .notes(medicationDTO.notes())
+                .lastTaken(medicationDTO.lastTaken())
                 .isActive(false) // always start pending
                 .build();
 
@@ -132,6 +134,7 @@ public class MedicationService {
         if (medicationDTO.endDate() != null) existing.setEndDate(medicationDTO.endDate());
         if (medicationDTO.notes() != null) existing.setNotes(medicationDTO.notes());
         if (medicationDTO.isActive() != null) existing.setIsActive(medicationDTO.isActive());
+        if (medicationDTO.lastTaken() != null) existing.setLastTaken(medicationDTO.lastTaken());
 
         existing.setUpdatedAt(Instant.now());
         Medication updated = medicationRepository.save(existing);
@@ -227,6 +230,32 @@ public class MedicationService {
         );
     }
 
+    /**
+     * Persist when a medication was taken for dose-window tracking.
+     */
+    @Transactional
+    public MedicationDTO updateMedicationLastTaken(Long patientId, Long medicationId, Instant lastTaken) {
+        Medication medication = medicationRepository.findById(medicationId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Medication not found with id: " + medicationId));
+
+        if (!medication.getPatient().getId().equals(patientId)) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Medication does not belong to patient");
+        }
+
+        medication.setLastTaken(lastTaken);
+        medication.setUpdatedAt(Instant.now());
+        Medication updated = medicationRepository.save(medication);
+        return mapToDTO(updated);
+    }
+
+    /**
+     * Clear persisted taken state for a medication.
+     */
+    @Transactional
+    public MedicationDTO clearMedicationLastTaken(Long patientId, Long medicationId) {
+        return updateMedicationLastTaken(patientId, medicationId, null);
+    }
+
     // -------------------------------------------------------
     // Query helpers
     // -------------------------------------------------------
@@ -264,6 +293,7 @@ public class MedicationService {
                 .endDate(medication.getEndDate())
                 .notes(medication.getNotes())
                 .isActive(medication.getIsActive())
+                .lastTaken(medication.getLastTaken())
                 .build();
     }
 }

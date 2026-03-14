@@ -193,45 +193,44 @@ public boolean isTokenValid(String encodedUserId) {
             helper.setFrom(fromEmail);
             helper.setSubject("CareConnect Password Reset");
             
-            String emailBody = """
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <h2 style="color: #2c3e50; text-align: center;">CareConnect Password Reset</h2>
-                    
-                    <p style="font-size: 16px; line-height: 1.6; color: #333;">
-                        You requested a password reset for your CareConnect account.
-                    </p>
-                    
-                    <div style="text-align: center; margin: 30px 0;">
-                        <a href="%s" 
-                           style="background-color: #3498db; 
-                                  color: white; 
-                                  padding: 12px 30px; 
-                                  text-decoration: none; 
-                                  border-radius: 5px; 
-                                  font-weight: bold; 
-                                  font-size: 16px;
-                                  display: inline-block;
-                                  border: 2px solid #3498db;
-                                  transition: background-color 0.3s;">
-                            Reset Your Password
-                        </a>
-                    </div>
-                    
-                    <p style="font-size: 14px; color: #666; text-align: center; margin-top: 20px;">
-                        <strong>⏰ This link is valid for 20 minutes only and will expire automatically.</strong>
-                    </p>
-                    
-                    <p style="font-size: 14px; color: #666; text-align: center;">
-                        If you didn't request this password reset, please ignore this email.
-                    </p>
-                    
-                    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-                    
-                    <p style="font-size: 12px; color: #999; text-align: center;">
-                        This is an automated message from CareConnect. Please do not reply to this email.
-                    </p>
-                </div>
-                """.formatted(link);
+            String emailBody = String.format(
+                "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n" +
+                "    <h2 style=\"color: #2c3e50; text-align: center;\">CareConnect Password Reset</h2>\n" +
+                "    \n" +
+                "    <p style=\"font-size: 16px; line-height: 1.6; color: #333;\">\n" +
+                "        You requested a password reset for your CareConnect account.\n" +
+                "    </p>\n" +
+                "    \n" +
+                "    <div style=\"text-align: center; margin: 30px 0;\">\n" +
+                "        <a href=\"%s\" \n" +
+                "           style=\"background-color: #3498db; \n" +
+                "                  color: white; \n" +
+                "                  padding: 12px 30px; \n" +
+                "                  text-decoration: none; \n" +
+                "                  border-radius: 5px; \n" +
+                "                  font-weight: bold; \n" +
+                "                  font-size: 16px;\n" +
+                "                  display: inline-block;\n" +
+                "                  border: 2px solid #3498db;\n" +
+                "                  transition: background-color 0.3s;\">\n" +
+                "            Reset Your Password\n" +
+                "        </a>\n" +
+                "    </div>\n" +
+                "    \n" +
+                "    <p style=\"font-size: 14px; color: #666; text-align: center; margin-top: 20px;\">\n" +
+                "        <strong>This link is valid for 20 minutes only and will expire automatically.</strong>\n" +
+                "    </p>\n" +
+                "    \n" +
+                "    <p style=\"font-size: 14px; color: #666; text-align: center;\">\n" +
+                "        If you didn't request this password reset, please ignore this email.\n" +
+                "    </p>\n" +
+                "    \n" +
+                "    <hr style=\"border: none; border-top: 1px solid #eee; margin: 30px 0;\">\n" +
+                "    \n" +
+                "    <p style=\"font-size: 12px; color: #999; text-align: center;\">\n" +
+                "        This is an automated message from CareConnect. Please do not reply to this email.\n" +
+                "    </p>\n" +
+                "</div>\n", link);
             
             helper.setText(emailBody, true);
             mail.send(message);

@@ -1,8 +1,15 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.model.Plan;
+import com.careconnect.model.User;
 import com.careconnect.repository.PlanRepository;
+import com.careconnect.security.AuthorizationService;
+import com.careconnect.security.UnauthorizedException;
 import com.careconnect.service.SubscriptionEnrichmentService;
+import com.careconnect.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +30,8 @@ public class DebugController {
 
     private final PlanRepository planRepository;
     private final SubscriptionEnrichmentService subscriptionEnrichmentService;
+    private final SecurityUtil securityUtil;
+    private final AuthorizationService authorizationService;
     
     @Value("${subscription.premium-price-ids:price_1RmqWxELoozGI1YxQql5rsvN}")
     private String premiumPriceIds;
@@ -30,8 +39,13 @@ public class DebugController {
     @Value("${subscription.standard-price-ids:price_standard}")
     private String standardPriceIds;
 
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+
     @GetMapping("/plans")
-    public ResponseEntity<?> getAllPlans() {
+    public ResponseEntity<?> getAllPlans() throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdmin(currentUser);
         List<Plan> plans = planRepository.findAll();
         return ResponseEntity.ok(Map.of(
             "plans", plans,
@@ -39,8 +53,13 @@ public class DebugController {
         ));
     }
     
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+    
     @GetMapping("/plans/match")
-    public ResponseEntity<?> matchPlanToPrice() {
+    public ResponseEntity<?> matchPlanToPrice() throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdmin(currentUser);
         // This is the price ID from your subscription
         String priceId = "price_1RmqWxELoozGI1YxQql5rsvN";
         
@@ -80,8 +99,13 @@ public class DebugController {
         ));
     }
     
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+    
     @GetMapping("/plans/create-mapping")
-    public ResponseEntity<?> createPriceMapping() {
+    public ResponseEntity<?> createPriceMapping() throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdmin(currentUser);
         String priceId = "price_1RmqWxELoozGI1YxQql5rsvN";
         
         // Check if mapping already exists
@@ -132,8 +156,13 @@ public class DebugController {
         }
     }
     
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+    
     @GetMapping("/config")
-    public ResponseEntity<?> getConfiguration() {
+    public ResponseEntity<?> getConfiguration() throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdmin(currentUser);
         return ResponseEntity.ok(Map.of(
             "premiumPriceIds", premiumPriceIds,
             "standardPriceIds", standardPriceIds,
@@ -145,8 +174,12 @@ public class DebugController {
     /**
      * Debug endpoint to check subscription data for a user
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/subscriptions/user/{userId}")
-    public ResponseEntity<?> getEnrichedUserSubscriptions(@PathVariable Long userId) {
+    public ResponseEntity<?> getEnrichedUserSubscriptions(@PathVariable Long userId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdmin(currentUser);
         try {
             return ResponseEntity.ok(subscriptionEnrichmentService.getEnrichedUserSubscriptions(userId));
         } catch (Exception e) {
@@ -161,8 +194,12 @@ public class DebugController {
      * This endpoint is separate from the normal subscription retrieval to avoid
      * read-only transaction errors.
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/subscriptions/user/{userId}/create-mappings")
-    public ResponseEntity<?> createMissingSubscriptionPlanMappings(@PathVariable Long userId) {
+    public ResponseEntity<?> createMissingSubscriptionPlanMappings(@PathVariable Long userId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdmin(currentUser);
         try {
             // This runs in a writable transaction
             subscriptionEnrichmentService.createMissingPlanMappings(userId);

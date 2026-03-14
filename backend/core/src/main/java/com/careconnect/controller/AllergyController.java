@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.dto.AllergyDTO;
 import com.careconnect.model.User;
 import com.careconnect.model.Patient;
@@ -32,6 +35,8 @@ public class AllergyController {
     /**
      * Create a new allergy for a patient
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping
     public ResponseEntity<?> createAllergy(@RequestBody AllergyDTO allergyDTO) {
         try {
@@ -61,6 +66,8 @@ public class AllergyController {
     /**
      * Update an existing allergy
      */
+    @RequirePermission(Permission.UPDATE_TASKS)
+
     @PutMapping("/{id}")
     public ResponseEntity<?> updateAllergy(@PathVariable Long id, @RequestBody AllergyDTO allergyDTO) {
         try {
@@ -96,6 +103,8 @@ public class AllergyController {
     /**
      * Get all allergies for a patient
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patient/{patientId}")
     public ResponseEntity<?> getAllergiesForPatient(@PathVariable Long patientId) {
         try {
@@ -121,6 +130,8 @@ public class AllergyController {
     /**
      * Get active allergies for a patient
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patient/{patientId}/active")
     public ResponseEntity<?> getActiveAllergiesForPatient(@PathVariable Long patientId) {
         try {
@@ -146,6 +157,8 @@ public class AllergyController {
     /**
      * Deactivate an allergy (soft delete)
      */
+    @RequirePermission(Permission.UPDATE_TASKS)
+
     @PatchMapping("/{id}/deactivate")
     public ResponseEntity<?> deactivateAllergy(@PathVariable Long id) {
         try {
@@ -180,6 +193,8 @@ public class AllergyController {
     /**
      * Permanently delete an allergy
      */
+    @RequirePermission(Permission.DELETE_PATIENTS)
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteAllergy(@PathVariable Long id) {
         try {

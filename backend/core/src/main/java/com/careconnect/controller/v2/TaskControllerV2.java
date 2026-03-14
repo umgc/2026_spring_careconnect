@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careconnect.model.User;
+import com.careconnect.security.AuthorizationService;
+import com.careconnect.security.UnauthorizedException;
+import com.careconnect.util.SecurityUtil;
 import com.careconnect.dto.v2.TaskDtoV2;
 import com.careconnect.exception.TaskNotFoundException;
 import com.careconnect.service.v2.TaskServiceV2;
@@ -49,14 +53,20 @@ import com.careconnect.service.v2.TaskServiceV2;
 public class TaskControllerV2 {
 
     private final TaskServiceV2 taskService;
+    private final SecurityUtil securityUtil;
+    private final AuthorizationService authorizationService;
 
     /**
      * Constructs a new {@code TaskControllerV2} with the given service.
      *
      * @param taskService service layer handling business logic for tasks
+     * @param securityUtil utility for resolving the current user
+     * @param authorizationService service for enforcing RBAC
      */
-    public TaskControllerV2(TaskServiceV2 taskService) {
+    public TaskControllerV2(TaskServiceV2 taskService, SecurityUtil securityUtil, AuthorizationService authorizationService) {
         this.taskService = taskService;
+        this.securityUtil = securityUtil;
+        this.authorizationService = authorizationService;
     }
 
     /**
@@ -100,7 +110,9 @@ public class TaskControllerV2 {
      * @return list of {@link TaskDtoV2} objects for the patient
      */
     @GetMapping("/patient/{patientId}")
-    public ResponseEntity<List<TaskDtoV2>> getTasksByPatient(@PathVariable Long patientId) {
+    public ResponseEntity<List<TaskDtoV2>> getTasksByPatient(@PathVariable Long patientId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requirePatientAccess(currentUser, patientId);
         return ResponseEntity.ok(taskService.getTasksByPatient(patientId));
     }
 
@@ -118,7 +130,9 @@ public class TaskControllerV2 {
     @PostMapping("/patient/{patientId}")
     public ResponseEntity<TaskDtoV2> createTask(
             @PathVariable Long patientId,
-            @RequestBody TaskDtoV2 task) {
+            @RequestBody TaskDtoV2 task) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requirePatientAccess(currentUser, patientId);
         return ResponseEntity.ok(taskService.createTask(patientId, task));
     }
 
@@ -136,7 +150,9 @@ public class TaskControllerV2 {
     @PutMapping("/{id}")
     public ResponseEntity<TaskDtoV2> updateTask(
             @PathVariable Long id,
-            @RequestBody TaskDtoV2 task) {
+            @RequestBody TaskDtoV2 task) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         return ResponseEntity.ok(taskService.updateTask(id, task));
     }
 
@@ -177,7 +193,9 @@ public class TaskControllerV2 {
     @PutMapping("/{id}/complete")
     public ResponseEntity<TaskDtoV2> updateTaskCompletion(
             @PathVariable Long id,
-            @RequestBody Map<String, Boolean> body) {
+            @RequestBody Map<String, Boolean> body) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
 
         boolean isComplete = body.getOrDefault("isComplete", false);
         TaskDtoV2 updated = taskService.updateCompletionStatus(id, isComplete);
@@ -203,7 +221,9 @@ public class TaskControllerV2 {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTask(
             @PathVariable Long id,
-            @RequestParam(name = "deleteSeries", defaultValue = "false") boolean deleteSeries) {
+            @RequestParam(name = "deleteSeries", defaultValue = "false") boolean deleteSeries) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
         taskService.deleteTask(id, deleteSeries);
         return ResponseEntity.noContent().build();
     }

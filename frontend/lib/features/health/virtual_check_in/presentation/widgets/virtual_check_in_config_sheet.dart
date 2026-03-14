@@ -50,6 +50,7 @@ class _VirtualCheckInConfigSheetState extends State<VirtualCheckInConfigSheet> {
   List<BackendQuestionDto> _catalog = [];
   final Set<String> _selectedToAdd = {}; // dto.id as string
   final TextEditingController _catalogFilterCtrl = TextEditingController();
+  final ScrollController _catalogScrollController = ScrollController();
 
   @override
   void initState() {
@@ -72,6 +73,7 @@ class _VirtualCheckInConfigSheetState extends State<VirtualCheckInConfigSheet> {
   void dispose() {
     _newTextCtrl.dispose();
     _catalogFilterCtrl.dispose();
+    _catalogScrollController.dispose();
     super.dispose();
   }
 
@@ -358,7 +360,9 @@ class _VirtualCheckInConfigSheetState extends State<VirtualCheckInConfigSheet> {
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxHeight: 240),
                           child: Scrollbar(
+                            controller: _catalogScrollController,
                             child: ListView.builder(
+                              controller: _catalogScrollController,
                               shrinkWrap: true,
                               itemCount: _catalog.length,
                               itemBuilder: (context, i) {

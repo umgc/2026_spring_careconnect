@@ -7,8 +7,10 @@ import 'package:go_router/go_router.dart';
 import '../providers/user_provider.dart';
 import '../config/navigation/bottom_nav_config.dart';
 import '../config/navigation/main_screen_config.dart';
-import '../services/local_db/connectivity_router_service.dart';
-import '../services/local_db/mood_storage_service.dart';
+import '../services/api_service.dart';
+import '../services/local_db/offline_sync_service.dart';
+import '../services/api_service.dart';
+import '../services/local_db/offline_sync_service.dart';
 import '../features/telemetry/telemetry.dart';
 
 /// Main screen of the application. This is where the user is navigated to
@@ -29,12 +31,11 @@ class _MainScreenState extends State<MainScreen> {
   late PageController _pageController;
   late MainScreenConfig _config;
   UserProvider? _observedUserProvider;
-  MoodStorageService? _moodStorageService;
-  bool _isMoodSyncInProgress = false;
+  bool _isOfflineSyncInProgress = false;
   bool? _lastKnownOnlineState;
-  List<MoodQueueItem> _pendingMoodQueue = const [];
-  int? _currentlySyncingMoodId;
-  final Set<int> _failedMoodIds = <int>{};
+  List<OfflineSyncQueueItem> _pendingSyncQueue = const [];
+  String? _currentlySyncingRequestId;
+  final Set<String> _failedRequestIds = <String>{};
   Timer? _syncStartDelayTimer;
   bool _showSyncCompleteBanner = false;
   Timer? _syncCompleteBannerHideTimer;
@@ -54,9 +55,6 @@ class _MainScreenState extends State<MainScreen> {
     _observedUserProvider?.removeListener(_handleConnectivityTransition);
     _syncStartDelayTimer?.cancel();
     _syncCompleteBannerHideTimer?.cancel();
-    if (_moodStorageService != null) {
-      unawaited(_moodStorageService!.close());
-    }
     _pageController.dispose();
     super.dispose();
   }
@@ -64,7 +62,7 @@ class _MainScreenState extends State<MainScreen> {
   /// Connects global connectivity state to background sync.
   ///
   /// This listens to [UserProvider] network transitions and triggers a focused
-  /// sync of offline mood records once the device comes back online.
+  /// sync of offline API records once the device comes back online.
   void _initializeConnectivitySyncBridge() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -73,19 +71,11 @@ class _MainScreenState extends State<MainScreen> {
       final provider = Provider.of<UserProvider>(context, listen: false);
       _observedUserProvider = provider;
       _lastKnownOnlineState = provider.isDeviceOnline;
-      _moodStorageService = MoodStorageService(
-        connectivityRouter: ConnectivityRouterService(
-          isOnline: () async => provider.isDeviceOnline,
-        ),
-        currentUserIdProvider: () async => provider.user?.id,
-        canUseOfflineFallback: () async => provider.offlineModeEnabled,
-      );
       provider.addListener(_handleConnectivityTransition);
 
       // On cold start, also recover and schedule any existing queue.
-      final userId = provider.user?.id;
-      if (provider.isDeviceOnline && userId != null) {
-        unawaited(_prepareQueuedSync(userId: userId));
+      if (provider.isDeviceOnline) {
+        unawaited(_prepareQueuedSync());
       }
     });
   }
@@ -104,8 +94,8 @@ class _MainScreenState extends State<MainScreen> {
     if (isOnlineNow == false) {
       _syncStartDelayTimer?.cancel();
       setState(() {
-        _currentlySyncingMoodId = null;
-        _isMoodSyncInProgress = false;
+        _currentlySyncingRequestId = null;
+        _isOfflineSyncInProgress = false;
       });
       return;
     }
@@ -114,102 +104,98 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
-    final userId = provider.user?.id;
-    if (userId == null || _moodStorageService == null) {
-      return;
-    }
-
-    await _prepareQueuedSync(userId: userId);
+    await _prepareQueuedSync();
   }
 
-  /// Loads pending local moods and schedules delayed sync after reconnect.
+  /// Loads queued offline API calls and schedules delayed sync after reconnect.
   ///
   /// UX behavior:
   /// 1. Show a blue banner with pending queue state.
-  /// 2. Wait 30 seconds before first sync.
-  /// 3. Process one item every 15 seconds until queue is empty.
-  Future<void> _prepareQueuedSync({required int userId}) async {
-    if (_moodStorageService == null) {
+  /// 2. Wait 10 seconds before first sync.
+  /// 3. Process one item every 10 seconds until queue is empty.
+  Future<void> _prepareQueuedSync() async {
+    _syncStartDelayTimer?.cancel();
+    final queue = await ApiService.getOfflineSyncQueue();
+    if (!mounted) {
       return;
     }
-    _syncStartDelayTimer?.cancel();
-    final queue = await _moodStorageService!.getPendingMoodQueue(
-      userId: userId,
-    );
-    if (!mounted || queue.isEmpty) {
+    if (queue.isEmpty) {
+      setState(() {
+        _pendingSyncQueue = const [];
+        _failedRequestIds.clear();
+        _currentlySyncingRequestId = null;
+      });
       return;
     }
 
     setState(() {
-      _pendingMoodQueue = queue;
-      _failedMoodIds.clear();
-      _currentlySyncingMoodId = null;
+      _pendingSyncQueue = queue;
+      _failedRequestIds.clear();
+      _currentlySyncingRequestId = null;
       _showSyncCompleteBanner = false;
     });
 
-    _syncStartDelayTimer = Timer(const Duration(seconds: 30), () {
-      unawaited(_runQueuedSyncCycle(userId: userId));
+    _syncStartDelayTimer = Timer(const Duration(seconds: 10), () {
+      unawaited(_runQueuedSyncCycle());
     });
   }
 
-  /// Processes queued moods sequentially with a 15-second pacing interval.
-  Future<void> _runQueuedSyncCycle({required int userId}) async {
-    if (_isMoodSyncInProgress || _moodStorageService == null) {
+  /// Processes queued API calls sequentially with a 15-second pacing interval.
+  Future<void> _runQueuedSyncCycle() async {
+    if (_isOfflineSyncInProgress) {
       return;
     }
-    _isMoodSyncInProgress = true;
+    _isOfflineSyncInProgress = true;
 
     try {
-      while (mounted && _pendingMoodQueue.isNotEmpty) {
+      while (mounted && _pendingSyncQueue.isNotEmpty) {
         final provider = _observedUserProvider;
         if (provider == null || !provider.isDeviceOnline) {
           break;
         }
 
-        final item = _pendingMoodQueue.first;
+        final item = _pendingSyncQueue.first;
         setState(() {
-          _currentlySyncingMoodId = item.localId;
-          _failedMoodIds.remove(item.localId);
+          _currentlySyncingRequestId = item.id;
+          _failedRequestIds.remove(item.id);
         });
 
-        final synced = await _moodStorageService!.syncQueuedMoodItemById(
-          userId: userId,
-          localId: item.localId,
-        );
+        final synced = await ApiService.syncOfflineQueuedRequestById(item.id);
 
         if (!mounted) {
           break;
         }
 
         setState(() {
-          _currentlySyncingMoodId = null;
+          _currentlySyncingRequestId = null;
           if (synced) {
-            _pendingMoodQueue = _pendingMoodQueue
-                .where((queued) => queued.localId != item.localId)
+            _pendingSyncQueue = _pendingSyncQueue
+                .where((queued) => queued.id != item.id)
                 .toList();
           } else {
-            _failedMoodIds.add(item.localId);
+            _failedRequestIds.add(item.id);
             // Keep failed item visible and move it to the end for later retry.
-            if (_pendingMoodQueue.length > 1) {
-              final nextQueue = List<MoodQueueItem>.from(_pendingMoodQueue);
+            if (_pendingSyncQueue.length > 1) {
+              final nextQueue =
+                  List<OfflineSyncQueueItem>.from(_pendingSyncQueue);
               nextQueue.removeAt(0);
               nextQueue.add(item);
-              _pendingMoodQueue = nextQueue;
+              _pendingSyncQueue = nextQueue;
             }
           }
         });
 
-        if (_pendingMoodQueue.isEmpty) {
+        if (_pendingSyncQueue.isEmpty) {
           _showSyncCompleteToastBanner();
           break;
         }
 
-        await Future<void>.delayed(const Duration(seconds: 15));
+        await Future<void>.delayed(const Duration(seconds: 10));
       }
     } catch (_) {
       // Best-effort sync remains non-fatal to app flow.
     } finally {
-      _isMoodSyncInProgress = false;
+      _isOfflineSyncInProgress = false;
     }
   }
 
@@ -290,14 +276,25 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  String? _telemetryScreenForNavItem(BottomNavItem item) {
-    final r = item.routeName.toLowerCase();
-    if (r == 'messages') return 'messages';
-    if (r == 'health') return 'health';
+  String _normalizeTelemetryValue(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
 
-    final k = item.labelKey?.toLowerCase();
-    if (k == 'nav_messages') return 'messages';
-    if (k == 'nav_health') return 'health';
+  String? _telemetryScreenForNavItem(BottomNavItem item) {
+    final routeName = item.routeName.trim();
+    if (routeName.isNotEmpty) {
+      return _normalizeTelemetryValue(routeName);
+    }
+
+    final labelKey = item.labelKey?.trim();
+    if (labelKey != null && labelKey.isNotEmpty) {
+      final cleaned = labelKey.replaceFirst(RegExp(r'^nav_'), '');
+      return _normalizeTelemetryValue(cleaned);
+    }
 
     return null;
   }
@@ -305,12 +302,19 @@ class _MainScreenState extends State<MainScreen> {
   /// Handle bottom nav bar item tap.
   void _onItemTapped(int index) {
     final navItem = _navItems[index];
-
     final screenName = _telemetryScreenForNavItem(navItem);
+
     if (screenName != null && index != _selectedIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         try {
-          await Telemetry.event('screen_view', {'screen': screenName});
+          await Telemetry.event('button_tap', {
+            'screen': 'bottom_nav',
+            'button_name': screenName,
+          });
+
+          await Telemetry.event('screen_view', {
+            'screen': screenName,
+          });
         } catch (_) {}
       });
     }
@@ -318,7 +322,6 @@ class _MainScreenState extends State<MainScreen> {
     // Check if onPress callback exists and call it
     if (navItem.onPress != null) {
       navItem.onPress!(context, (context) => Container());
-      // Don't change screen if only onPress is present
       return;
     }
 
@@ -395,7 +398,7 @@ class _MainScreenState extends State<MainScreen> {
                 _buildGlobalNoInternetBanner(theme)
               else if (_showSyncCompleteBanner)
                 _buildSyncCompleteBanner(theme)
-              else if (_pendingMoodQueue.isNotEmpty)
+              else if (_pendingSyncQueue.isNotEmpty)
                 _buildQueuedSyncBanner(theme)
               // BNS 5 offline mode Banner
               else if (!userProvider.offlineModeEnabled)
@@ -467,39 +470,30 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildQueuedSyncBanner(ThemeData theme) {
-    final queuedCount = _pendingMoodQueue.length;
-    final statusText = _currentlySyncingMoodId == null
-        ? 'Queued items: $queuedCount. Sync starts in 30s, then every 15s.'
-        : 'Syncing 1 of $queuedCount. Tap to review queue.';
-
     return Material(
       color: Colors.blue.shade600,
       child: InkWell(
-        onTap: _openQueuedSyncSheet,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-          child: Row(
-            children: [
-              const Icon(Icons.sync, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  statusText,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+        onTap: () async {
+          try {
+            await Telemetry.event('button_tap', {
+              'screen': 'queued_sync_banner',
+              'button_name': 'open_queue_sheet',
+            });
+          } catch (_) {}
+
+          _openQueuedSyncSheet();
+        },
+        child: const SizedBox(
+          height: 44,
+          child: Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: _SpinningSyncIcon(
+                color: Colors.white,
+                size: 18,
               ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: _openQueuedSyncSheet,
-                child: const Text(
-                  'View Queue',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -526,7 +520,7 @@ class _MainScreenState extends State<MainScreen> {
                     const Padding(
                       padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
-                        'Queued Mood Sync Items',
+                        'Queued Sync Items',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -536,46 +530,44 @@ class _MainScreenState extends State<MainScreen> {
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
                       child: Text(
-                        'Only non-sensitive fields are shown. Items currently syncing cannot be deleted.',
+                        'Human-readable, non-sensitive queue preview. Tap the trash icon to remove queued items you do not want to sync. Only the item currently syncing is locked.',
                       ),
                     ),
                     const SizedBox(height: 10),
                     Expanded(
-                      child: _pendingMoodQueue.isEmpty
+                      child: _pendingSyncQueue.isEmpty
                           ? const Center(child: Text('No queued items'))
                           : ListView.separated(
-                              itemCount: _pendingMoodQueue.length,
+                              itemCount: _pendingSyncQueue.length,
                               separatorBuilder: (_, i) =>
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
-                                final item = _pendingMoodQueue[index];
+                                final item = _pendingSyncQueue[index];
                                 final isSyncing =
-                                    item.localId == _currentlySyncingMoodId;
-                                final isFailed = _failedMoodIds.contains(
-                                  item.localId,
+                                    item.id == _currentlySyncingRequestId;
+                                final isFailed = _failedRequestIds.contains(
+                                  item.id,
                                 );
                                 final status = isSyncing
                                     ? 'Syncing now'
                                     : isFailed
-                                    ? 'Failed (will retry)'
-                                    : 'Queued';
+                                        ? 'Failed (will retry)'
+                                        : 'Queued';
 
                                 return ListTile(
                                   leading: CircleAvatar(
                                     child: Text('${index + 1}'),
                                   ),
-                                  title: Text(
-                                    'Mood: ${item.label} (${item.score}/10)',
-                                  ),
+                                  title: Text(item.displayTitle),
                                   subtitle: Text(
-                                    'Created: ${_formatQueueTimestamp(item.createdAt)} \nStatus: $status',
+                                    '${item.displayDetails.join('\n')}\nQueued: ${_formatQueueTimestamp(item.createdAt)}\nStatus: $status${item.retryCount > 0 ? ' (${item.retryCount} retries)' : ''}',
                                   ),
-                                  isThreeLine: true,
+                                  isThreeLine: false,
                                   trailing: IconButton(
                                     icon: const Icon(Icons.delete_outline),
                                     onPressed: isSyncing
                                         ? null
-                                        : () => _deleteQueuedMoodItem(item),
+                                        : () => _deleteQueuedRequest(item),
                                   ),
                                 );
                               },
@@ -591,22 +583,20 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Future<void> _deleteQueuedMoodItem(MoodQueueItem item) async {
-    if (_moodStorageService == null ||
-        _currentlySyncingMoodId == item.localId) {
+  Future<void> _deleteQueuedRequest(OfflineSyncQueueItem item) async {
+    if (_currentlySyncingRequestId == item.id) {
       return;
     }
-    final removed = await _moodStorageService!.deleteQueuedMoodItem(
-      localId: item.localId,
+    final removed = await ApiService.deleteOfflineQueuedRequestById(
+      item.id,
     );
     if (!mounted || !removed) {
       return;
     }
     setState(() {
-      _pendingMoodQueue = _pendingMoodQueue
-          .where((queued) => queued.localId != item.localId)
-          .toList();
-      _failedMoodIds.remove(item.localId);
+      _pendingSyncQueue =
+          _pendingSyncQueue.where((queued) => queued.id != item.id).toList();
+      _failedRequestIds.remove(item.id);
     });
   }
 
@@ -635,7 +625,16 @@ class _MainScreenState extends State<MainScreen> {
       ),
       actions: [
         TextButton(
-          onPressed: () => _onItemTapped(_navItems.length - 1),
+          onPressed: () async {
+            try {
+              await Telemetry.event('button_tap', {
+                'screen': 'offline_banner',
+                'button_name': 'open_settings',
+              });
+            } catch (_) {}
+
+            _onItemTapped(_navItems.length - 1);
+          },
           child: Icon(
             Icons.settings,
             color: Colors.amber.shade900,
@@ -677,6 +676,51 @@ class _MainScreenState extends State<MainScreen> {
             label: item.localizedLabel(t),
           );
         }).toList(),
+      ),
+    );
+  }
+}
+
+class _SpinningSyncIcon extends StatefulWidget {
+  const _SpinningSyncIcon({
+    required this.color,
+    required this.size,
+  });
+
+  final Color color;
+  final double size;
+
+  @override
+  State<_SpinningSyncIcon> createState() => _SpinningSyncIconState();
+}
+
+class _SpinningSyncIconState extends State<_SpinningSyncIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: _controller,
+      child: Icon(
+        Icons.sync,
+        color: widget.color,
+        size: widget.size,
       ),
     );
   }

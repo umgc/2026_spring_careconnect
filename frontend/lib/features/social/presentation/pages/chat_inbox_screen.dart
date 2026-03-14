@@ -73,7 +73,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
           actions: [
       IconButton(
       icon: const Icon(Icons.group),
-      tooltip: 'My Friends',
+      tooltip: 'Contacts',
       onPressed: () {
         Navigator.push(
           context,
@@ -92,23 +92,76 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
               itemBuilder: (context, index) {
                 final convo = inbox[index];
                 return ListTile(
-                  title: Text(convo.peerName),
-                  subtitle: Text(convo.content),
-                  trailing: Text(
-                    convo.timestamp.toIso8601String().split('T').join(' • '),
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          convo.peerName,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: convo.hasUnread ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                      if (convo.relationshipLabel.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade100,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            convo.relationshipLabel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blueGrey.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  onTap: () {
-                    Navigator.push(
+                  subtitle: Text(
+                    convo.content,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: convo.hasUnread ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        convo.timestamp.toLocal().toString().substring(0, 16),
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                      if (convo.hasUnread)
+                        Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.blue,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            ChatRoomScreen(
-                                peerUserId: convo.peerId,
-                                peerName: convo.peerName,
-                            ),
+                        builder: (_) => ChatRoomScreen(
+                          peerUserId: convo.peerId,
+                          peerName: convo.peerName,
+                        ),
                       ),
                     );
+                    if (mounted) fetchInbox();
                   },
                 );
               },

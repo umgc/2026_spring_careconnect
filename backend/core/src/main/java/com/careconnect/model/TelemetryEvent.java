@@ -27,6 +27,9 @@ public class TelemetryEvent {
     @Column(name = "event_time", nullable = false)
     private OffsetDateTime eventTime;
 
+    @Column(name = "session_id", length = 64)
+    private String sessionId;
+
     @Column(name = "trace_id", length = 64)
     private String traceId;
 

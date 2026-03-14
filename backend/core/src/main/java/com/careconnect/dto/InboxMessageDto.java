@@ -7,20 +7,24 @@ public class InboxMessageDto {
     private Long peerId;
     private String peerName;
     private String peerEmail;
+    private String peerRole;
     private String content;
     private LocalDateTime timestamp;
+    private boolean hasUnread;
 
     // Default constructor
     public InboxMessageDto() {}
 
     public InboxMessageDto(Long messageId, Long peerId, String peerName, String peerEmail,
-                           String content, LocalDateTime timestamp) {
+                           String peerRole, String content, LocalDateTime timestamp, boolean hasUnread) {
         this.messageId = messageId;
         this.peerId = peerId;
         this.peerName = peerName;
         this.peerEmail = peerEmail;
+        this.peerRole = peerRole;
         this.content = content;
         this.timestamp = timestamp;
+        this.hasUnread = hasUnread;
     }
 
     // Getters and Setters
@@ -57,6 +61,14 @@ public class InboxMessageDto {
         this.peerEmail = peerEmail;
     }
 
+    public String getPeerRole() {
+        return peerRole;
+    }
+
+    public void setPeerRole(String peerRole) {
+        this.peerRole = peerRole;
+    }
+
     public String getContent() {
         return content;
     }
@@ -71,5 +83,13 @@ public class InboxMessageDto {
 
     public void setTimestamp(LocalDateTime timestamp) {
         this.timestamp = timestamp;
+    }
+
+    public boolean isHasUnread() {
+        return hasUnread;
+    }
+
+    public void setHasUnread(boolean hasUnread) {
+        this.hasUnread = hasUnread;
     }
 }

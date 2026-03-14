@@ -1,4 +1,8 @@
+import 'package:care_connect_app/features/shift_scheduling/services/schedule_api_service.dart';
+import 'package:care_connect_app/services/api_service.dart';
 import 'package:flutter/material.dart';
+import 'widgets/calendar_view.dart';
+import 'widgets/schedule_visit_dialog.dart';
 
 class CaregiverShiftSchedulingScreen extends StatefulWidget {
   // This screen allows caregivers to input their scheduled shifts to make them
@@ -7,10 +11,12 @@ class CaregiverShiftSchedulingScreen extends StatefulWidget {
   const CaregiverShiftSchedulingScreen({super.key});
 
   @override
-  State<CaregiverShiftSchedulingScreen> createState() => _CaregiverShiftSchedulingScreenState();
+  State<CaregiverShiftSchedulingScreen> createState() =>
+      _CaregiverShiftSchedulingScreenState();
 }
 
-class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulingScreen> {
+class _CaregiverShiftSchedulingScreenState
+    extends State<CaregiverShiftSchedulingScreen> {
   TimeOfDay? selectedStartTime;
   TimeOfDay? selectedEndTime;
   var isRecurring = false; // Toggle for recurring shifts
@@ -18,7 +24,6 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
   // Add state for selected days
   final List<String> days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   final Set<int> selectedDayIndexes = {};
-
 
   @override
   Widget build(BuildContext context) {
@@ -39,8 +44,13 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
                   children: [
                     // toggle for if the shift is Recurring
                     SwitchListTile(
-                      title: const Text('Recurring Shift', 
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      title: const Text(
+                        'Recurring Shift',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       value: isRecurring,
                       onChanged: (value) {
                         setState(() {
@@ -51,8 +61,14 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
                     // Shift Start Time
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: const Text('Start Time', textAlign: TextAlign.left,
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'Start Time',
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     Card(
                       // margin: const EdgeInsets.symmetric(horizontal: 10),
@@ -61,15 +77,26 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: ListTile(
-                        title: Text(selectedStartTime != null
-                            ? selectedStartTime!.format(context)
-                            : 'No time selected'),
-                        leading: const Icon(Icons.access_time, color: Colors.indigo, size: 40),
+                        title: Text(
+                          selectedStartTime != null
+                              ? selectedStartTime!.format(context)
+                              : 'No time selected',
+                        ),
+                        leading: const Icon(
+                          Icons.access_time,
+                          color: Colors.indigo,
+                          size: 40,
+                        ),
 
                         onTap: () async {
                           final TimeOfDay? time = await showTimePicker(
                             context: context,
-                            initialTime: selectedStartTime ?? TimeOfDay(hour: 9, minute: 0), // Default to 9 AM
+                            initialTime:
+                                selectedStartTime ??
+                                TimeOfDay(
+                                  hour: 9,
+                                  minute: 0,
+                                ), // Default to 9 AM
                           );
                           if (time != null) {
                             setState(() {
@@ -82,8 +109,14 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
                     // Shift End Time
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: const Text('End Time', textAlign: TextAlign.left,
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'End Time',
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     Card(
                       // margin: const EdgeInsets.symmetric(horizontal: 10),
@@ -92,15 +125,26 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: ListTile(
-                        title: Text(selectedEndTime != null
-                            ? selectedEndTime!.format(context)
-                            : 'No time selected'),
-                        leading: const Icon(Icons.access_time, color: Colors.indigo, size: 40),
+                        title: Text(
+                          selectedEndTime != null
+                              ? selectedEndTime!.format(context)
+                              : 'No time selected',
+                        ),
+                        leading: const Icon(
+                          Icons.access_time,
+                          color: Colors.indigo,
+                          size: 40,
+                        ),
 
                         onTap: () async {
                           final TimeOfDay? time = await showTimePicker(
                             context: context,
-                            initialTime: selectedEndTime ?? TimeOfDay(hour: 17, minute: 0), // Default to 6 PM
+                            initialTime:
+                                selectedEndTime ??
+                                TimeOfDay(
+                                  hour: 17,
+                                  minute: 0,
+                                ), // Default to 6 PM
                           );
                           if (time != null) {
                             setState(() {
@@ -113,8 +157,14 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
                     // Days of the Week Selection
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: const Text('Days', textAlign: TextAlign.left,
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'Days',
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     Wrap(
                       spacing: 4.0,
@@ -122,8 +172,10 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
                       children: [
                         for (var i = 0; i < days.length; i++)
                           ChoiceChip(
-                            label: Text(days[i], 
-                            style: const TextStyle(fontSize: 16)),
+                            label: Text(
+                              days[i],
+                              style: const TextStyle(fontSize: 16),
+                            ),
                             selectedColor: Colors.indigo,
                             showCheckmark: false,
                             selected: selectedDayIndexes.contains(i),
@@ -143,11 +195,11 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
                 ),
               ),
             ),
-          ]
-          ),
+          ],
         ),
-        // Save Button at the bottom
-        bottomNavigationBar: Padding(
+      ),
+      // Save Button at the bottom
+      bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(8.0),
         child: ElevatedButton(
           onPressed: () {
@@ -158,9 +210,53 @@ class _CaregiverShiftSchedulingScreenState extends State<CaregiverShiftSchedulin
             backgroundColor: Colors.indigo,
             padding: const EdgeInsets.symmetric(vertical: 20),
           ),
-          child: const Text('Save', style: TextStyle(fontSize: 18, color: Colors.white)),
+          child: const Text(
+            'Save',
+            style: TextStyle(fontSize: 18, color: Colors.white),
+          ),
         ),
-      )
+      ),
     );
   }
 }
+
+class ShiftScheduleScreen extends StatefulWidget {
+  final int caregiverId;
+
+  const ShiftScheduleScreen({super.key, required this.caregiverId});
+
+  @override
+  State<ShiftScheduleScreen> createState() => _ShiftScheduleScreenState();
+}
+
+class _ShiftScheduleScreenState extends State<ShiftScheduleScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (context) => ScheduleVisitDialog(
+              caregiverId: widget.caregiverId,
+              onSave: (visit) {
+                // Save visit logic here
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Visit saved: ${visit.patientName}')),
+                );
+              },
+            ),
+          );
+        },
+        child: const Icon(Icons.add),
+      ),
+      body: CalendarView(
+        caregiverId: widget.caregiverId,
+        onVisitTap: (visit) {
+          // Show visit details or edit dialog
+        },
+      ),
+    );
+  }
+}
+

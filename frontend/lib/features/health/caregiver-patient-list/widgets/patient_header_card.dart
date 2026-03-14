@@ -61,6 +61,8 @@ class PatientHeaderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isNarrow = screenWidth < 430;
 
     final borderColor = cs.outlineVariant.withOpacity(0.35);
 
@@ -76,117 +78,174 @@ class PatientHeaderCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ─────────────── Header Row ───────────────
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // LEFT — avatar + name/age/sex
-              Expanded(
-                child: Row(
+          if (isNarrow)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     CircleAvatar(
-                      radius: 32, // slightly larger
+                      radius: 28,
                       backgroundColor: cs.primary.withOpacity(.12),
                       child: Text(
                         (fullName.isNotEmpty ? fullName[0] : '?').toUpperCase(),
                         style: TextStyle(
                           color: cs.primary,
-                          fontSize: 22,
+                          fontSize: 20,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          fullName,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: cs.onSurface,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            fullName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: cs.onSurface,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Age $age • $sex',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontSize: 16,
-                            color: cs.onSurface.withOpacity(.7),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Age $age • $sex',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontSize: 14,
+                              color: cs.onSurface.withOpacity(.7),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-
-              // RIGHT — actions + right-side meta
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _CallActions(
-                    emergencyPhones: emergencyPhones,
-                    onStartVideoCall: onStartVideoCall,
-                    onCallEmergencyContacts: onCallEmergencyContacts,
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Last check-in
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                const SizedBox(height: 10),
+                _CallActions(
+                  emergencyPhones: emergencyPhones,
+                  onStartVideoCall: onStartVideoCall,
+                  onCallEmergencyContacts: onCallEmergencyContacts,
+                  compact: true,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 6,
+                  children: [
+                    Text(
+                      'Last Check-in: Today, 10:30 AM',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(.75),
+                      ),
+                    ),
+                    Text(
+                      'Current Mood: $currentMoodEmoji $currentMoodLabel',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            )
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // LEFT — avatar + name/age/sex
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Last Check-in:',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface.withOpacity(.75),
+                      CircleAvatar(
+                        radius: 32,
+                        backgroundColor: cs.primary.withOpacity(.12),
+                        child: Text(
+                          (fullName.isNotEmpty ? fullName[0] : '?').toUpperCase(),
+                          style: TextStyle(
+                            color: cs.primary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Today, 10:30 AM',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w700,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              fullName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Age $age • $sex',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontSize: 16,
+                                color: cs.onSurface.withOpacity(.7),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(width: 12),
 
-                  const SizedBox(height: 6),
-
-                  // Current Mood (right side)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Current Mood:',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface.withOpacity(.75),
-                        ),
+                // RIGHT — actions + right-side meta
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 380),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _CallActions(
+                            emergencyPhones: emergencyPhones,
+                            onStartVideoCall: onStartVideoCall,
+                            onCallEmergencyContacts: onCallEmergencyContacts,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Last Check-in: Today, 10:30 AM',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: cs.onSurface.withOpacity(.75),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Current Mood: $currentMoodEmoji $currentMoodLabel',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        currentMoodEmoji,
-                        style: const TextStyle(fontSize: 20),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        currentMoodLabel,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
 
           const SizedBox(height: 2),
 
@@ -291,11 +350,13 @@ class _CallActions extends StatelessWidget {
     required this.emergencyPhones,
     this.onStartVideoCall,
     this.onCallEmergencyContacts,
+    this.compact = false,
   });
 
   final List<String> emergencyPhones;
   final VoidCallback? onStartVideoCall;
   final VoidCallback? onCallEmergencyContacts;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -340,54 +401,63 @@ class _CallActions extends StatelessWidget {
       }
     }
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        OutlinedButton.icon(
-          onPressed:
-              onStartVideoCall ??
-              () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const _VideoCallScreen()),
-                );
-              },
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: cs.outline),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          ),
-          icon: Icon(Icons.videocam, color: cs.onSurface),
-          label: Text(
-            'Start Video Call',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: cs.onSurface,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+    final startButton = OutlinedButton.icon(
+      onPressed:
+          onStartVideoCall ??
+          () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const _VideoCallScreen()),
+            );
+          },
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: cs.outline),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      ),
+      icon: Icon(Icons.videocam, color: cs.onSurface),
+      label: Text(
+        'Start Video Call',
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: cs.onSurface,
+          fontWeight: FontWeight.w600,
         ),
-        const SizedBox(width: 12),
-        ElevatedButton.icon(
-          onPressed: onCallEmergencyContacts ?? _callEmergencyConference,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: cs.primary,
-            foregroundColor: cs.onPrimary,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          ),
-          icon: const Icon(Icons.phone),
-          label: Text(
-            'Emergency Contacts',
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: cs.onPrimary,
-            ),
-          ),
+      ),
+    );
+
+    final emergencyButton = ElevatedButton.icon(
+      onPressed: onCallEmergencyContacts ?? _callEmergencyConference,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      ),
+      icon: const Icon(Icons.phone),
+      label: Text(
+        'Emergency Contacts',
+        style: theme.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: cs.onPrimary,
         ),
-      ],
+      ),
+    );
+
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          startButton,
+          const SizedBox(height: 8),
+          emergencyButton,
+        ],
+      );
+    }
+
+    return Wrap(
+      alignment: WrapAlignment.end,
+      spacing: 10,
+      runSpacing: 8,
+      children: [startButton, emergencyButton],
     );
   }
 }

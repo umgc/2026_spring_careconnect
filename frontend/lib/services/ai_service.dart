@@ -26,7 +26,7 @@ enum AIModel {
       case AIModel.gpt4:
         return 'gpt-4o-mini';
       case AIModel.claude:
-        return 'claude-3-haiku';
+        return 'claude-3-sonnet';
     }
   }
 }

@@ -16,6 +16,13 @@ public class PatientProfileUpdateDTO {
     private Gender gender;
     private AddressDto address;
     private String relationship;
+
+    // In-Home personalization fields
+    private String likes;
+    private String dislikes;
+    private String habits;
+    private String phobias;
+    private String preferredCommunicationMethod;
     
     // Allergies are managed separately through the allergy endpoints
     // but can be included here for bulk profile updates if needed
@@ -78,7 +85,47 @@ public class PatientProfileUpdateDTO {
     public void setRelationship(String relationship) {
         this.relationship = relationship;
     }
-    
+
+    public String getLikes() {
+        return likes;
+    }
+
+    public void setLikes(String likes) {
+        this.likes = likes;
+    }
+
+    public String getDislikes() {
+        return dislikes;
+    }
+
+    public void setDislikes(String dislikes) {
+        this.dislikes = dislikes;
+    }
+
+    public String getHabits() {
+        return habits;
+    }
+
+    public void setHabits(String habits) {
+        this.habits = habits;
+    }
+
+    public String getPhobias() {
+        return phobias;
+    }
+
+    public void setPhobias(String phobias) {
+        this.phobias = phobias;
+    }
+
+    public String getPreferredCommunicationMethod() {
+        return preferredCommunicationMethod;
+    }
+
+    public void setPreferredCommunicationMethod(String preferredCommunicationMethod) {
+        this.preferredCommunicationMethod = preferredCommunicationMethod;
+    }
+
     public List<AllergyDTO> getAllergies() {
         return allergies;
     }

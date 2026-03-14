@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.dto.*;
 import com.careconnect.model.User;
 import com.careconnect.repository.UserRepository;
@@ -47,6 +50,8 @@ public class LinkManagementController {
     /**
      * Create a temporary caregiver-patient link with expiration
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/caregiver-patient/temporary")
     public ResponseEntity<CaregiverPatientLinkResponse> createTemporaryCaregiverPatientLink(
             @RequestBody CreateTemporaryLinkRequest request) {
@@ -74,6 +79,8 @@ public class LinkManagementController {
     /**
      * Create a temporary family member link with expiration
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/family-member/temporary")
     public ResponseEntity<FamilyMemberLinkResponse> createTemporaryFamilyMemberLink(
             @RequestBody CreateTemporaryFamilyLinkRequest request) {
@@ -100,6 +107,8 @@ public class LinkManagementController {
     /**
      * Extend the expiration of a temporary link
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/extend-expiration/{linkId}")
     public ResponseEntity<Map<String, Object>> extendLinkExpiration(
             @PathVariable Long linkId,
@@ -140,6 +149,8 @@ public class LinkManagementController {
     /**
      * Get all temporary links that are about to expire (within next 24 hours)
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/expiring-soon")
     public ResponseEntity<Map<String, Object>> getExpiringSoonLinks() {
         User currentUser = getCurrentUser();
@@ -177,6 +188,8 @@ public class LinkManagementController {
     /**
      * Bulk cleanup of expired links
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/cleanup-expired")
     public ResponseEntity<Map<String, Object>> cleanupExpiredLinks() {
         User currentUser = getCurrentUser();
@@ -202,6 +215,8 @@ public class LinkManagementController {
     /**
      * Get summary of all links for a user
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/summary")
     public ResponseEntity<Map<String, Object>> getLinkSummary() {
         User currentUser = getCurrentUser();

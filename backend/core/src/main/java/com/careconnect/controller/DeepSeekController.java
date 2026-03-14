@@ -1,9 +1,16 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
+import com.careconnect.model.User;
+import com.careconnect.security.AuthorizationService;
+import com.careconnect.security.UnauthorizedException;
 import com.careconnect.service.DeepSeekService;
 import com.careconnect.service.DeepSeekService.DeepSeekChatRequest;
 import com.careconnect.service.DeepSeekService.DeepSeekResponse;
 import com.careconnect.service.DeepSeekService.Message;
+import com.careconnect.util.SecurityUtil;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -15,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,10 +35,18 @@ import java.util.List;
 public class DeepSeekController {
 
     private final DeepSeekService deepSeekService;
+    private final SecurityUtil securityUtil;
+    private final AuthorizationService authorizationService;
 
     // Full JSON in/out (Option B)
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/chat")
-    public ResponseEntity<?> chat(@Valid @RequestBody ChatBody body) {
+    public ResponseEntity<?> chat(@Valid @RequestBody ChatBody body) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        if (currentUser.isFamilyMember()) {
+            throw new UnauthorizedException("This feature requires ADMIN, CAREGIVER, or PATIENT role");
+        }
         try {
             DeepSeekChatRequest req = new DeepSeekChatRequest();
             req.setModel(body.getModel());

@@ -21,6 +21,10 @@ class VisitCompletePage extends StatefulWidget {
   final String notes;
   final int duration; // Duration in seconds
   final int? scheduledVisitId;
+  final String? checkinNoGpsReason;
+  final String? checkoutNoGpsReason;
+  final double? checkinAccuracyM;
+  final double? checkoutAccuracyM;
 
   const VisitCompletePage({
     super.key,
@@ -35,6 +39,10 @@ class VisitCompletePage extends StatefulWidget {
     required this.notes,
     required this.duration,
     this.scheduledVisitId,
+    this.checkinNoGpsReason,
+    this.checkoutNoGpsReason,
+    this.checkinAccuracyM,
+    this.checkoutAccuracyM,
   });
 
   @override
@@ -219,24 +227,20 @@ class _VisitCompletePageState extends State<VisitCompletePage> {
       }
 
       // Determine check-in location data
-      String checkinLocationSource = widget.checkinLocationType == 'gps'
-          ? 'GPS'
-          : 'PATIENT_ADDRESS';
-      double? checkinLat = widget.checkinLocationType == 'gps'
+      String checkinLocationSource = widget.checkinLocationType.toUpperCase();
+      double? checkinLat = widget.checkinLocationType.toUpperCase() == 'GPS'
           ? widget.checkinLatitude
           : null;
-      double? checkinLng = widget.checkinLocationType == 'gps'
+      double? checkinLng = widget.checkinLocationType.toUpperCase() == 'GPS'
           ? widget.checkinLongitude
           : null;
 
       // Determine check-out location data
-      String checkoutLocationSource = widget.checkoutLocationType == 'gps'
-          ? 'GPS'
-          : 'PATIENT_ADDRESS';
-      double? checkoutLat = widget.checkoutLocationType == 'gps'
+      String checkoutLocationSource = widget.checkoutLocationType.toUpperCase();
+      double? checkoutLat = widget.checkoutLocationType.toUpperCase() == 'GPS'
           ? widget.checkoutLatitude
           : null;
-      double? checkoutLng = widget.checkoutLocationType == 'gps'
+      double? checkoutLng = widget.checkoutLocationType.toUpperCase() == 'GPS'
           ? widget.checkoutLongitude
           : null;
 
@@ -264,6 +268,10 @@ class _VisitCompletePageState extends State<VisitCompletePage> {
         checkoutLocationSource: checkoutLocationSource,
         stateCode: stateCode,
         scheduledVisitId: widget.scheduledVisitId,
+        checkinNoGpsReason: widget.checkinNoGpsReason,
+        checkoutNoGpsReason: widget.checkoutNoGpsReason,
+        checkinAccuracyM: widget.checkinAccuracyM,
+        checkoutAccuracyM: widget.checkoutAccuracyM,
       );
 
       // Submit the EVV record

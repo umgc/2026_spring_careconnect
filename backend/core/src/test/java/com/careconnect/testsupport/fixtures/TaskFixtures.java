@@ -50,7 +50,7 @@ public final class TaskFixtures {
      * </p>
      */
     public static Task taskWithId(Long id) {
-        Task task = basicTask();
+        final Task task = basicTask();
         task.setId(id);
         return task;
     }

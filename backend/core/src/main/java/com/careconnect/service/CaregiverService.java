@@ -2,6 +2,7 @@ package com.careconnect.service;
 
 import com.careconnect.model.Caregiver;
 import com.careconnect.model.Patient;
+import com.careconnect.model.Address;
 import com.careconnect.repository.CaregiverRepository;
 import com.careconnect.repository.PatientRepository;
 import com.careconnect.dto.CaregiverRegistration;
@@ -24,7 +25,7 @@ import com.careconnect.dto.ProfessionalInfoDto;
 import com.careconnect.dto.AddressDto;
 import com.careconnect.dto.PatientWithLinkDto;
 import com.careconnect.dto.PatientSummaryDTO;
-import com.careconnect.model.Address;
+import com.careconnect.dto.PatientRiskResponseDto;
 import com.careconnect.model.Plan;
 import com.careconnect.model.Subscription;
 import com.careconnect.repository.FamilyMemberLinkRepository;
@@ -81,6 +82,9 @@ public class CaregiverService {
     
     @Autowired
     private SubscriptionRepository subscriptionRepository;
+
+    @Autowired
+    private PatientRiskService patientRiskService;
     
     // public List<Patient> getPatientsByCaregiver(Long caregiverId, String email, String name) {
     //     // Get caregiver user
@@ -151,7 +155,7 @@ public List<PatientWithLinkDto> getPatientsByCaregiver(Long caregiverId, String 
                             .address(patient.getAddress())
                             .relationship(patient.getRelationship())
                             .build();
-                        return new PatientWithLinkDto(summary, link);
+                        return new PatientWithLinkDto(summary, link, List.of());
                     }
                 }
                 return null;
@@ -494,6 +498,9 @@ public PatientWithLinkDto getPatientWithLinkById(Long caregiverId, Long patientI
         .address(patient.getAddress())
         .relationship(patient.getRelationship())
         .build();
-    return new PatientWithLinkDto(summary, linkOpt.get());
+    List<PatientRiskResponseDto> risks = patientRiskService.getFlaggedRisksForPatient(patientId).stream()
+        .map(PatientRiskResponseDto::from)
+        .toList();
+    return new PatientWithLinkDto(summary, linkOpt.get(), risks);
 }
 }

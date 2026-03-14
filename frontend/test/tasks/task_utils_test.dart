@@ -122,5 +122,71 @@ void main() {
       expect(start.minute, 0);
       expect(start.second, 0);
     });
+
+    // When the input is already a Monday, mondayStart=true should return the same day.
+    test('getStartOfWeek returns same day if input is already Monday', () {
+      final monday = DateTime(2025, 10, 13); // Monday
+      final result = TaskUtils.getStartOfWeek(monday, mondayStart: true);
+      expect(result.weekday, DateTime.monday);
+      expect(result.day, 13);
+    });
+
+    // When the input is already a Sunday, mondayStart=false should return the same day.
+    test('getStartOfWeek returns same day if input is already Sunday', () {
+      final sunday = DateTime(2025, 10, 12); // Sunday
+      final result = TaskUtils.getStartOfWeek(sunday, mondayStart: false);
+      expect(result.weekday, DateTime.sunday);
+      expect(result.day, 12);
+    });
+
+    // normalizeTaskMap should not fail when 'date' is absent from the map.
+    test('normalizeTaskMap handles missing date key gracefully', () {
+      final input = {'name': 'task'};
+      final result = TaskUtils.normalizeTaskMap(Map.from(input));
+      expect(result.containsKey('date'), isFalse);
+    });
+
+    // When daysOfWeek is already a List<bool> (not a string), it should be left untouched.
+    test('normalizeTaskMap leaves daysOfWeek unchanged when already a List', () {
+      final days = [true, false, true, false, false, false, false];
+      final input = {'daysOfWeek': days};
+      final result = TaskUtils.normalizeTaskMap(Map.from(input));
+      expect(result['daysOfWeek'], same(days));
+    });
+
+    // When both isComplete and completed are absent, isComplete must remain null.
+    test('normalizeTaskMap leaves isComplete null when completed is also absent', () {
+      final input = {'name': 'task'};
+      final result = TaskUtils.normalizeTaskMap(Map.from(input));
+      expect(result['isComplete'], isNull);
+    });
+
+    // isSameDay must return false when the dates share the day number but differ in month.
+    test('isSameDay returns false for same day different month', () {
+      final a = DateTime(2025, 10, 19);
+      final b = DateTime(2025, 11, 19);
+      expect(TaskUtils.isSameDay(a, b), isFalse);
+    });
+
+    // isSameDay must return false when the dates share the day number but differ in year.
+    test('isSameDay returns false for same day different year', () {
+      final a = DateTime(2025, 10, 19);
+      final b = DateTime(2026, 10, 19);
+      expect(TaskUtils.isSameDay(a, b), isFalse);
+    });
+
+    // normalizeDate applied to a date already at midnight should return the same value.
+    test('normalizeDate on a midnight date returns the same date', () {
+      final midnight = DateTime(2025, 6, 1);
+      final result = TaskUtils.normalizeDate(midnight);
+      expect(result, equals(midnight));
+    });
+
+    // When the legacy 'completed' field is false, isComplete should be set to false.
+    test('normalizeTaskMap maps legacy "completed: false" to isComplete=false', () {
+      final input = {'completed': false};
+      final result = TaskUtils.normalizeTaskMap(Map.from(input));
+      expect(result['isComplete'], isFalse);
+    });
   });
 }

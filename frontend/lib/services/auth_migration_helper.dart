@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_token_manager.dart';
@@ -20,7 +21,24 @@ class MigrationResult {
 
 /// Utility to migrate from old token storage to new unified system
 class AuthMigrationHelper {
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = FlutterSecureStorage(webOptions: WebOptions.defaultOptions);
+
+  static Future<String?> _read(String key) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    }
+    return _storage.read(key: key);
+  }
+
+  static Future<void> _delete(String key) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+      return;
+    }
+    await _storage.delete(key: key);
+  }
 
   /// Migrate from old token system to new unified system
   static Future<MigrationResult> migrateAuthData() async {
@@ -36,13 +54,13 @@ class AuthMigrationHelper {
       Map<String, dynamic>? userSession;
 
       // Check old JWT token storage
-      final oldAuthCookie = await _storage.read(key: 'authCookie');
+      final oldAuthCookie = await _read('authCookie');
       if (oldAuthCookie != null && oldAuthCookie.isNotEmpty) {
         token = oldAuthCookie;
       }
 
       // Check old session storage
-      final oldSession = await _storage.read(key: 'session');
+      final oldSession = await _read('session');
       if (oldSession != null) {
         try {
           final sessionData = jsonDecode(oldSession);
@@ -57,14 +75,11 @@ class AuthMigrationHelper {
 
       // If we have both token and session, migrate them
       if (token != null && userSession != null) {
-        // Force update JWT token and session using the new token manager
-        // This ensures migrated tokens are properly stored in the new system
         await AuthTokenManager.saveAuthData(
           jwtToken: token,
           userSession: userSession,
         );
 
-        // Update last activity time to mark as fresh migration
         await AuthTokenManager.updateLastActivity();
 
         // Clean up old storage
@@ -85,15 +100,14 @@ class AuthMigrationHelper {
   /// Clean up old storage after successful migration
   static Future<bool> _cleanupOldStorage() async {
     try {
-      await _storage.delete(key: 'authCookie');
-      await _storage.delete(key: 'session');
+      await _delete('authCookie');
+      await _delete('session');
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('session_cookie');
 
       return true;
     } catch (e) {
-      // Cleanup failure is not critical, just return false
       return false;
     }
   }

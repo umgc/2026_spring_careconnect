@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.dto.SymptomDTO;
 import com.careconnect.model.Patient;
 import com.careconnect.model.User;
@@ -28,6 +31,9 @@ public class SymptomController {
     private final PatientRepository patientRepository;
     private final CaregiverService caregiverService;
 
+    @RequirePermission(Permission.CREATE_TASKS)
+
+
     @PostMapping
     public ResponseEntity<?> create(@RequestBody SymptomDTO dto) {
         try {
@@ -42,6 +48,9 @@ public class SymptomController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+
+    @RequirePermission(Permission.UPDATE_TASKS)
+
 
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody SymptomDTO dto) {
@@ -63,6 +72,9 @@ public class SymptomController {
         }
     }
 
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+
     @GetMapping("/patient/{patientId}")
     public ResponseEntity<?> list(@PathVariable Long patientId) {
         if (!hasAccessToPatient(patientId)) {
@@ -71,6 +83,9 @@ public class SymptomController {
         }
         return ResponseEntity.ok(Map.of("data", symptomService.listByPatient(patientId)));
     }
+
+    @RequirePermission(Permission.DELETE_PATIENTS)
+
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {

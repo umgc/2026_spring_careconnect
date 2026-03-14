@@ -1,30 +1,53 @@
-typedef IsOnlineFn = Future<bool> Function();
+import 'package:connectivity_plus/connectivity_plus.dart';
 
-/// Routes storage operations to online or offline handlers.
-///
-/// Connectivity detection is injected from outside this class.
 class ConnectivityRouterService {
-  ConnectivityRouterService({required IsOnlineFn isOnline}) : _isOnline = isOnline;
+  ConnectivityRouterService({Connectivity? connectivity})
+      : _connectivity = connectivity ?? Connectivity();
 
-  final IsOnlineFn _isOnline;
+  final Connectivity _connectivity;
 
-  /// Executes [online] when connected, otherwise executes [offline].
   Future<T> route<T>({
     required Future<T> Function() online,
     required Future<T> Function() offline,
     bool fallbackToOfflineOnOnlineError = false,
   }) async {
-    final isOnline = await _isOnline();
-    if (isOnline) {
-      if (fallbackToOfflineOnOnlineError) {
-        try {
-          return await online();
-        } catch (_) {
-          return offline();
-        }
-      }
-      return online();
+    final currentlyOnline = await _isCurrentlyOnline();
+
+    if (!currentlyOnline) {
+      return offline();
     }
-    return offline();
+
+    try {
+      return await online();
+    } catch (error) {
+      if (fallbackToOfflineOnOnlineError && _isLikelyNetworkFailure(error)) {
+        return offline();
+      }
+      rethrow;
+    }
+  }
+
+  Future<bool> _isCurrentlyOnline() async {
+    final result = await _connectivity.checkConnectivity();
+
+    if (result is ConnectivityResult) {
+      return result != ConnectivityResult.none;
+    }
+
+    if (result is List<ConnectivityResult>) {
+      return result.any((entry) => entry != ConnectivityResult.none);
+    }
+
+    return true;
+  }
+
+  bool _isLikelyNetworkFailure(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('socketexception') ||
+        message.contains('failed host lookup') ||
+        message.contains('network is unreachable') ||
+        message.contains('connection refused') ||
+        message.contains('connection reset') ||
+        message.contains('timed out');
   }
 }

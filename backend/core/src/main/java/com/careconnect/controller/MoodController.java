@@ -13,6 +13,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+
+import com.careconnect.model.User;
+import com.careconnect.security.AuthorizationService;
+import com.careconnect.security.UnauthorizedException;
+import com.careconnect.util.SecurityUtil;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,75 +31,29 @@ public class MoodController {
     private MoodService moodService;
 
     @Autowired
-    private UserRepository userRepository;
+    private SecurityUtil securityUtil;
 
     @Autowired
-    private CaregiverPatientLinkService caregiverPatientLinkService;
-
-    @Autowired
-    private FamilyMemberService familyMemberService;
-
-    private User getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String userEmail = authentication.getName();
-        return userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "User not authenticated"));
-    }
-
-    private void validateMoodAccess(Long patientUserId, User currentUser, boolean isWrite) {
-        switch (currentUser.getRole()) {
-            case PATIENT:
-                if (!currentUser.getId().equals(patientUserId)) {
-                    throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
-                }
-                return;
-            case CAREGIVER:
-                if (isWrite) {
-                    throw new AppException(HttpStatus.FORBIDDEN, "Caregivers cannot submit patient mood entries");
-                }
-                if (!caregiverPatientLinkService.hasAccessToPatient(currentUser.getId(), patientUserId)) {
-                    throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
-                }
-                return;
-            case FAMILY_MEMBER:
-                if (isWrite) {
-                    throw new AppException(HttpStatus.FORBIDDEN, "Family members cannot submit patient mood entries");
-                }
-                if (!familyMemberService.hasAccessToPatient(currentUser.getId(), patientUserId)) {
-                    throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
-                }
-                return;
-            case ADMIN:
-                return;
-            default:
-                throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
-        }
-    }
+    private AuthorizationService authorizationService;
 
     @PostMapping("/{userId}/mood")
     public ResponseEntity<Mood> saveMood(
             @PathVariable Long userId,
-            @RequestBody Map<String, Object> payload) {
+            @RequestBody Map<String, Object> payload) throws UnauthorizedException {
 
-        User currentUser = getCurrentUser();
-        validateMoodAccess(userId, currentUser, true);
-
-        Object scoreObj = payload.get("score");
-        if (!(scoreObj instanceof Number)) {
-            throw new AppException(HttpStatus.BAD_REQUEST, "score field is required and must be numeric");
-        }
-        int score = ((Number) scoreObj).intValue();
-        String label = String.valueOf(payload.getOrDefault("label", "Unknown"));
-        if (label.isBlank()) {
-            label = "Unknown";
-        }
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireSelfOrAdmin(currentUser, userId);
+        int score = (int) payload.get("score");
+        String label = (String) payload.get("label");
 
         Mood savedMood = moodService.saveMood(userId, score, label);
         return ResponseEntity.ok(savedMood);
     }
 
     @GetMapping("/caregiver/{caregiverId}/moods")
-    public ResponseEntity<Map<String, Object>> getCaregiverMoodSummaries(@PathVariable Long caregiverId) {
+    public ResponseEntity<Map<String, Object>> getCaregiverMoodSummaries(@PathVariable Long caregiverId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireSelfOrAdmin(currentUser, caregiverId);
         Map<String, Object> data = new HashMap<>();
 
         List<Long> patientIds = List.of(1L, 2L, 3L);
@@ -119,10 +78,9 @@ public class MoodController {
     }
 
     @GetMapping("/{userId}/mood")
-    public ResponseEntity<List<Mood>> getMoods(@PathVariable Long userId) {
-        User currentUser = getCurrentUser();
-        validateMoodAccess(userId, currentUser, false);
-
+    public ResponseEntity<List<Mood>> getMoods(@PathVariable Long userId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireSelfOrAdmin(currentUser, userId);
         List<Mood> moods = moodService.getMoods(userId);
         return ResponseEntity.ok(moods);
     }

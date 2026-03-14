@@ -1,5 +1,8 @@
 /// Centralized Auth Guard Service for page protection
+// ignore_for_file: avoid_print
+
 library;
+
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:convert';
@@ -164,9 +167,7 @@ class AuthService {
   }
 
   /// LOGIN - Updated to return UserSession and handle JWT
-  static Future<UserSession> login(
-    String email,
-    String password) async {
+  static Future<UserSession> login(String email, String password) async {
     final response = await ApiService.login(email, password);
     final data = jsonDecode(response.body);
 
@@ -592,7 +593,9 @@ class AuthService {
       );
 
       if (kDebugMode) {
-        print('User data stored in UserRoleStorageService: Role=${userSession.role}, UserID=${userSession.id}');
+        print(
+          'User data stored in UserRoleStorageService: Role=${userSession.role}, UserID=${userSession.id}',
+        );
       }
     } catch (e) {
       if (kDebugMode) {
@@ -634,8 +637,8 @@ class AuthService {
     }
   }
 
-    /// Get Alexa authorization code for OAuth flow
-  /// 
+  /// Get Alexa authorization code for OAuth flow
+  ///
   /// Calls the backend endpoint: POST /v1/api/auth/sso/alexa/code
   /// Requires Bearer token in Authorization header
   /// Returns the temporary authorization code to redirect to Alexa
@@ -645,16 +648,18 @@ class AuthService {
     try {
       final endpoint = '${ApiConstants.auth}/sso/alexa/code';
 
-      final response = await http.post(
-        Uri.parse(endpoint),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw SocketException('Request timeout'),
-      );
+      final response = await http
+          .post(
+            Uri.parse(endpoint),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw SocketException('Request timeout'),
+          );
 
       final data = jsonDecode(response.body);
 
@@ -708,7 +713,9 @@ class AuthService {
           .post(uri, headers: headers, body: jsonEncode({}))
           .timeout(const Duration(seconds: 15));
 
-      print("🔌 Alexa unlink response: ${response.statusCode} - ${response.body}");
+      print(
+        "🔌 Alexa unlink response: ${response.statusCode} - ${response.body}",
+      );
 
       if (response.statusCode == 200) {
         return {
@@ -731,5 +738,15 @@ class AuthService {
     }
   }
 
-
+  /// Get current user session from storage
+  static Future<UserSession?> getCurrentUser() async {
+    try {
+      final userData = await AuthTokenManager.getUserSession();
+      if (userData == null) return null;
+      return UserSession.fromJson(userData);
+    } catch (e) {
+      print('Error getting current user: $e');
+      return null;
+    }
+  }
 }

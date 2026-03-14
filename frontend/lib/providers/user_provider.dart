@@ -177,6 +177,8 @@ class UserProvider extends ChangeNotifier {
   // This returns true if EITHER condition is met
   bool get shouldShowOfflineWarning => !offlineModeEnabled || !_isDeviceOnline;
 
+  var userSession;
+
   /// Public getter for base user model
   UserModel? get userModel => _userModel;
   /// Public getter for patient model
@@ -629,4 +631,6 @@ class UserProvider extends ChangeNotifier {
   }
 
   bool get isPatient => _user?.role.toUpperCase() == 'PATIENT';
-}// end UserProvider class
+
+  Future<void> logout() async {}
+}

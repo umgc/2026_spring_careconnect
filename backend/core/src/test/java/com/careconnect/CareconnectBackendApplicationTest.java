@@ -9,19 +9,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CareconnectBackendApplicationTest {
 
     @Test
-    void applicationHasSpringBootApplicationAnnotation() {
+    void applicationHasSpringBootApplicationAnnotation() throws Exception {
         assertThat(CareconnectBackendApplication.class)
                 .hasAnnotation(SpringBootApplication.class);
     }
 
     @Test
-    void applicationHasEnableSchedulingAnnotation() {
+    void applicationHasEnableSchedulingAnnotation() throws Exception {
         assertThat(CareconnectBackendApplication.class)
                 .hasAnnotation(EnableScheduling.class);
     }
 
     @Test
-    void mainMethodExists() {
+    void mainMethodExists() throws Exception {
         assertThat(CareconnectBackendApplication.class)
                 .hasDeclaredMethods("main");
     }

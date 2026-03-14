@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.service.EmailTestService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +23,8 @@ public class EmailTestController {
      * POST /v1/api/email-test/send
      * Body: {"email": "test@example.com"}
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/send")
     public ResponseEntity<Map<String, Object>> sendTestEmail(@RequestBody Map<String, String> request) {
         String testEmail = request.get("email");
@@ -37,6 +42,8 @@ public class EmailTestController {
      * Get email configuration details
      * GET /v1/api/email-test/config
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/config")
     public ResponseEntity<Map<String, Object>> getEmailConfig() {
         Map<String, Object> config = emailTestService.getEmailConfiguration();
@@ -47,6 +54,8 @@ public class EmailTestController {
      * Validate email configuration without sending
      * GET /v1/api/email-test/validate
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/validate")
     public ResponseEntity<Map<String, Object>> validateEmailConfiguration() {
         Map<String, Object> validation = emailTestService.validateEmailConfiguration();
@@ -58,6 +67,8 @@ public class EmailTestController {
      * POST /v1/api/email-test/all
      * Body: {"email": "test@example.com"}
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/all")
     public ResponseEntity<Map<String, Object>> testAllEmailTypes(@RequestBody Map<String, String> request) {
         String testEmail = request.get("email");
@@ -75,6 +86,8 @@ public class EmailTestController {
      * Quick health check for email service
      * GET /v1/api/email-test/health
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> healthCheck() {
         Map<String, Object> config = emailTestService.getEmailConfiguration();
@@ -94,6 +107,8 @@ public class EmailTestController {
      * Test simple email sending
      * GET /v1/api/email-test/test-simple?email=test@example.com
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/test-simple")
     public ResponseEntity<Map<String, Object>> testSimpleEmail(@RequestParam String email) {
         Map<String, Object> response = emailTestService.testSimpleEmail(email);

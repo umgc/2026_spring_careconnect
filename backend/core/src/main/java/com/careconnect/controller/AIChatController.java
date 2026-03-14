@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.dto.*;
 import com.careconnect.model.ChatConversation;
 import com.careconnect.service.AIChatService;
@@ -11,6 +14,10 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import com.careconnect.model.User;
+import com.careconnect.security.AuthorizationService;
+import com.careconnect.security.UnauthorizedException;
+import com.careconnect.util.SecurityUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -29,7 +36,12 @@ public class AIChatController {
     private final UserAIConfigService userAIConfigService;
     private final ChatConversationRepository chatConversationRepository;
     private final ChatCleanupService chatCleanupService;
+    private final SecurityUtil securityUtil;
+    private final AuthorizationService authorizationService;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AIChatController.class);
+
+    @RequirePermission(Permission.CREATE_TASKS)
+
 
     @PostMapping("/chat")
     @Operation(
@@ -43,7 +55,9 @@ public class AIChatController {
         @ApiResponse(responseCode = "403", description = "Access denied"),
         @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    public ResponseEntity<ChatResponse> sendMessage(@Valid @RequestBody ChatRequest request) {
+    public ResponseEntity<ChatResponse> sendMessage(@Valid @RequestBody ChatRequest request) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        if (currentUser.isFamilyMember()) throw new UnauthorizedException("Requires ADMIN, CAREGIVER, or PATIENT role");
         log.info("Processing chat request for patient: {}, user: {}. Uploaded files: {}", request.getPatientId(), request.getUserId(), request.getUploadedFiles());
         try {
             ChatResponse response = aiChatService.processChat(request);
@@ -64,6 +78,9 @@ public class AIChatController {
         }
     }
 
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+
     @GetMapping("/conversations/{patientId}")
     @Operation(
         summary = "Get patient's chat conversations",
@@ -74,12 +91,11 @@ public class AIChatController {
         @ApiResponse(responseCode = "403", description = "Access denied"),
         @ApiResponse(responseCode = "404", description = "Patient not found")
     })
-    // @PreAuthorize("hasRole('PATIENT') or hasRole('CAREGIVER') or hasRole('FAMILY_MEMBER')")
     public ResponseEntity<List<ChatConversationSummary>> getPatientConversations(
             @Parameter(description = "Patient ID") @PathVariable Long patientId) {
-        
+
         log.info("Retrieving conversations for patient: {}", patientId);
-        
+
         try {
             List<ChatConversationSummary> conversations = aiChatService.getPatientConversations(patientId);
             return ResponseEntity.ok(conversations);
@@ -88,6 +104,9 @@ public class AIChatController {
             return ResponseEntity.badRequest().build();
         }
     }
+    
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     
     @GetMapping("/conversation/{conversationId}/messages")
     @Operation(
@@ -99,12 +118,11 @@ public class AIChatController {
         @ApiResponse(responseCode = "403", description = "Access denied"),
         @ApiResponse(responseCode = "404", description = "Conversation not found")
     })
-    // @PreAuthorize("hasRole('PATIENT') or hasRole('CAREGIVER') or hasRole('FAMILY_MEMBER')")
     public ResponseEntity<List<ChatMessageSummary>> getConversationMessages(
             @Parameter(description = "Conversation ID") @PathVariable String conversationId) {
-        
+
         log.info("Retrieving messages for conversation: {}", conversationId);
-        
+
         try {
             List<ChatMessageSummary> messages = aiChatService.getConversationMessages(conversationId);
             return ResponseEntity.ok(messages);
@@ -113,6 +131,9 @@ public class AIChatController {
             return ResponseEntity.badRequest().build();
         }
     }
+    
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     
     @GetMapping("/history")
     @Operation(
@@ -127,11 +148,13 @@ public class AIChatController {
     public ResponseEntity<Map<String, Object>> getConversationHistory(
             @RequestParam Long userId,
             @RequestParam(required = false) String conversationId,
-            @RequestParam(defaultValue = "50") int limit) {
-        
-        log.info("Retrieving conversation history for user: {}, conversation: {}, limit: {}", 
+            @RequestParam(defaultValue = "50") int limit) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        if (currentUser.isFamilyMember()) throw new UnauthorizedException("Requires ADMIN, CAREGIVER, or PATIENT role");
+
+        log.info("Retrieving conversation history for user: {}, conversation: {}, limit: {}",
             userId, conversationId, limit);
-        
+
         try {
             List<ChatMessageSummary> messages;
             
@@ -179,6 +202,9 @@ public class AIChatController {
         }
     }
 
+    @RequirePermission(Permission.CREATE_TASKS)
+
+
     @PostMapping("/conversation/{conversationId}/deactivate")
     @Operation(
         summary = "Deactivate conversation",
@@ -189,12 +215,13 @@ public class AIChatController {
         @ApiResponse(responseCode = "403", description = "Access denied"),
         @ApiResponse(responseCode = "404", description = "Conversation not found")
     })
-    // @PreAuthorize("hasRole('PATIENT') or hasRole('CAREGIVER')")
     public ResponseEntity<Void> deactivateConversation(
-            @Parameter(description = "Conversation ID") @PathVariable String conversationId) {
-        
+            @Parameter(description = "Conversation ID") @PathVariable String conversationId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        if (currentUser.isFamilyMember()) throw new UnauthorizedException("Requires ADMIN, CAREGIVER, or PATIENT role");
+
         log.info("Deactivating conversation: {}", conversationId);
-        
+
         try {
             aiChatService.deactivateConversation(conversationId);
             return ResponseEntity.ok().build();
@@ -205,6 +232,8 @@ public class AIChatController {
     }
     
     // AI Configuration endpoints
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/config")
     @Operation(
         summary = "Get AI configuration",
@@ -217,7 +246,9 @@ public class AIChatController {
     })
     public ResponseEntity<UserAIConfigDTO> getUserAIConfig(
             @RequestParam Long userId,
-            @RequestParam(required = false) Long patientId) {
+            @RequestParam(required = false) Long patientId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        if (currentUser.isFamilyMember()) throw new UnauthorizedException("Requires ADMIN, CAREGIVER, or PATIENT role");
         log.info("Retrieving AI config for user: {}, patient: {}", userId, patientId);
         try {
             UserAIConfigDTO config = userAIConfigService.getUserAIConfig(userId, patientId);
@@ -227,6 +258,9 @@ public class AIChatController {
             return ResponseEntity.badRequest().build();
         }
     }
+    
+    @RequirePermission(Permission.CREATE_TASKS)
+
     
     @PostMapping("/config")
     @Operation(
@@ -240,7 +274,9 @@ public class AIChatController {
         @ApiResponse(responseCode = "403", description = "Access denied")
     })
     public ResponseEntity<UserAIConfigDTO> saveUserAIConfig(
-            @Valid @RequestBody UserAIConfigDTO configDTO) {
+            @Valid @RequestBody UserAIConfigDTO configDTO) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        if (currentUser.isFamilyMember()) throw new UnauthorizedException("Requires ADMIN, CAREGIVER, or PATIENT role");
         log.info("Saving AI config for user: {}, patient: {}", configDTO.getUserId(), configDTO.getPatientId());
         try {
             UserAIConfigDTO savedConfig = userAIConfigService.saveUserAIConfig(configDTO);
@@ -251,6 +287,9 @@ public class AIChatController {
             return ResponseEntity.badRequest().build();
         }
     }
+    
+    @RequirePermission(Permission.DELETE_PATIENTS)
+
     
     @DeleteMapping("/config")
     @Operation(
@@ -264,7 +303,9 @@ public class AIChatController {
     })
     public ResponseEntity<Void> deactivateUserAIConfig(
             @RequestParam Long userId,
-            @RequestParam(required = false) Long patientId) {
+            @RequestParam(required = false) Long patientId) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        if (currentUser.isFamilyMember()) throw new UnauthorizedException("Requires ADMIN, CAREGIVER, or PATIENT role");
         log.info("Deactivating AI config for user: {}, patient: {}", userId, patientId);
         try {
             userAIConfigService.deactivateUserAIConfig(userId, patientId);
@@ -275,13 +316,18 @@ public class AIChatController {
         }
     }
 
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+
     @GetMapping("/retention-policy")
     @Operation(
         summary = "Get chat retention policy information",
         description = "Returns information about how long chat conversations are retained"
     )
     @ApiResponse(responseCode = "200", description = "Retention policy information retrieved successfully")
-    public ResponseEntity<Map<String, String>> getRetentionPolicy() {
+    public ResponseEntity<Map<String, String>> getRetentionPolicy() throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        if (currentUser.isFamilyMember()) throw new UnauthorizedException("Requires ADMIN, CAREGIVER, or PATIENT role");
         try {
             String policyInfo = chatCleanupService.getRetentionPolicyInfo();
             Map<String, String> response = new HashMap<>();

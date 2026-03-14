@@ -6,6 +6,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -23,6 +26,9 @@ import com.careconnect.model.PatientNotetakerKeyword;
 import com.careconnect.model.PatientNotetakerKeyword.EventType;
 import com.careconnect.repository.PatientNoteRepository;
 import com.careconnect.repository.PatientNotetakerConfigRepository;
+import com.careconnect.service.OpenRouterService;
+import com.careconnect.service.OpenRouterService.OpenRouterChatRequest;
+import com.careconnect.service.OpenRouterService.OpenRouterResponse;
 import com.careconnect.service.v2.TaskServiceV2;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,21 +38,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class PatientNotetakerService {
     private final TaskServiceV2 taskService;
-    private final AIChatService aiChatService;
+    private final Optional<OpenRouterService> openRouterService;
     private final PatientNoteRepository patientNoteRepository;
     private final PatientNotetakerConfigRepository patientNotetakerConfigRepository;
     private final PatientService patientService;
     
-    public PatientNotetakerService(PatientNoteRepository patientNoteRepository, 
+    public PatientNotetakerService(
+        PatientNoteRepository patientNoteRepository, 
         PatientNotetakerConfigRepository patientNotetakerConfigRepository, 
         PatientService patientService,
-        AIChatService aiChatService,
+        Optional<OpenRouterService> openRouterService,
         TaskServiceV2 taskService
         ) {
         this.patientNoteRepository = patientNoteRepository;
         this.patientNotetakerConfigRepository = patientNotetakerConfigRepository;
         this.patientService = patientService;
-        this.aiChatService = aiChatService;
+        this.openRouterService = openRouterService;
         this.taskService = taskService;
     }
 
@@ -119,7 +126,7 @@ public class PatientNotetakerService {
         PatientNote existingNote = patientNoteRepository.findById(noteId).orElseThrow();
         existingNote.setPatientId(patientId);
         existingNote.setNote(noteDTO.getNote());
-        if((!noteDTO.getAiSummary().isBlank() || !noteDTO.getAiSummary().isEmpty()) && noteDTO.getAiSummary() != "Failed to generate AI Summary") {
+        if((!noteDTO.getAiSummary().isBlank() || !noteDTO.getAiSummary().isEmpty()) && !"Failed to generate AI Summary".equals(noteDTO.getAiSummary())) {
             existingNote.setAiSummary(noteDTO.getAiSummary());
         } else {
             existingNote.setAiSummary(processAiSummary(noteDTO.getNote()));
@@ -190,16 +197,26 @@ public class PatientNotetakerService {
             ChatRequest chatRequest = new ChatRequest();
             chatRequest.setMessage(prompt);
 
-            ChatResponse chatResponse;
-
+            OpenRouterResponse response;
             try {
-                chatResponse = aiChatService.processChat(chatRequest);
+                OpenRouterChatRequest request = new OpenRouterChatRequest(
+                    "openai/gpt-4o-mini",
+                    List.of(new OpenRouterService.Message("user", prompt)),
+                    0.7,
+                    500
+                );
+
+                response = openRouterService.get().sendChatRequest(request);
             } catch (Exception e) {
                 log.error("AI provider failed: {}", e.getMessage());
                 return;
             }
 
-            String aiContent = chatResponse != null ? chatResponse.getAiResponse() : "";    
+            String aiContent = response != null
+                && response.getChoices() != null
+                && !response.getChoices().isEmpty()
+                ? response.getChoices().get(0).getMessage().getContent()
+                : "";    
             
             TaskDtoV2 aiTask = mapJson(aiContent, TaskDtoV2.class);
 
@@ -221,24 +238,42 @@ public class PatientNotetakerService {
     @Async
     private String processAiSummary(String noteContent) {
 
-    String prompt = "Summarize the following conversation into 1–2 concise sentences, "
+        String prompt = "Summarize the following conversation into 1–2 concise sentences, "
             + "focusing on key health information and action items: '"
             + noteContent + "'";
 
-    ChatRequest chatRequest = new ChatRequest();
-    chatRequest.setMessage(prompt);
+        if (!openRouterService.isPresent()) {
+            log.warn("OpenRouter service is not available, returning default summary");
+            return "AI Summary generation disabled";
+        }
 
-    ChatResponse chatResponse;
+        OpenRouterResponse response;
 
-    try {
-        chatResponse = aiChatService.processChat(chatRequest);
-    } catch (Exception e) {
-        log.error("AI provider failed: {}", e.getMessage());
-        return "Failed to generate AI Summary";
+        try {
+            OpenRouterChatRequest request = new OpenRouterChatRequest(
+                "openai/gpt-4o-mini",
+                List.of(new OpenRouterService.Message("user", prompt)),
+                0.7,
+                200
+            );
+
+            response = openRouterService.get().sendChatRequest(request);
+
+        } catch (Exception e) {
+            log.error("Unable to reach OpenRouter service: {}", e.getMessage());
+            return "Failed to generate AI Summary";
+        }
+        String aiSummary = null;
+        if (response != null && response.getChoices() != null && !response.getChoices().isEmpty()
+                && response.getChoices().get(0).getMessage() != null) {
+            aiSummary = response.getChoices().get(0).getMessage().getContent();
+            aiSummary = aiSummary.split("<")[0].trim();
+        } else {
+            aiSummary = "";
+        }
+        log.info("AI Summary generated: {}", aiSummary);
+        return aiSummary;
     }
-
-    return chatResponse != null ? chatResponse.getAiResponse() : "";
-}
 
     private <T> T mapJson(String json, Class<T> object) {
         ObjectMapper objectMapper = new ObjectMapper();

@@ -114,6 +114,11 @@ public class PatientService {
         existing.setPhone(updatedPatient.getPhone());
         existing.setAddress(updatedPatient.getAddress());
         existing.setRelationship(updatedPatient.getRelationship());
+        existing.setLikes(updatedPatient.getLikes());
+        existing.setDislikes(updatedPatient.getDislikes());
+        existing.setHabits(updatedPatient.getHabits());
+        existing.setPhobias(updatedPatient.getPhobias());
+        existing.setPreferredCommunicationMethod(updatedPatient.getPreferredCommunicationMethod());
         return patientRepository.save(existing);
     }
 
@@ -199,6 +204,21 @@ public class PatientService {
         if (updateDTO.getRelationship() != null) {
             patient.setRelationship(updateDTO.getRelationship());
         }
+        if (updateDTO.getLikes() != null) {
+            patient.setLikes(updateDTO.getLikes());
+        }
+        if (updateDTO.getDislikes() != null) {
+            patient.setDislikes(updateDTO.getDislikes());
+        }
+        if (updateDTO.getHabits() != null) {
+            patient.setHabits(updateDTO.getHabits());
+        }
+        if (updateDTO.getPhobias() != null) {
+            patient.setPhobias(updateDTO.getPhobias());
+        }
+        if (updateDTO.getPreferredCommunicationMethod() != null) {
+            patient.setPreferredCommunicationMethod(updateDTO.getPreferredCommunicationMethod());
+        }
         
         // Save updated patient
         Patient savedPatient = patientRepository.save(patient);
@@ -217,6 +237,11 @@ public class PatientService {
             .address(mapAddressToDto(savedPatient.getAddress()))
             .relationship(savedPatient.getRelationship())
             .allergies(allergies)
+            .likes(savedPatient.getLikes())
+            .dislikes(savedPatient.getDislikes())
+            .habits(savedPatient.getHabits())
+            .phobias(savedPatient.getPhobias())
+            .preferredCommunicationMethod(savedPatient.getPreferredCommunicationMethod())
             .build();
     }
     

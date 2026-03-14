@@ -51,7 +51,7 @@ public class BedrockAIChatService implements AIChatService {
         """.formatted(request.getMessage().replace("\"", "\\\""));
 
         InvokeModelRequest invokeRequest = InvokeModelRequest.builder()
-                .modelId("anthropic.claude-3-haiku-20240307-v1:0") 
+                .modelId("anthropic.claude-3-sonnet-20240620-v1:0") 
                 .body(software.amazon.awssdk.core.SdkBytes.fromString(payload, StandardCharsets.UTF_8))
                 .build();
 

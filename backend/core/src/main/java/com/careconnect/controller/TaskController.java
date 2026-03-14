@@ -1,87 +1,47 @@
 package com.careconnect.controller;
 
-import com.careconnect.dto.TaskDto;
-import com.careconnect.model.Task;
-import com.careconnect.service.TaskService;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import com.careconnect.dto.v2.TaskDtoV2;
+import com.careconnect.service.v2.TaskServiceV2;
 
 @RestController
-@RequestMapping("/v3/api/tasks")
+@RequestMapping("/api/tasks")
 public class TaskController {
 
-    private final TaskService taskService;
+    private final TaskServiceV2 taskService;
 
-    public TaskController(TaskService taskService) {
+    public TaskController(TaskServiceV2 taskService) {
         this.taskService = taskService;
     }
 
-    @GetMapping
-    public ResponseEntity<List<Map<String, Object>>> getAllTasks() {
-        return ResponseEntity.ok(taskService.getAllTasks().stream().map(this::toResponse).toList());
+    @PostMapping("/{patientId}")
+    public ResponseEntity<?> createTask(
+            @PathVariable Long patientId,
+            @RequestBody TaskDtoV2 taskDto) {
+
+        TaskDtoV2 createdTask = taskService.createTask(patientId, taskDto);
+
+        return ResponseEntity.ok(createdTask);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> getTaskById(@PathVariable Long id) {
-        Task task = taskService.getTaskById(id);
-        if (task != null) {
-            return ResponseEntity.ok(toResponse(task));
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+    @GetMapping("/{patientId}")
+    public ResponseEntity<?> getTasks(@PathVariable Long patientId) {
+        return ResponseEntity.ok("Task retrieval endpoint temporarily disabled");
     }
 
-    @GetMapping("/patient/{patientId}")
-    public ResponseEntity<List<Map<String, Object>>> getTasksByPatient(@PathVariable Long patientId) {
-        List<Map<String, Object>> tasks = taskService.getTasksByPatient(patientId).stream().map(this::toResponse).toList();
-        return ResponseEntity.ok(tasks);
-    }
+    @DeleteMapping("/{taskId}")
+    public ResponseEntity<?> deleteTask(@PathVariable Long taskId) {
 
-    @PostMapping("/patient/{patientId}")
-    public ResponseEntity<Map<String, Object>> createTask(@PathVariable Long patientId, @RequestBody TaskDto task) {
-        Task created = taskService.createTask(patientId, task);
-        return ResponseEntity.ok(toResponse(created));
-    }
+        taskService.deleteTask(taskId, true);
 
-    @PutMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> updateTask(@PathVariable Long id, @RequestBody TaskDto task) {
-        Task updated = taskService.updateTask(id, task);
-        if (updated != null) {
-            return ResponseEntity.ok(toResponse(updated));
-        } else {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
-        if (taskService.deleteTask(id)) {
-            return ResponseEntity.noContent().build();
-        } else {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    private Map<String, Object> toResponse(Task task) {
         Map<String, Object> response = new HashMap<>();
-        response.put("id", task.getId());
-        response.put("patientId", task.getPatient() != null ? task.getPatient().getId() : null);
-        response.put("name", task.getName());
-        response.put("description", task.getDescription());
-        response.put("date", task.getDate());
-        response.put("timeOfDay", task.getTimeOfDay());
-        response.put("isCompleted", task.isCompleted());
-        response.put("frequency", task.getFrequency());
-        response.put("interval", task.getTaskInterval());
-        response.put("count", task.getDoCount());
-        response.put("daysOfWeek", task.getDaysOfWeek());
-        response.put("taskType", task.getTaskType());
-        response.put("createdAt", task.getCreatedAt());
-        response.put("parentTaskId", task.getParentTaskId());
-        return response;
+        response.put("message", "Task deleted successfully");
+
+        return ResponseEntity.ok(response);
     }
 }

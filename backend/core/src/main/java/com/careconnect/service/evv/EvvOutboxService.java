@@ -68,10 +68,8 @@ public class EvvOutboxService {
                     .addValue("payload", payloadJson);
             
             
-            jdbc.update("""
-                    INSERT INTO evv_outbox (evv_record_id, destination, payload)
-                    VALUES (:recordId, :destination, CAST(:payload AS jsonb))
-                    """, params);
+            jdbc.update("INSERT INTO evv_outbox (evv_record_id, destination, payload)"
+                    + " VALUES (:recordId, :destination, CAST(:payload AS jsonb))", params);
                     
         } catch (Exception e) {
             System.err.println("ERROR in enqueue: " + e.getClass().getName() + ": " + e.getMessage());

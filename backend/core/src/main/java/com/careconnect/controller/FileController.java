@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.dto.FileUploadResponse;
 import com.careconnect.dto.UserFileDTO;
 import com.careconnect.service.S3StorageService;
@@ -35,6 +38,7 @@ import java.util.stream.Collectors;
 
 import com.careconnect.model.Patient;
 import com.careconnect.repository.PatientRepository;
+import com.careconnect.repository.MessageRepository;
 
 @RestController
 @RequestMapping("/v1/api/files")
@@ -47,6 +51,7 @@ public class FileController {
     private final FileManagementService fileManagementService;
     private final UserRepository userRepository;
     private final PatientRepository patientRepository;
+    private final MessageRepository messageRepository;
     private final CaregiverService caregiverService;
     private final PatientService patientService;
 
@@ -55,12 +60,14 @@ public class FileController {
                          FileManagementService fileManagementService,
                          UserRepository userRepository,
                          PatientRepository patientRepository,
+                         MessageRepository messageRepository,
                          CaregiverService caregiverService,
                          PatientService patientService) {
         this.s3StorageService = s3StorageService;
         this.fileManagementService = fileManagementService;
         this.userRepository = userRepository;
         this.patientRepository = patientRepository;
+        this.messageRepository = messageRepository;
         this.caregiverService = caregiverService;
         this.patientService = patientService;
     }
@@ -73,6 +80,8 @@ public class FileController {
     /**
      * Upload a file using the new database-first approach
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/upload")
     @Operation(summary = "Upload a file", description = "Upload a file for the current user (database-first storage)")
     @ApiResponses({
@@ -120,6 +129,8 @@ public class FileController {
     /**
      * Download a file by ID
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/{fileId}/download")
     @Operation(summary = "Download a file", description = "Download file content by file ID")
     @ApiResponses({
@@ -164,6 +175,8 @@ public class FileController {
     /**
      * List files for current user
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/my-files")
     @Operation(summary = "List my files", description = "List files owned by the current user")
     @ApiResponses({
@@ -195,6 +208,8 @@ public class FileController {
     /**
      * List files for a specific patient
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patient/{patientId}")
     @Operation(summary = "List patient files", description = "List files associated with a specific patient")
     @ApiResponses({
@@ -237,6 +252,8 @@ public class FileController {
     /**
      * Delete a file
      */
+    @RequirePermission(Permission.DELETE_PATIENTS)
+
     @DeleteMapping("/{fileId}")
     @Operation(summary = "Delete a file", description = "Delete a file by ID")
     @ApiResponses({
@@ -277,6 +294,8 @@ public class FileController {
     /**
      * Get user's profile image
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/profile-image")
     @Operation(summary = "Get profile image", description = "Get current user's profile image")
     @ApiResponses({
@@ -309,6 +328,9 @@ public class FileController {
     }
     
     // ==================== S3 ENDPOINTS ====================
+
+    @RequirePermission(Permission.CREATE_TASKS)
+
 
     @PostMapping("/users/{userId}/upload")
     @Operation(summary = "Upload file for user", description = "S3-based file upload (maintained for backward compatibility)")
@@ -364,6 +386,9 @@ public class FileController {
         }
     }
 
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+
     @GetMapping("/users/{userId}/download/{*filePath}")
     @Operation(summary = "Download file", description = "S3-based file download")
     public ResponseEntity<byte[]> downloadFile(
@@ -396,6 +421,9 @@ public class FileController {
         }
     }
 
+    @RequirePermission(Permission.DELETE_PATIENTS)
+
+
     @DeleteMapping("/users/{userId}/delete/{*filePath}")
     public ResponseEntity<?> deleteFile(
             @PathVariable Long userId,
@@ -426,6 +454,9 @@ public class FileController {
                     .body(Map.of("error", "File deletion failed"));
         }
     }
+
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
 
     @GetMapping("/users/{userId}/list")
     @Operation(summary = "List user files", description = "S3-based file listing")
@@ -463,6 +494,9 @@ public class FileController {
                     .body(Map.of("error", "Failed to list files"));
         }
     }
+
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
 
     @GetMapping("/users/{userId}/categories")
     @Operation(summary = "[LEGACY] Get valid categories", description = "Get valid file categories for user role")
@@ -539,6 +573,11 @@ public class FileController {
         // If file is associated with a patient, check patient access
         if (fileDto.getPatientId() != null) {
             return hasAccessToPatient(currentUser, fileDto.getPatientId());
+        }
+
+        // Allow chat attachment recipients/senders to access files shared in their conversation
+        if (messageRepository.existsAttachmentInUserConversation(fileDto.getId(), currentUser.getId())) {
+            return true;
         }
         
         return false;

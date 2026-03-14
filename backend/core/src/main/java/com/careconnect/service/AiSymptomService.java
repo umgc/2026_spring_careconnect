@@ -34,12 +34,10 @@ public class AiSymptomService {
                                        List<Allergy> allergiesForContext,
                                        List<SymptomEntry> symptomsForContext) {
 
-        String system = """
-            You are a medical assistant. Extract structured symptom info from the user's sentence.
-            Return ONLY a compact JSON object:
-            {"symptomKey":"...", "symptomValue":"...", "severity":"MILD|MODERATE|SEVERE"}.
-            If something is missing, leave it as an empty string. Do NOT add extra keys or text.
-            """;
+        String system = "You are a medical assistant. Extract structured symptom info from the user's sentence.\n" +
+            "Return ONLY a compact JSON object:\n" +
+            "{\"symptomKey\":\"...\", \"symptomValue\":\"...\", \"severity\":\"MILD|MODERATE|SEVERE\"}.\n" +
+            "If something is missing, leave it as an empty string. Do NOT add extra keys or text.\n";
 
         // Context blocks
         String allergyBlock = contextBuilder.buildAllergyContext(req.getPatientId(), allergiesForContext);
@@ -47,20 +45,16 @@ public class AiSymptomService {
 
         Map<String, Object> ctx = Optional.ofNullable(req.getContext()).orElse(Map.of());
 
-        String user = """
-            Patient context (allergies for safety):
-            %s
-
-            Recent Symptom History:
-            %s
-
-            Current input (voice transcript):
-            "%s"
-
-            Hints (optional context from UI): %s
-
-            Output JSON only.
-            """.formatted(allergyBlock, symptomBlock, req.getText(), ctx);
+        String user = String.format(
+            "Patient context (allergies for safety):\n" +
+            "%s\n\n" +
+            "Recent Symptom History:\n" +
+            "%s\n\n" +
+            "Current input (voice transcript):\n" +
+            "\"%s\"\n\n" +
+            "Hints (optional context from UI): %s\n\n" +
+            "Output JSON only.\n",
+            allergyBlock, symptomBlock, req.getText(), ctx);
 
         // Compose & call DeepSeek
         DeepSeekChatRequest chat = deepSeekService.buildChatRequest(system, user);

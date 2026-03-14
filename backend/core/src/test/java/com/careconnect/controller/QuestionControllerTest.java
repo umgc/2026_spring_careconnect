@@ -3,7 +3,9 @@ package com.careconnect.controller;
 import com.careconnect.dto.QuestionDTO;
 import com.careconnect.dto.QuestionUpsertDTO;
 import com.careconnect.model.QuestionType;
+import com.careconnect.security.AuthorizationService;
 import com.careconnect.service.QuestionService;
+import com.careconnect.util.SecurityUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,12 +47,18 @@ class QuestionControllerTest {
     @MockitoBean
     private QuestionService questionService;
 
+    @MockitoBean
+    private SecurityUtil securityUtil;
+
+    @MockitoBean
+    private AuthorizationService authorizationService;
+
     private QuestionDTO sampleQuestion;
     private QuestionDTO activeQuestion;
     private QuestionUpsertDTO upsertPayload;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         sampleQuestion = new QuestionDTO(1L, "How are you feeling today?", "TEXT", true, false, 1);
         activeQuestion = new QuestionDTO(1L, "How are you feeling today?", "TEXT", true, true, 1);
         upsertPayload = new QuestionUpsertDTO(
@@ -173,7 +181,7 @@ class QuestionControllerTest {
         @DisplayName("Returns updated question when id exists")
         void returnsUpdatedQuestionWhenFound() throws Exception {
             // Arrange
-            QuestionDTO updated = new QuestionDTO(1L, "Updated prompt", "TEXT", false, true, 2);
+            final QuestionDTO updated = new QuestionDTO(1L, "Updated prompt", "TEXT", false, true, 2);
             when(questionService.update(eq(1L), any(QuestionUpsertDTO.class)))
                     .thenReturn(Optional.of(updated));
 

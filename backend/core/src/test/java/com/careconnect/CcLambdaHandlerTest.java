@@ -1,15 +1,17 @@
 package com.careconnect;
 
-
 import com.amazonaws.serverless.proxy.model.AwsProxyRequest;
 import com.amazonaws.serverless.proxy.model.AwsProxyResponse;
 import com.amazonaws.serverless.proxy.spring.SpringBootLambdaContainerHandler;
 import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.ByteArrayInputStream;
@@ -19,7 +21,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
@@ -29,107 +31,101 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class CcLambdaHandlerTest {
 
+    private static SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse> mockStaticHandler;
+    @SuppressWarnings("rawtypes")
+    private static MockedStatic<SpringBootLambdaContainerHandler> staticMock;
+
     private CcLambdaHandler handler;
 
     @Mock
     private Context mockContext;
 
-    @Mock
-    private SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse> mockHandler;
+    @SuppressWarnings("unchecked")
+    @BeforeAll
+    static void initClass() {
+        mockStaticHandler = mock(SpringBootLambdaContainerHandler.class);
+        staticMock = mockStatic(SpringBootLambdaContainerHandler.class);
+        staticMock.when(() -> SpringBootLambdaContainerHandler.getAwsProxyHandler(any()))
+                .thenReturn(mockStaticHandler);
+    }
 
+    @AfterAll
+    static void tearDownClass() {
+        if (staticMock != null) {
+            staticMock.close();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     @BeforeEach
     void setUp() {
+        clearInvocations(mockStaticHandler);
         handler = new CcLambdaHandler();
     }
 
     @Test
     void testHandlerIsNotNull() {
-        // Verify that the handler instance can be created
         assertThat(handler).isNotNull();
     }
 
     @Test
     void testHandleRequestProcessesInputStream() throws IOException {
-        // Arrange
-        String requestJson = "{\"httpMethod\":\"GET\",\"path\":\"/test\"}";
-        InputStream inputStream = new ByteArrayInputStream(requestJson.getBytes());
-        OutputStream outputStream = new ByteArrayOutputStream();
+        final String requestJson = "{\"httpMethod\":\"GET\",\"path\":\"/test\"}";
+        final InputStream inputStream = new ByteArrayInputStream(requestJson.getBytes());
+        final OutputStream outputStream = new ByteArrayOutputStream();
 
-        // Act & Assert
-        // Note: This will use the actual static HANDLER, so it's more of an integration test
-        // In a real scenario, you might want to mock the static handler
-        assertThatThrownBy(() -> 
-            handler.handleRequest(inputStream, outputStream, mockContext)
-        ).isInstanceOf(RuntimeException.class);
+        handler.handleRequest(inputStream, outputStream, mockContext);
+
+        verify(mockStaticHandler).proxyStream(inputStream, outputStream, mockContext);
     }
 
     @Test
-    void testHandleRequestWithNullInputStream() {
-        // Arrange
-        OutputStream outputStream = new ByteArrayOutputStream();
+    void testHandleRequestWithNullInputStream() throws IOException {
+        final OutputStream outputStream = new ByteArrayOutputStream();
 
-        // Act & Assert
-        assertThatThrownBy(() -> 
-            handler.handleRequest(null, outputStream, mockContext)
-        ).isInstanceOf(Exception.class);
+        handler.handleRequest(null, outputStream, mockContext);
+
+        verify(mockStaticHandler).proxyStream(null, outputStream, mockContext);
     }
 
     @Test
-    void testHandleRequestWithNullOutputStream() {
-        // Arrange
-        String requestJson = "{\"httpMethod\":\"GET\",\"path\":\"/test\"}";
-        InputStream inputStream = new ByteArrayInputStream(requestJson.getBytes());
+    void testHandleRequestWithNullOutputStream() throws IOException {
+        final String requestJson = "{\"httpMethod\":\"GET\",\"path\":\"/test\"}";
+        final InputStream inputStream = new ByteArrayInputStream(requestJson.getBytes());
 
-        // Act & Assert
-        assertThatThrownBy(() -> 
-            handler.handleRequest(inputStream, null, mockContext)
-        ).isInstanceOf(Exception.class);
+        handler.handleRequest(inputStream, null, mockContext);
+
+        verify(mockStaticHandler).proxyStream(inputStream, null, mockContext);
     }
 
     @Test
     void testHandleRequestWithValidStreams() throws IOException {
-        // Arrange
-        String requestJson = "{\"httpMethod\":\"GET\",\"path\":\"/health\"}";
-        InputStream inputStream = new ByteArrayInputStream(requestJson.getBytes());
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        final String requestJson = "{\"httpMethod\":\"GET\",\"path\":\"/health\"}";
+        final InputStream inputStream = new ByteArrayInputStream(requestJson.getBytes());
+        final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
-        // Act
-        try {
-            handler.handleRequest(inputStream, outputStream, mockContext);
-        } catch (RuntimeException e) {
-            // Expected in test environment without full Spring context
-            assertThat(e).isNotNull();
-        }
+        handler.handleRequest(inputStream, outputStream, mockContext);
 
-        // Assert - verify output stream was written to (or exception was thrown)
+        verify(mockStaticHandler).proxyStream(inputStream, outputStream, mockContext);
         assertThat(outputStream).isNotNull();
     }
 
     @Test
-    void testContextParameterIsUsed() {
-        // Arrange
-        String requestJson = "{\"httpMethod\":\"POST\",\"path\":\"/api/test\"}";
-        InputStream inputStream = new ByteArrayInputStream(requestJson.getBytes());
-        OutputStream outputStream = new ByteArrayOutputStream();
+    void testContextParameterIsUsed() throws IOException {
+        final String requestJson = "{\"httpMethod\":\"POST\",\"path\":\"/api/test\"}";
+        final InputStream inputStream = new ByteArrayInputStream(requestJson.getBytes());
+        final OutputStream outputStream = new ByteArrayOutputStream();
 
-        // Configure mock context
         when(mockContext.getFunctionName()).thenReturn("test-function");
-        when(mockContext.getRemainingTimeInMillis()).thenReturn(30000);
 
-        // Act
-        try {
-            handler.handleRequest(inputStream, outputStream, mockContext);
-        } catch (Exception e) {
-            // Expected in test environment
-        }
+        handler.handleRequest(inputStream, outputStream, mockContext);
 
-        // Assert - context should be passed to the handler
-        assertThat(mockContext).isNotNull();
+        verify(mockStaticHandler).proxyStream(inputStream, outputStream, mockContext);
+        assertThat(mockContext.getFunctionName()).isEqualTo("test-function");
     }
 
     @Test
     void testImplementsRequestStreamHandler() {
-        // Verify that CcLambdaHandler implements the correct interface
-        assertThat(handler).isInstanceOf(com.amazonaws.services.lambda.runtime.RequestStreamHandler.class);
+        assertThat(handler).isInstanceOf(RequestStreamHandler.class);
     }
 }

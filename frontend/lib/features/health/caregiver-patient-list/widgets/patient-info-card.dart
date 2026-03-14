@@ -19,6 +19,9 @@ class PatientCard extends StatelessWidget {
   /// Optional callback function when the card is tapped
   final VoidCallback? onTap;
 
+  /// Optional callback function when the message icon is tapped
+  final VoidCallback? onMessageTap;
+
   /// Creates a PatientCard widget.
   ///
   /// Parameters:
@@ -28,6 +31,7 @@ class PatientCard extends StatelessWidget {
     Key? key,
     required this.patient,
     this.onTap,
+    this.onMessageTap,
   }) : super(key: key);
 
   /// Builds the patient card widget.
@@ -112,7 +116,9 @@ class PatientCard extends StatelessWidget {
                 Text(
                   patient.statusMessage,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: patient.isUrgent ? Colors.red : theme.colorScheme.onSurface,
+                    color: patient.isUrgent
+                        ? Colors.red
+                        : theme.colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -149,10 +155,14 @@ class PatientCard extends StatelessWidget {
                       theme,
                     ),
                     const SizedBox(width: 16),
-                    _buildIconWithBadge(
-                      Icons.message_outlined,
-                      patient.messageCount,
-                      theme,
+                    InkWell(
+                      onTap: onMessageTap,
+                      borderRadius: BorderRadius.circular(16),
+                      child: _buildIconWithBadge(
+                        Icons.message_outlined,
+                        patient.messageCount,
+                        theme,
+                      ),
                     ),
                   ],
                 ),

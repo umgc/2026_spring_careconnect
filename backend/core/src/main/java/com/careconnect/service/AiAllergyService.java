@@ -28,28 +28,23 @@ public class AiAllergyService {
 
     public AiAllergyDTO.Result analyze(AiAllergyDTO.Request req, List<Allergy> history) {
         // 1) System prompt
-        String system = """
-            You are a medical assistant. Extract structured allergy info from the user's sentence.
-            Return ONLY a compact JSON object:
-            {"allergen":"...", "reaction":"...", "severity":"MILD|MODERATE|SEVERE"}.
-            If something is missing, leave it as an empty string. Do NOT add extra keys or text.
-            """;
+        String system = "You are a medical assistant. Extract structured allergy info from the user's sentence.\n" +
+            "Return ONLY a compact JSON object:\n" +
+            "{\"allergen\":\"...\", \"reaction\":\"...\", \"severity\":\"MILD|MODERATE|SEVERE\"}.\n" +
+            "If something is missing, leave it as an empty string. Do NOT add extra keys or text.\n";
 
         String historyBlock = contextBuilder.buildAllergyContext(req.getPatientId(), history);
 
         // 2) User prompt
         Map<String, Object> ctx = Optional.ofNullable(req.getContext()).orElse(Map.of());
-        String user = """
-            Patient history:
-            %s
-
-            Current input (voice transcript):
-            "%s"
-
-            Hints (optional context from UI): %s
-
-            Output JSON only.
-            """.formatted(historyBlock, req.getText(), ctx);
+        String user = String.format(
+            "Patient history:\n" +
+            "%s\n\n" +
+            "Current input (voice transcript):\n" +
+            "\"%s\"\n\n" +
+            "Hints (optional context from UI): %s\n\n" +
+            "Output JSON only.\n",
+            historyBlock, req.getText(), ctx);
 
         // Build & call DeepSeek
         DeepSeekChatRequest chat = deepSeekService.buildChatRequest(system, user);

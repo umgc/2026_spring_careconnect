@@ -1,8 +1,12 @@
 package com.careconnect.controller;
+
 import com.careconnect.dto.PostWithCommentCountDto;
 import com.careconnect.repository.CaregiverRepository;
 import com.careconnect.repository.PatientRepository;
+import com.careconnect.security.AuthorizationService;
 import com.careconnect.security.Role;
+import com.careconnect.security.UnauthorizedException;
+import com.careconnect.util.SecurityUtil;
 import org.springframework.beans.factory.annotation.Value;
 import com.careconnect.model.Post;
 import com.careconnect.service.FeedService;
@@ -40,6 +44,12 @@ public class FeedController {
 
 
     @Autowired
+    private SecurityUtil securityUtil;
+
+    @Autowired
+    private AuthorizationService authorizationService;
+
+    @Autowired
     private FeedService feedService;
 
     @Autowired
@@ -70,15 +80,13 @@ public class FeedController {
             description = "Not authenticated",
             content = @Content(
                 mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                        "error": "Not authenticated"
-                    }
-                    """)
+                examples = @ExampleObject(value = "{\n    \"error\": \"Not authenticated\"\n}")
             )
         )
     })
     public ResponseEntity<?> getGlobalFeed() {
+        // RBAC: Defense-in-depth - ensure caller is authenticated
+        securityUtil.resolveCurrentUser();
         List<PostWithCommentCountDto> posts = feedService.getAllPostsWithCommentCount();
         return ResponseEntity.ok(posts);
     }

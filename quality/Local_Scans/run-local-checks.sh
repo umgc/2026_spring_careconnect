@@ -9,7 +9,7 @@
 # Usage:
 #   sh quality/local/run-local-checks.sh
 #
-# Requires: java, mvn, python3, flutter
+# Requires: java, mvn, python3 (or python/py), flutter
 # ==========================================================
 
 set -eu
@@ -23,11 +23,31 @@ TOOLS_DIR="${SCRIPT_DIR}/tools"
 # Ensure Python can resolve the repository package root.
 export PYTHONPATH="${REPO_ROOT}"
 
+# Resolve Python command across platforms (Linux/macOS/Windows Git Bash).
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_CMD="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_CMD="python"
+elif command -v py >/dev/null 2>&1; then
+  PYTHON_CMD="py"
+else
+  echo "ERROR: Python not found. Install Python 3 and ensure one of python3/python/py is on PATH."
+  exit 1
+fi
+
+run_python() {
+  if [ "${PYTHON_CMD}" = "py" ]; then
+    py -3 "$@"
+  else
+    "${PYTHON_CMD}" "$@"
+  fi
+}
+
 TIMESTAMP="$(date '+%Y-%m-%d-%H%M%S')"
 COMMIT_SHA="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo "no-git")"
 
 unset TMPDIR
-WORK_DIR="$(python3 -c "import tempfile; print(tempfile.mkdtemp())")"
+WORK_DIR="$(run_python -c "import tempfile; print(tempfile.mkdtemp())")"
 ZIP_NAME="${TIMESTAMP}-${COMMIT_SHA}-local-quality-report.zip"
 ZIP_PATH="${HOME}/Downloads/${ZIP_NAME}"
 GENERATED_AT="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
@@ -114,14 +134,14 @@ export FAILED
 # ----------------------------------------------------------
 echo ""
 echo "Generating HTML report..."
-python3 -m quality.Local_Scans.report.generate_report
+run_python -m quality.Local_Scans.report.generate_report
 
 # ----------------------------------------------------------
 # Package zip
 # ----------------------------------------------------------
 echo ""
 echo "Packaging report..."
-python3 - <<'PY'
+run_python - <<'PY'
 import os
 import zipfile
 from pathlib import Path
@@ -144,7 +164,7 @@ PY
 # ----------------------------------------------------------
 echo ""
 echo "Opening report in browser..."
-python3 "${REPORT_DIR}/open_report.py"
+run_python "${REPORT_DIR}/open_report.py"
 
 # ----------------------------------------------------------
 # Summary

@@ -1,6 +1,7 @@
 package com.careconnect.config;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -8,15 +9,16 @@ import org.springframework.core.env.Environment;
 /**
  * WebSocket Mode Configuration
  *
- * Automatically determines whether to use Local or AWS WebSocket mode based on environment.
+ * Automatically determines whether to use Local or AWS WebSocket mode based on
+ * environment.
  * Priority:
  * 1. If AWS_WEBSOCKET_API_GATEWAY_ENDPOINT env var is set -> AWS mode
  * 2. If AWS_WEBSOCKET_API_ENDPOINT env var is set -> AWS mode (legacy fallback)
  * 3. Otherwise -> Local mode (default)
  */
-@Slf4j
 @Configuration
 public class WebSocketModeConfig {
+    private static final Logger log = LoggerFactory.getLogger(WebSocketModeConfig.class);
 
     @Bean
     public String websocketMode(Environment env) {

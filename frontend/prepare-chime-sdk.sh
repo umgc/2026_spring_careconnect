@@ -7,8 +7,8 @@ OUTPUT_FILE="$SCRIPT_DIR/$OUTPUT_PATH"
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 URLS=(
-  "https://unpkg.com/amazon-chime-sdk-js@3.20.0/build/amazon-chime-sdk.min.js"
-  "https://cdn.jsdelivr.net/npm/amazon-chime-sdk-js@3.20.0/build/amazon-chime-sdk.min.js"
+  "https://unpkg.com/amazon-chime-sdk-js@3.26.0/build/amazon-chime-sdk.min.js"
+  "https://cdn.jsdelivr.net/npm/amazon-chime-sdk-js@3.26.0/build/amazon-chime-sdk.min.js"
 )
 
 for url in "${URLS[@]}"; do

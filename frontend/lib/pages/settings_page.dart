@@ -65,7 +65,13 @@ class _SettingsPageState extends State<SettingsPage> {
           Icons.chevron_right,
           color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
         ),
-        onTap: () => LanguagePicker.show(context),
+        onTap: () {
+          Telemetry.event('button_tap', {
+            'screen': 'settings',
+            'target': 'language_picker',
+          });
+          LanguagePicker.show(context);
+        },
       ),
     );
   }
@@ -194,6 +200,14 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {
         _notificationSettings = saved;
       });
+
+      await Telemetry.event('button_tap', {
+        'screen': 'settings',
+        'target': 'notification_toggle',
+        'setting': setting,
+        'enabled': value,
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -272,9 +286,9 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
       ),
     );
   }
@@ -299,9 +313,9 @@ class _SettingsPageState extends State<SettingsPage> {
         title: Text(
           title,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: textColor,
-            fontWeight: FontWeight.w500,
-          ),
+                color: textColor,
+                fontWeight: FontWeight.w500,
+              ),
         ),
         subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
         trailing: Icon(
@@ -514,8 +528,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final userProvider = Provider.of<UserProvider>(context);
     final user = userProvider.user;
 
-    final shouldHideSubscription =
-        user != null &&
+    final shouldHideSubscription = user != null &&
         (user.role.toLowerCase() == 'patient' ||
             user.role.toLowerCase() == 'family member');
 
@@ -541,8 +554,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       backgroundColor: Theme.of(
                         context,
                       ).colorScheme.primary.withValues(alpha: 0.1),
-                      child:
-                          (user != null &&
+                      child: (user != null &&
                               user.name != null &&
                               user.name!.isNotEmpty)
                           ? Text(
@@ -686,9 +698,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   final messenger = ScaffoldMessenger.of(context);
                   final errorColor = Theme.of(context).colorScheme.error;
 
-                  final allowed = enabled
-                      ? await _confirmOptIn()
-                      : await _confirmOptOut();
+                  final allowed =
+                      enabled ? await _confirmOptIn() : await _confirmOptOut();
                   if (!allowed) return;
 
                   setState(() => _loadingTelemetry = true);
@@ -733,7 +744,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: Icons.subscriptions,
                   title: t.settingsManageSubscription,
                   subtitle: t.settingsManageSubscriptionDesc,
-                  onTap: () => context.push('/select-package'),
+                  onTap: () {
+                    Telemetry.event('button_tap', {
+                      'screen': 'settings',
+                      'target': 'manage_subscription',
+                      'route': '/select-package',
+                    });
+                    context.push('/select-package');
+                  },
                 ),
                 const SizedBox(height: 24),
               ],
@@ -745,7 +763,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 icon: Icons.edit_note,
                 title: t.settingsNotetakerConfiguration,
                 subtitle: t.settingsNotetakerConfigurationDesc,
-                onTap: () => context.push('/notetaker-configuration'),
+                onTap: () {
+                  Telemetry.event('button_tap', {
+                    'screen': 'settings',
+                    'target': 'notetaker_configuration',
+                    'route': '/notetaker-configuration',
+                  });
+                  context.push('/notetaker-configuration');
+                },
               ),
 
               const SizedBox(height: 24),
@@ -779,14 +804,26 @@ class _SettingsPageState extends State<SettingsPage> {
                 icon: Icons.cleaning_services,
                 title: t.settingsClearCache,
                 subtitle: t.settingsClearCacheShortDesc,
-                onTap: () => _showClearCacheDialog(context),
+                onTap: () {
+                  Telemetry.event('button_tap', {
+                    'screen': 'settings',
+                    'target': 'clear_cache',
+                  });
+                  _showClearCacheDialog(context);
+                },
               ),
               _buildSettingsCard(
                 context,
                 icon: Icons.logout,
                 title: t.settingsSignOut,
                 subtitle: t.settingsSignOutDesc,
-                onTap: () => _showSignOutDialog(context),
+                onTap: () {
+                  Telemetry.event('button_tap', {
+                    'screen': 'settings',
+                    'target': 'sign_out',
+                  });
+                  _showSignOutDialog(context);
+                },
                 textColor: Theme.of(context).colorScheme.error,
                 iconColor: Theme.of(context).colorScheme.error,
               ),
@@ -795,7 +832,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 icon: Icons.delete_forever,
                 title: t.settingsDeleteAccount,
                 subtitle: t.settingsDeleteAccountShortDesc,
-                onTap: () => _showDeleteAccountDialog(context),
+                onTap: () {
+                  Telemetry.event('button_tap', {
+                    'screen': 'settings',
+                    'target': 'delete_account',
+                  });
+                  _showDeleteAccountDialog(context);
+                },
                 textColor: Theme.of(context).colorScheme.error,
                 iconColor: Theme.of(context).colorScheme.error,
               ),

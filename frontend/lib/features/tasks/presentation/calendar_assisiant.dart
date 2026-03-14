@@ -13,6 +13,7 @@ import 'package:care_connect_app/services/api_service.dart';
 import 'package:care_connect_app/widgets/app_bar_helper.dart';
 import 'package:care_connect_app/widgets/common_drawer.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -74,6 +75,10 @@ class _CalendarAssistantScreenState extends State<CalendarAssistantScreen> {
   void dispose() {
     _eventController.dispose();
     super.dispose();
+  }
+
+  bool _isQueuedResponse(http.Response response) {
+    return response.headers['x-offline-queued'] == 'true';
   }
 
   ///This function is used across the assistant to query task information from the DB
@@ -787,30 +792,56 @@ class _CalendarAssistantScreenState extends State<CalendarAssistantScreen> {
       }
 
       // Save each generated task
+      var queuedCount = 0;
+      var savedCount = 0;
       for (final Task newTask in expandedTasks) {
         final response = await ApiService.createTaskV2(
           newTask.assignedPatientId!,
           jsonEncode(newTask.toJson()),
         );
 
-        if (response.statusCode != 200) {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text("Failed to add task: ${response.statusCode}"),
             ),
           );
+          continue;
         }
+
+        savedCount++;
+        if (_isQueuedResponse(response)) {
+          queuedCount++;
+        }
+      }
+
+      if (savedCount == 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Failed to add task")),
+        );
+        return;
       }
 
       await _loadTasksFromDb();
       if (!mounted) return;
+      final offlineQueueMessage =
+          queuedCount == 1
+              ? "Task queued for sync when internet is restored"
+              : "$queuedCount tasks queued for sync when internet is restored";
+      final mixedMessage =
+          "${savedCount - queuedCount} saved now, $queuedCount queued for sync";
+      final successMessage =
+          expandedTasks.length > 1
+              ? "${expandedTasks.length} tasks added successfully"
+              : "Task added successfully";
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            expandedTasks.length > 1
-                ? "${expandedTasks.length} tasks added successfully"
-                : "Task added successfully",
+            queuedCount == 0
+                ? successMessage
+                : (queuedCount == savedCount ? offlineQueueMessage : mixedMessage),
           ),
         ),
       );
@@ -922,6 +953,8 @@ class _CalendarAssistantScreenState extends State<CalendarAssistantScreen> {
     }
 
     try {
+      var queuedCount = 0;
+      var updatedCount = 0;
       for (final Task updated in expandedTasks) {
         final response = await ApiService.editTaskV2(
           updated.id!,
@@ -929,26 +962,50 @@ class _CalendarAssistantScreenState extends State<CalendarAssistantScreen> {
           updateSeries: applyToSeries,
         );
 
-        if (response.statusCode != 200) {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text("Failed to update task: ${response.statusCode}"),
             ),
           );
+          continue;
         }
+
+        updatedCount++;
+        if (_isQueuedResponse(response)) {
+          queuedCount++;
+        }
+      }
+
+      if (updatedCount == 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Failed to update task")),
+        );
+        return;
       }
 
       await _loadTasksFromDb();
       if (!mounted) return;
+      final offlineQueueMessage =
+          queuedCount == 1
+              ? "Task update queued for sync when internet is restored"
+              : "$queuedCount task updates queued for sync when internet is restored";
+      final mixedMessage =
+          "${updatedCount - queuedCount} updated now, $queuedCount queued for sync";
+      final successMessage =
+          applyToSeries
+              ? "Series updated successfully"
+              : (expandedTasks.length > 1
+                  ? "${expandedTasks.length} tasks updated successfully"
+                  : "Task updated successfully");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            applyToSeries
-                ? "Series updated successfully"
-                : (expandedTasks.length > 1
-                      ? "${expandedTasks.length} tasks updated successfully"
-                      : "Task updated successfully"),
+            queuedCount == 0
+                ? successMessage
+                : (queuedCount == updatedCount ? offlineQueueMessage : mixedMessage),
           ),
         ),
       );
@@ -1031,12 +1088,17 @@ class _CalendarAssistantScreenState extends State<CalendarAssistantScreen> {
       if (response.statusCode == 200 || response.statusCode == 204) {
         await _loadTasksFromDb();
         if (!mounted) return;
+        final queuedOffline = _isQueuedResponse(response);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              deleteSeries
-                  ? "Task series deleted"
-                  : "Task '${task.name}' deleted",
+              queuedOffline
+                  ? (deleteSeries
+                      ? "Task series delete queued for sync when internet is restored"
+                      : "Task delete queued for sync when internet is restored")
+                  : (deleteSeries
+                      ? "Task series deleted"
+                      : "Task '${task.name}' deleted"),
             ),
           ),
         );

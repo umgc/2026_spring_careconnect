@@ -70,16 +70,16 @@ class _CommonDrawerState extends State<CommonDrawer> {
                 Text(
                   'Please log in',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).disabledColor,
-                  ),
+                        color: Theme.of(context).disabledColor,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'You need to be logged in to access navigation',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).disabledColor,
-                  ),
+                        color: Theme.of(context).disabledColor,
+                      ),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -96,8 +96,7 @@ class _CommonDrawerState extends State<CommonDrawer> {
       );
     }
 
-    final isCaregiver =
-        user.role.toUpperCase() == 'CAREGIVER' ||
+    final isCaregiver = user.role.toUpperCase() == 'CAREGIVER' ||
         user.role.toUpperCase() == 'FAMILY_LINK' ||
         user.role.toUpperCase() == 'ADMIN';
 
@@ -135,41 +134,42 @@ class _CommonDrawerState extends State<CommonDrawer> {
                   Text(
                     user.name ?? 'User',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color:
-                          Theme.of(context).appBarTheme.foregroundColor ??
-                          Theme.of(context).colorScheme.onPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
+                          color:
+                              Theme.of(context).appBarTheme.foregroundColor ??
+                                  Theme.of(context).colorScheme.onPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
                   Row(
                     children: [
                       Text(
                         user.role,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color:
-                              (Theme.of(context).appBarTheme.foregroundColor ??
+                              color: (Theme.of(context)
+                                          .appBarTheme
+                                          .foregroundColor ??
                                       Theme.of(context).colorScheme.onPrimary)
                                   .withOpacity(0.7),
-                        ),
+                            ),
                       ),
                       const SizedBox(width: 8),
                       Icon(
                         Icons.person,
                         size: 14,
-                        color:
-                            (Theme.of(context).appBarTheme.foregroundColor ??
-                                    Theme.of(context).colorScheme.onPrimary)
-                                .withOpacity(0.7),
+                        color: (Theme.of(context).appBarTheme.foregroundColor ??
+                                Theme.of(context).colorScheme.onPrimary)
+                            .withOpacity(0.7),
                       ),
                       Text(
                         ' View Profile',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color:
-                              (Theme.of(context).appBarTheme.foregroundColor ??
+                              color: (Theme.of(context)
+                                          .appBarTheme
+                                          .foregroundColor ??
                                       Theme.of(context).colorScheme.onPrimary)
                                   .withOpacity(0.9),
-                          fontWeight: FontWeight.bold,
-                        ),
+                              fontWeight: FontWeight.bold,
+                            ),
                       ),
                     ],
                   ),
@@ -247,20 +247,22 @@ class _CommonDrawerState extends State<CommonDrawer> {
 
           ExpansionTile(
             leading: Icon(
-              Icons.receipt_long,           color: widget.currentRoute.startsWith('/invoice-assistant')
+              Icons.receipt_long,
+              color: widget.currentRoute.startsWith('/invoice-assistant')
                   ? Theme.of(context).primaryColor
                   : Theme.of(context).iconTheme.color,
             ),
             title: Text(
               'Invoice Assistant',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: widget.currentRoute.startsWith('/invoice-assistant')
-                    ? Theme.of(context).primaryColor
-                    : Theme.of(context).textTheme.bodyLarge?.color,
-                fontWeight: widget.currentRoute.startsWith('/invoice-assistant')
-                    ? FontWeight.bold
-                    : FontWeight.normal,
-              ),
+                    color: widget.currentRoute.startsWith('/invoice-assistant')
+                        ? Theme.of(context).primaryColor
+                        : Theme.of(context).textTheme.bodyLarge?.color,
+                    fontWeight:
+                        widget.currentRoute.startsWith('/invoice-assistant')
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                  ),
             ),
             initiallyExpanded: widget.currentRoute.startsWith(
               '/invoice-assistant',
@@ -425,8 +427,8 @@ class _CommonDrawerState extends State<CommonDrawer> {
     final color = isActive
         ? theme.primaryColor
         : (textColor ??
-              theme.textTheme.bodyLarge?.color ??
-              theme.colorScheme.onSurface);
+            theme.textTheme.bodyLarge?.color ??
+            theme.colorScheme.onSurface);
     final bgColor = isActive ? theme.primaryColor.withOpacity(0.1) : null;
 
     return ListTile(
@@ -444,8 +446,7 @@ class _CommonDrawerState extends State<CommonDrawer> {
         ),
       ),
       tileColor: bgColor,
-      onTap:
-          onTap ??
+      onTap: onTap ??
           (route != null
               ? () {
                   Navigator.pop(context);

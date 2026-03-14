@@ -3,11 +3,11 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../../../../providers/user_provider.dart';
 import '../../../../services/api_service.dart';
 import '../../../../config/theme/app_theme.dart';
 import '../../../dashboard/models/patient_model.dart';
+import 'incident_report_screens.dart';
 
 class VisitInProgressPage extends StatefulWidget {
   final int patientId;
@@ -16,6 +16,8 @@ class VisitInProgressPage extends StatefulWidget {
   final double? latitude;
   final double? longitude;
   final int? scheduledVisitId;
+  final String? noGpsReason;
+  final double? accuracyM;
   
   const VisitInProgressPage({
     super.key,
@@ -25,6 +27,8 @@ class VisitInProgressPage extends StatefulWidget {
     this.latitude,
     this.longitude,
     this.scheduledVisitId,
+    this.noGpsReason,
+    this.accuracyM,
   });
 
   @override
@@ -41,7 +45,6 @@ class _VisitInProgressPageState extends State<VisitInProgressPage> {
   // Timer variables
   Timer? _timer;
   Duration _elapsedTime = Duration.zero;
-  bool _isTimerRunning = false;
 
   // Notes controller
   final TextEditingController _notesController = TextEditingController();
@@ -62,10 +65,6 @@ class _VisitInProgressPageState extends State<VisitInProgressPage> {
   }
 
   void _startTimer() {
-    setState(() {
-      _isTimerRunning = true;
-    });
-    
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _elapsedTime = Duration(seconds: _elapsedTime.inSeconds + 1);
@@ -202,6 +201,12 @@ class _VisitInProgressPageState extends State<VisitInProgressPage> {
     if (widget.latitude != null && widget.longitude != null) {
       queryParams['latitude'] = widget.latitude.toString();
       queryParams['longitude'] = widget.longitude.toString();
+    }
+    if (widget.accuracyM != null) {
+      queryParams['checkinAccuracyM'] = widget.accuracyM.toString();
+    }
+    if (widget.noGpsReason != null) {
+      queryParams['checkinNoGpsReason'] = widget.noGpsReason!;
     }
     
     if (widget.scheduledVisitId != null) {
@@ -468,6 +473,34 @@ class _VisitInProgressPageState extends State<VisitInProgressPage> {
           ),
 
           const SizedBox(height: 32),
+
+          // Incident report button
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            child: OutlinedButton.icon(
+              onPressed: () {
+                final name = fullName.trim().isEmpty ? 'Client' : fullName;
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => IncidentReportWizardScreen(
+                      clientId: patient.id,
+                      clientName: name,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.report, color: Colors.redAccent),
+              label: const Text(
+                'File Incident Report',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
 
           // Ready to Check Out button
           Container(

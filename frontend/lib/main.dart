@@ -13,6 +13,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'config/router/app_router.dart';
 import 'services/auth_migration_helper.dart';
+import 'services/api_service.dart';
 import 'services/messaging_service.dart';
 import 'services/local_db/local_db_startup.dart';
 import 'config/theme/app_theme.dart';
@@ -56,6 +57,9 @@ Future<void> main() async {
 
       // Create providers (don't initialize them yet)
       final userProvider = UserProvider();
+      ApiService.configureOfflineQueue(
+        canQueueOfflineWrites: () => userProvider.offlineModeEnabled,
+      );
       final themeProvider = ThemeProvider();
       final shortcutProvider = ShortcutProvider()..init();
       final localeProvider = LocaleProvider();
@@ -184,6 +188,7 @@ Future<void> _bootstrap() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   await initializeLocalDbOnStartup();
+  await ApiService.initializeOfflineQueue();
 
   // Initialize web-specific optimizations
   if (kIsWeb) {

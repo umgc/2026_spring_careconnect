@@ -47,18 +47,7 @@ public class CommentController {
             content = @Content(
                 mediaType = "application/json",
                 schema = @Schema(implementation = Comment.class, type = "array"),
-                examples = @ExampleObject(value = """
-                    [
-                        {
-                            "id": 1,
-                            "postId": 123,
-                            "userId": 456,
-                            "username": "john_doe",
-                            "content": "Great post!",
-                            "createdAt": "2025-01-15T10:30:00Z"
-                        }
-                    ]
-                    """)
+                examples = @ExampleObject(value = "[\n    {\n        \"id\": 1,\n        \"postId\": 123,\n        \"userId\": 456,\n        \"username\": \"john_doe\",\n        \"content\": \"Great post!\",\n        \"createdAt\": \"2025-01-15T10:30:00Z\"\n    }\n]")
             )
         ),
         @ApiResponse(

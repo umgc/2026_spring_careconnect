@@ -8,7 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// Keys are stored in platform secure storage and reused across app launches.
 class DbEncryptionService {
   DbEncryptionService({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage(webOptions: WebOptions.defaultOptions);
 
   static const String _encryptionKeyStorageKey = 'careconnect_db_key_v1';
   final FlutterSecureStorage _storage;

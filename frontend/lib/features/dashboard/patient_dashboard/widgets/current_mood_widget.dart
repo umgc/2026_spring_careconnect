@@ -1,11 +1,7 @@
-import 'dart:async';
-
+﻿import 'package:care_connect_app/providers/user_provider.dart';
+import 'package:care_connect_app/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:care_connect_app/providers/user_provider.dart';
-import 'package:care_connect_app/services/local_db/connectivity_router_service.dart';
-import 'package:care_connect_app/services/local_db/mood_storage_service.dart';
-
 
 /// Current Mood Widget
 class CurrentMoodWidget extends StatefulWidget {
@@ -13,6 +9,7 @@ class CurrentMoodWidget extends StatefulWidget {
   final String moodLabel;
   final List<String> moodTags;
   final DateTime? date;
+  final ValueChanged<double>? onAverageMoodChanged;
 
   const CurrentMoodWidget({
     super.key,
@@ -20,6 +17,7 @@ class CurrentMoodWidget extends StatefulWidget {
     required this.moodLabel,
     required this.moodTags,
     this.date,
+    this.onAverageMoodChanged,
   });
 
   @override
@@ -29,48 +27,31 @@ class CurrentMoodWidget extends StatefulWidget {
 class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
   late int currentMoodScore;
   late String currentMoodLabel;
-  late MoodStorageService _moodStorageService;
   List<Map<String, dynamic>> moodHistory = [];
-
-  @override
-  void dispose() {
-    unawaited(_moodStorageService.close());
-    super.dispose();
-  }
-
 
   @override
   void initState() {
     super.initState();
     currentMoodScore = widget.moodScore;
     currentMoodLabel = widget.moodLabel;
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    _moodStorageService = MoodStorageService(
-      connectivityRouter: ConnectivityRouterService(
-        isOnline: () async => userProvider.isDeviceOnline,
-      ),
-      currentUserIdProvider: () async => userProvider.user?.id,
-      canUseOfflineFallback: () async => userProvider.offlineModeEnabled,
-    );
     _loadMoodHistory();
   }
 
-  /// Gets the mood emoji based on the mood score
+  /// Gets a mood icon based on score.
   String _getMoodEmoji(int score) {
-    if (score == 10) return '🤩'; // ecstatic, blissful
-    if (score == 9) return '😁';  // big happy grin
-    if (score == 8) return '😄';  // joyful
-    if (score == 7) return '😊';  // warm, content
-    if (score == 6) return '🙂';  // slightly happy
-    if (score == 5) return '😐';  // neutral
-    if (score == 4) return '😕';  // uncertain, mild discontent
-    if (score == 3) return '🙁';  // a bit sad
-    if (score == 2) return '☹️'; // clearly sad
-    if (score == 1) return '😞';  // disappointed
-    return '😔';                  // 0 — deeply sad/depressed
+    if (score == 10) return '\u{1F929}';
+    if (score == 9) return '\u{1F601}';
+    if (score == 8) return '\u{1F604}';
+    if (score == 7) return '\u{1F60A}';
+    if (score == 6) return '\u{1F642}';
+    if (score == 5) return '\u{1F610}';
+    if (score == 4) return '\u{1F615}';
+    if (score == 3) return '\u{1F641}';
+    if (score == 2) return '\u{2639}\u{FE0F}';
+    if (score == 1) return '\u{1F61E}';
+    return '\u{1F614}';
   }
 
-  /// Gets a readable mood label
   String _getMoodLabel(int score) {
     if (score >= 9) return 'Ecstatic';
     if (score >= 7) return 'Happy';
@@ -79,12 +60,10 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
     return 'Sad';
   }
 
-  /// Optional placeholder for alerts — add your real logic here
   void _checkForAlerts() {
-    // Implement alert logic if needed
+    // Placeholder for alert logic.
   }
 
-  /// Formats the date into a friendly string
   String _formatDate(DateTime date) {
     final now = DateTime.now().toUtc();
     final difference = now.difference(date);
@@ -98,36 +77,133 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
     }
   }
 
+  Future<void> _loadMoodHistory() async {
+    final user = Provider.of<UserProvider>(context, listen: false).user;
 
+    try {
+      final response = await ApiService.getMoodHistory(user?.id ?? 0);
+      setState(() {
+        moodHistory = response
+            .map<Map<String, dynamic>>(
+              (entry) => {
+                'score': entry['score'],
+                'label': entry['label'],
+                'date': DateTime.parse(entry['createdAt']),
+              },
+            )
+            .toList();
+      });
+      _notifyAverageMoodChanged();
+    } catch (e) {
+      print('Error loading mood history: $e');
+    }
+  }
 
-      Future<void> _loadMoodHistory() async {
-        final user = Provider.of<UserProvider>(context, listen: false).user;
+  void _notifyAverageMoodChanged() {
+    final callback = widget.onAverageMoodChanged;
+    if (callback == null) {
+      return;
+    }
+    callback(_averageMoodScore());
+  }
 
-        try {
-          // Read through storage service so online/offline routing is centralized.
-          final response = await _moodStorageService.getMoodHistory(
-            user?.id ?? 0,
-          );
-          setState(() {
-            moodHistory = response
-                .map<Map<String, dynamic>>((entry) => {
-                      'score': entry['score'],
-                      'label': entry['label'],
-                      'date': DateTime.parse(entry['createdAt']),
-                    })
-                .toList();
-          });
-        } catch (e) {
-          print('❌ Error loading mood history: $e');
-        }
+  int _safeScore(dynamic value) {
+    if (value is int) {
+      return value.clamp(1, 10);
+    }
+    if (value is num) {
+      return value.round().clamp(1, 10);
+    }
+    if (value is String) {
+      final parsed = int.tryParse(value);
+      if (parsed != null) {
+        return parsed.clamp(1, 10);
       }
+    }
+    return 5;
+  }
 
+  DateTime _safeDate(dynamic value) {
+    if (value is DateTime) {
+      return value;
+    }
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+    return DateTime.now().toUtc();
+  }
 
+  List<Map<String, dynamic>> _latestMoodEntries() {
+    final rows = moodHistory
+        .map((entry) => {
+              'score': _safeScore(entry['score']),
+              'label': (entry['label'] ?? '').toString(),
+              'date': _safeDate(entry['date']),
+            })
+        .toList();
+
+    rows.sort((a, b) {
+      final left = a['date'] as DateTime;
+      final right = b['date'] as DateTime;
+      return right.compareTo(left);
+    });
+    return rows.take(4).toList();
+  }
+
+  double _averageMoodScore() {
+    final nowUtc = DateTime.now().toUtc();
+    final cutoffUtc = nowUtc.subtract(const Duration(days: 7));
+    final recentEntries = moodHistory.where((entry) {
+      final date = _safeDate(entry['date']).toUtc();
+      return date.isAfter(cutoffUtc) || date.isAtSameMomentAs(cutoffUtc);
+    }).toList();
+
+    if (recentEntries.isEmpty) {
+      return 5.0;
+    }
+    final total = recentEntries.fold<int>(0, (sum, entry) {
+      return sum + _safeScore(entry['score']);
+    });
+    return total / recentEntries.length;
+  }
+
+  List<double> _dailyMoodTrendForLast7Days(double fallbackAverage) {
+    final nowUtc = DateTime.now().toUtc();
+    final todayUtc = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+    final buckets = List<List<int>>.generate(7, (_) => <int>[]);
+
+    for (final entry in moodHistory) {
+      final score = _safeScore(entry['score']);
+      final dateUtc = _safeDate(entry['date']).toUtc();
+      final entryDay = DateTime.utc(dateUtc.year, dateUtc.month, dateUtc.day);
+      final dayDiff = todayUtc.difference(entryDay).inDays;
+
+      if (dayDiff >= 0 && dayDiff < 7) {
+        final bucketIndex = 6 - dayDiff;
+        buckets[bucketIndex].add(score);
+      }
+    }
+
+    final safeFallback = fallbackAverage.clamp(1.0, 10.0);
+    return buckets.map((scores) {
+      if (scores.isEmpty) {
+        return safeFallback;
+      }
+      final total = scores.fold<int>(0, (sum, value) => sum + value);
+      return (total / scores.length).clamp(1.0, 10.0);
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dateLabel = widget.date == null ? 'Today' : _formatDate(widget.date!);
+    final latestMoods = _latestMoodEntries();
+    final averageMood = _averageMoodScore();
+    final trendPoints = _dailyMoodTrendForLast7Days(averageMood);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -204,8 +280,6 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
             ],
           ),
           const SizedBox(height: 20),
-
-          // Mood slider and Save button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
@@ -221,12 +295,7 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
                     thumbColor: Colors.white,
                     overlayColor: theme.colorScheme.primary.withOpacity(0.2),
                     trackShape: const GradientRectSliderTrackShape(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.blue,
-                          Colors.yellow,
-                        ],
-                      ),
+                      gradient: LinearGradient(colors: [Colors.blue, Colors.yellow]),
                     ),
                   ),
                   child: Slider(
@@ -252,7 +321,6 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
                       backgroundColor: theme.colorScheme.primary,
                       foregroundColor: theme.colorScheme.onPrimary,
                     ),
-                    
                     onPressed: () async {
                       final userProvider = Provider.of<UserProvider>(
                         context,
@@ -263,7 +331,7 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
 
                       try {
                         final user = userProvider.user;
-                        await _moodStorageService.saveMood(
+                        final response = await ApiService.saveMoodScore(
                           userId: user?.id ?? 0,
                           score: currentMoodScore,
                           label: currentMoodLabel,
@@ -279,17 +347,20 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
                             'date': DateTime.now().toUtc(),
                           });
                         });
+                        _notifyAverageMoodChanged();
 
                         _checkForAlerts();
 
                         messenger.showSnackBar(
                           SnackBar(
                             content: Text(
-                              userProvider.isDeviceOnline
+                              response.headers['x-offline-queued'] == 'true'
+                                  ? 'Mood queued for sync when internet is restored'
+                                  : userProvider.isDeviceOnline
                                       ? 'Mood saved successfully'
                                       : 'No internet: mood saved locally',
                             ),
-                            duration: Duration(seconds: 2),
+                            duration: const Duration(seconds: 2),
                           ),
                         );
                       } catch (e) {
@@ -301,38 +372,85 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
                         );
                       }
                     },
-
                   ),
                 ),
               ],
             ),
           ),
-
           if (moodHistory.isNotEmpty) ...[
             const SizedBox(height: 20),
-            Text(
-              'Mood Tracker',
-              style: theme.textTheme.titleMedium,
+            _MoodSummaryCard(
+              averageScore: averageMood,
+              trendPoints: trendPoints,
             ),
+            const SizedBox(height: 14),
+            Text('Last 4 Moods', style: theme.textTheme.titleMedium),
             const SizedBox(height: 10),
-            Column(
-              children: moodHistory.map((entry) {
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: latestMoods.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 2.1,
+              ),
+              itemBuilder: (context, index) {
+                final entry = latestMoods[index];
+                final score = entry['score'] as int;
+                final label = (entry['label'] as String).isEmpty
+                    ? _getMoodLabel(score)
+                    : entry['label'] as String;
                 final date = entry['date'] as DateTime;
-                final score = entry['score'];
-                final label = entry['label'];
-                return ListTile(
-                  leading: Text(
-                    _getMoodEmoji(score),
-                    style: const TextStyle(fontSize: 28),
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceVariant.withValues(
+                      alpha: 0.35,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.outline.withValues(alpha: 0.25),
+                    ),
                   ),
-                  title: Text('$score/10  —  $label'),
-                  subtitle: Text(_formatDate(date)),
+                  child: Row(
+                    children: [
+                      Text(
+                        _getMoodEmoji(score),
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$score/10 - $label',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _formatDate(date),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.75),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 );
-              }).toList(),
+              },
             ),
           ],
-
-
           const SizedBox(height: 16),
           Wrap(
             spacing: 8,
@@ -340,14 +458,9 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
             children: widget.moodTags
                 .map(
                   (tag) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer.withValues(
-                        alpha: 0.3,
-                      ),
+                      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: theme.colorScheme.primary.withValues(alpha: 0.3),
@@ -371,9 +484,283 @@ class _CurrentMoodWidgetState extends State<CurrentMoodWidget> {
   }
 }
 
-/// Gradient track for mood slider
-class GradientRectSliderTrackShape extends SliderTrackShape
-    with BaseSliderTrackShape {
+class _MoodSummaryCard extends StatelessWidget {
+  const _MoodSummaryCard({
+    required this.averageScore,
+    required this.trendPoints,
+  });
+
+  final double averageScore;
+  final List<double> trendPoints;
+
+  String _statusText(double score) {
+    if (score <= 5.0) {
+      return 'Low mood trend';
+    }
+    if (score < 7.0) {
+      return 'Stable mood trend';
+    }
+    return 'Positive mood trend';
+  }
+
+  Color _statusColor(double score, ThemeData theme) {
+    if (score <= 5.0) {
+      return theme.colorScheme.error;
+    }
+    if (score < 7.0) {
+      return Colors.orange.shade700;
+    }
+    return Colors.green.shade700;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final clamped = averageScore.clamp(1.0, 10.0);
+    final normalized = (clamped / 10.0).clamp(0.0, 1.0);
+    final statusColor = _statusColor(clamped, theme);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceVariant.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 92,
+                height: 92,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 80,
+                      height: 80,
+                      child: CircularProgressIndicator(
+                        value: normalized,
+                        strokeWidth: 8,
+                        backgroundColor: theme.colorScheme.outline.withValues(
+                          alpha: 0.2,
+                        ),
+                        valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          clamped.toStringAsFixed(1),
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        Text(
+                          '/10',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.65,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '7-Day Mood Summary',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _statusText(clamped),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Updated from moods logged in the last 7 days',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.7,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 54,
+            child: CustomPaint(
+              painter: _MoodSparklinePainter(
+                points: trendPoints,
+                lineColor: statusColor,
+                fillColor: statusColor.withValues(alpha: 0.18),
+                gridColor: theme.colorScheme.outline.withValues(alpha: 0.2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '7 days ago',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                ),
+              ),
+              Text(
+                'Today',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoodSparklinePainter extends CustomPainter {
+  _MoodSparklinePainter({
+    required this.points,
+    required this.lineColor,
+    required this.fillColor,
+    required this.gridColor,
+  });
+
+  final List<double> points;
+  final Color lineColor;
+  final Color fillColor;
+  final Color gridColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty) {
+      return;
+    }
+
+    const horizontalPadding = 4.0;
+    const verticalPadding = 6.0;
+    final chartWidth = size.width - (horizontalPadding * 2);
+    final chartHeight = size.height - (verticalPadding * 2);
+    if (chartWidth <= 0 || chartHeight <= 0) {
+      return;
+    }
+
+    final baselinePaint = Paint()
+      ..color = gridColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    final midY = verticalPadding + (chartHeight / 2);
+    canvas.drawLine(
+      Offset(horizontalPadding, midY),
+      Offset(size.width - horizontalPadding, midY),
+      baselinePaint,
+    );
+
+    final strokePath = Path();
+    final fillPath = Path();
+    final step = points.length == 1 ? 0.0 : chartWidth / (points.length - 1);
+
+    for (var i = 0; i < points.length; i++) {
+      final x = horizontalPadding + (i * step);
+      final normalized = ((points[i].clamp(1.0, 10.0) - 1.0) / 9.0);
+      final y = verticalPadding + ((1 - normalized) * chartHeight);
+
+      if (i == 0) {
+        strokePath.moveTo(x, y);
+        fillPath.moveTo(x, size.height - verticalPadding);
+        fillPath.lineTo(x, y);
+      } else {
+        strokePath.lineTo(x, y);
+        fillPath.lineTo(x, y);
+      }
+    }
+
+    final endX = horizontalPadding + ((points.length - 1) * step);
+    fillPath.lineTo(endX, size.height - verticalPadding);
+    fillPath.close();
+
+    final fillPaint = Paint()
+      ..color = fillColor
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(fillPath, fillPaint);
+
+    final linePaint = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(strokePath, linePaint);
+
+    final lastNormalized = ((points.last.clamp(1.0, 10.0) - 1.0) / 9.0);
+    final lastX = horizontalPadding + ((points.length - 1) * step);
+    final lastY = verticalPadding + ((1 - lastNormalized) * chartHeight);
+
+    final markerFill = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(lastX, lastY), 3.5, markerFill);
+
+    final markerStroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawCircle(Offset(lastX, lastY), 3.5, markerStroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MoodSparklinePainter oldDelegate) {
+    if (oldDelegate.points.length != points.length) {
+      return true;
+    }
+    for (var i = 0; i < points.length; i++) {
+      if (oldDelegate.points[i] != points[i]) {
+        return true;
+      }
+    }
+    return oldDelegate.lineColor != lineColor ||
+        oldDelegate.fillColor != fillColor ||
+        oldDelegate.gridColor != gridColor;
+  }
+}
+
+class GradientRectSliderTrackShape extends SliderTrackShape with BaseSliderTrackShape {
   const GradientRectSliderTrackShape({required this.gradient});
   final LinearGradient gradient;
 
@@ -392,12 +779,10 @@ class GradientRectSliderTrackShape extends SliderTrackShape
   }) {
     final double trackHeight = sliderTheme.trackHeight ?? 4.0;
     final double trackLeft = offset.dx;
-    final double trackTop =
-        offset.dy + (parentBox.size.height - trackHeight) / 2;
+    final double trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
     final double trackRight = trackLeft + parentBox.size.width;
     final double trackBottom = trackTop + trackHeight;
-    final Rect trackRect =
-        Rect.fromLTRB(trackLeft, trackTop, trackRight, trackBottom);
+    final Rect trackRect = Rect.fromLTRB(trackLeft, trackTop, trackRight, trackBottom);
 
     final Paint paint = Paint()
       ..shader = gradient.createShader(trackRect)

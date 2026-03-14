@@ -31,18 +31,14 @@ public class EmergencyController {
     @GetMapping("/{emergencyId}.pdf")
     @Operation(
         summary = "🚨 Get Emergency PDF",
-        description = """
-            Generate a pre-filled Vial of Life PDF document for emergency responders.
-
-            This endpoint is designed to be accessed via QR codes in emergency situations.
-            It returns an official Vial of Life form pre-populated with the patient's:
-            - Basic information (name, DOB, blood type)
-            - Critical allergies and medical conditions
-            - Current medications
-            - Emergency contact information
-
-            **Security Note:** This endpoint uses emergency ID tokens for access control.
-            """,
+        description = "Generate a pre-filled Vial of Life PDF document for emergency responders.\n\n"
+            + "This endpoint is designed to be accessed via QR codes in emergency situations.\n"
+            + "It returns an official Vial of Life form pre-populated with the patient's:\n"
+            + "- Basic information (name, DOB, blood type)\n"
+            + "- Critical allergies and medical conditions\n"
+            + "- Current medications\n"
+            + "- Emergency contact information\n\n"
+            + "**Security Note:** This endpoint uses emergency ID tokens for access control.\n",
         tags = {"Emergency Information", "🚨 Emergency Response"}
     )
     @ApiResponses({

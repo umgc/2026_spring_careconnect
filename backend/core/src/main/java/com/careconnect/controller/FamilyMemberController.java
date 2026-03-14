@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.dto.PatientDataResponse;
 import com.careconnect.dto.DashboardDTO;
 import com.careconnect.dto.VitalSampleDTO;
@@ -47,6 +50,8 @@ public class FamilyMemberController {
     }
 
     // 1. Get all patients accessible to the authenticated family member
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patients")
     public ResponseEntity<List<PatientDataResponse>> getAccessiblePatients() {
         User familyMember = getCurrentFamilyMember();
@@ -55,6 +60,8 @@ public class FamilyMemberController {
     }
 
     // 2. Get specific patient data (read-only access)
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patients/{patientId}")
     public ResponseEntity<PatientDataResponse> getPatientData(@PathVariable Long patientId) {
         User familyMember = getCurrentFamilyMember();
@@ -63,6 +70,8 @@ public class FamilyMemberController {
     }
 
     // 3. Check if family member has access to a specific patient
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patients/{patientId}/access")
     public ResponseEntity<Boolean> hasAccessToPatient(@PathVariable Long patientId) {
         User familyMember = getCurrentFamilyMember();
@@ -71,6 +80,8 @@ public class FamilyMemberController {
     }
 
     // 4. Get patient dashboard data (read-only)
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patients/{patientId}/dashboard")
     public ResponseEntity<DashboardDTO> getPatientDashboard(@PathVariable Long patientId,
                                                            @RequestParam(defaultValue = "30") int days) {
@@ -86,6 +97,8 @@ public class FamilyMemberController {
     }
 
     // 5. Get patient vital signs (read-only)
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patients/{patientId}/vitals")
     public ResponseEntity<List<VitalSampleDTO>> getPatientVitals(@PathVariable Long patientId,
                                                                 @RequestParam(defaultValue = "7") int days) {

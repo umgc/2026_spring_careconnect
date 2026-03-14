@@ -74,7 +74,7 @@ class _WearablesScreenState extends State<WearablesScreen> {
   List<ConnectedDevice> connectedDevices = [];
   Map<String, HealthData> latestHealthData = {};
   bool isLoadingData = false;
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(webOptions: WebOptions.defaultOptions);
 
   // Fitbit configuration
   static const String fitbitClientId = '23QG9C';

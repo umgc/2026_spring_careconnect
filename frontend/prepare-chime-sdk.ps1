@@ -5,8 +5,8 @@ Param(
 $ErrorActionPreference = "Stop"
 
 $targets = @(
-    "https://unpkg.com/amazon-chime-sdk-js@3.20.0/build/amazon-chime-sdk.min.js",
-    "https://cdn.jsdelivr.net/npm/amazon-chime-sdk-js@3.20.0/build/amazon-chime-sdk.min.js"
+    "https://unpkg.com/amazon-chime-sdk-js@3.26.0/build/amazon-chime-sdk.min.js",
+    "https://cdn.jsdelivr.net/npm/amazon-chime-sdk-js@3.26.0/build/amazon-chime-sdk.min.js"
 )
 
 $output = Join-Path $PSScriptRoot $OutputPath

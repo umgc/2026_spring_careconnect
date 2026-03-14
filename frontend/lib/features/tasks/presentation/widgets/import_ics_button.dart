@@ -53,6 +53,7 @@ class _ImportIcsButtonState extends State<ImportIcsButton> {
     final content = utf8.decode(fileBytes);
     final events = _parseIcs(content);
     int createdCount = 0;
+    int queuedCount = 0;
 
     for (final ev in events) {
       final freq = ev['FREQ'] as String?;
@@ -112,8 +113,11 @@ class _ImportIcsButtonState extends State<ImportIcsButton> {
           jsonEncode(finalTask.toJson()),
         );
 
-        if (response.statusCode == 200) {
+        if (response.statusCode >= 200 && response.statusCode < 300) {
           createdCount++;
+          if (response.headers['x-offline-queued'] == 'true') {
+            queuedCount++;
+          }
         } else {
           debugPrint(
             "Failed to import event ${ev['SUMMARY']}: ${response.statusCode}",
@@ -125,11 +129,14 @@ class _ImportIcsButtonState extends State<ImportIcsButton> {
     }
 
     if (mounted) {
+      final message = queuedCount == 0
+          ? "Imported $createdCount task${createdCount == 1 ? '' : 's'}"
+          : (queuedCount == createdCount
+              ? "Imported tasks queued for sync when internet is restored"
+              : "Imported $createdCount task${createdCount == 1 ? '' : 's'} (${queuedCount} queued for sync)");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            "Imported $createdCount task${createdCount == 1 ? '' : 's'}",
-          ),
+          content: Text(message),
         ),
       );
     }

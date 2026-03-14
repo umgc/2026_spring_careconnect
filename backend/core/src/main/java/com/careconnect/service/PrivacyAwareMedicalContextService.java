@@ -76,15 +76,13 @@ public class PrivacyAwareMedicalContextService {
             return "Patient Demographics: Information not available\n\n";
         }
         
-        return String.format("""
-            Patient Demographics:
-            - ID: %s
-            - Age Range: %s
-            - Gender: %s
-            - General Location: %s
-            - Account Status: Active
-            
-            """, 
+        return String.format(
+            "Patient Demographics:\n" +
+            "- ID: %s\n" +
+            "- Age Range: %s\n" +
+            "- Gender: %s\n" +
+            "- General Location: %s\n" +
+            "- Account Status: Active\n\n",
             anonymizer.generatePseudoId(patientId),
             "Adult", // Generalized age
             "Not Specified", // Generalized gender
@@ -195,14 +193,10 @@ public class PrivacyAwareMedicalContextService {
     private String buildGeneralizedMedications(Long patientId) {
         // In a real implementation, this would query a medications repository
         // For now, return a placeholder
-        return """
-            Current Medication Classes:
-            - Cardiovascular medications: Present
-            - Monitoring medications: As needed
-            
-            Note: Specific medications generalized to drug classes for privacy
-            
-            """;
+        return "Current Medication Classes:\n" +
+            "- Cardiovascular medications: Present\n" +
+            "- Monitoring medications: As needed\n\n" +
+            "Note: Specific medications generalized to drug classes for privacy\n\n";
     }
     
     private String buildAnonymizedClinicalNotes(Long patientId, 
@@ -241,16 +235,13 @@ public class PrivacyAwareMedicalContextService {
     }
     
     private String buildMedicalDisclaimer() {
-        return """
-            MEDICAL DISCLAIMER:
-            This AI assistant provides general health information only and should not replace 
-            professional medical advice, diagnosis, or treatment. Always consult with qualified 
-            healthcare providers for medical decisions. In case of emergency, contact emergency 
-            services immediately.
-            
-            The information provided is based on anonymized patient data and general medical 
-            knowledge. Individual medical situations may vary significantly.
-            """;
+        return "MEDICAL DISCLAIMER:\n" +
+            "This AI assistant provides general health information only and should not replace \n" +
+            "professional medical advice, diagnosis, or treatment. Always consult with qualified \n" +
+            "healthcare providers for medical decisions. In case of emergency, contact emergency \n" +
+            "services immediately.\n\n" +
+            "The information provided is based on anonymized patient data and general medical \n" +
+            "knowledge. Individual medical situations may vary significantly.\n";
     }
     
     /**
@@ -264,15 +255,13 @@ public class PrivacyAwareMedicalContextService {
      * Build minimal context for statistical queries only
      */
     public String buildStatisticalContext(Long patientId) {
-        return String.format("""
-            Statistical Patient Summary (ID: %s):
-            - Demographic category: Adult patient
-            - Health status: Active monitoring
-            - Data points available: Vitals, medications, clinical notes
-            - Privacy level: Maximum anonymization applied
-            
-            %s
-            """, 
+        return String.format(
+            "Statistical Patient Summary (ID: %s):\n" +
+            "- Demographic category: Adult patient\n" +
+            "- Health status: Active monitoring\n" +
+            "- Data points available: Vitals, medications, clinical notes\n" +
+            "- Privacy level: Maximum anonymization applied\n\n" +
+            "%s\n",
             anonymizer.generatePseudoId(patientId),
             buildMedicalDisclaimer()
         );

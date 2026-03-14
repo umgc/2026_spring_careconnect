@@ -21,5 +21,11 @@ public record PatientProfileDTO(
         String relationship,
         List<AllergyDTO> allergies,
         Long caregiverId,
-        Long familyMemberId
+        Long familyMemberId,
+        // In-Home personalization fields
+        String likes,
+        String dislikes,
+        String habits,
+        String phobias,
+        String preferredCommunicationMethod
 ) {}

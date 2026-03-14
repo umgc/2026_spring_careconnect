@@ -11,18 +11,30 @@ import java.util.*;
 @Component
 public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequest, OAuth2User> {
 
+    private final OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate;
+
+    public CustomOAuth2UserService() {
+        this.delegate = new DefaultOAuth2UserService();
+    }
+
+    // Constructor for testing
+    public CustomOAuth2UserService(OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate) {
+        this.delegate = delegate;
+    }
+
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
-        OAuth2UserService<OAuth2UserRequest, OAuth2User> delegate = new DefaultOAuth2UserService();
         OAuth2User oauthUser = delegate.loadUser(userRequest);
 
         String email = oauthUser.getAttribute("email");
         String role = determineRoleByEmail(email);
 
+        String nameAttributeKey = (email != null) ? "email" : "name";
+
         return new DefaultOAuth2User(
             List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase())),
             oauthUser.getAttributes(),
-            "email"
+            nameAttributeKey
         );
     }
 

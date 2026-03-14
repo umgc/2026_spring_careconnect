@@ -2,8 +2,9 @@
 .git
 .gitignore
 
-# Build output (rebuilt inside Docker)
-target/
+# Build output — allow only the fat jar
+target/*
+!target/careconnect-backend-0.0.1-SNAPSHOT.jar
 
 # IDE
 .idea/

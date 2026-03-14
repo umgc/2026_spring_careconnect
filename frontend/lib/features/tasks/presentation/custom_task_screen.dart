@@ -243,6 +243,16 @@ class _CustomTaskScreenState extends State<CustomTaskScreen> {
                 widget.patientId,
                 jsonEncode(task.toJson()),
               );
+              if (!mounted) return;
+              if (result.headers['x-offline-queued'] == 'true') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Task queued for sync when internet is restored',
+                    ),
+                  ),
+                );
+              }
               // Optionally check result for success/failure here
               context.go('/patient-tasks',
                   extra: {

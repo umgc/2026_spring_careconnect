@@ -1,17 +1,23 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.model.Caregiver;
 import com.careconnect.model.Patient;
 import com.careconnect.model.User;
 import com.careconnect.repository.CaregiverRepository;
 import com.careconnect.repository.PatientRepository;
 import com.careconnect.repository.UserRepository;
+import com.careconnect.security.AuthorizationService;
 import com.careconnect.security.Role;
+import com.careconnect.security.UnauthorizedException;
 import com.careconnect.service.CaregiverPatientLinkService;
 import com.careconnect.service.CaregiverService;
 import com.careconnect.dto.CaregiverRegistration;
 import com.careconnect.dto.PatientRegistration;
 import com.careconnect.exception.AppException;
+import com.careconnect.util.SecurityUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -19,9 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import com.careconnect.dto.PatientWithLinkDto;
-// import com.careconnect.util.SecurityUtil;
 import org.springframework.web.bind.annotation.*;
-// import com.careconnect.security.Role;
 import jakarta.servlet.http.HttpServletRequest;
 
 
@@ -50,30 +54,41 @@ public class CaregiverController {
     @Autowired
     private CaregiverRepository caregiverRepository;
 
-    // private SecurityUtil securityUtil;
+    @Autowired
+    private SecurityUtil securityUtil;
+
+    @Autowired
+    private AuthorizationService authorizationService;
 
     // 1. List patients under a caregiver, with optional filtering
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/{caregiverId}/patients")
     public ResponseEntity<List<PatientWithLinkDto>> getPatientsByCaregiver(
         @PathVariable("caregiverId") Long caregiverId,
         @RequestParam(required = false) String email,
-        @RequestParam(required = false) String name) {
+        @RequestParam(required = false) String name) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
+
         List<PatientWithLinkDto> patients = caregiverService.getPatientsByCaregiver(caregiverId, email, name);
         return ResponseEntity.ok(patients);
     }
 
     // 2. Get caregiver details
-    @GetMapping("/{caregiverId}")
-    public ResponseEntity<Caregiver> getCaregiver(@PathVariable Long caregiverId, HttpServletRequest request) {
-        // SecurityUtil.UserInfo user = securityUtil.getCurrentUser(request);
-        Caregiver caregiver = caregiverService.getCaregiverById(caregiverId);
-        // TODO - add caregiver verification
-        // if (user.role != Role.CAREGIVER || !caregiver.getEmail().equals(user.email)) {
-        //     return ResponseEntity.status(403).build(); 
-        // }
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
+    @GetMapping("/{caregiverId}")
+    public ResponseEntity<Caregiver> getCaregiver(@PathVariable Long caregiverId, HttpServletRequest request) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
+
+        Caregiver caregiver = caregiverService.getCaregiverById(caregiverId);
         return ResponseEntity.ok(caregiver);
     }
+
+    @RequirePermission(Permission.CREATE_TASKS)
+
 
     @PostMapping
     public ResponseEntity<Caregiver> registerCaregiver(@RequestBody CaregiverRegistration reg) {
@@ -81,16 +96,28 @@ public class CaregiverController {
         return ResponseEntity.status(HttpStatus.CREATED).body(caregiver);
     }
 
+    @RequirePermission(Permission.UPDATE_TASKS)
+
+
     @PutMapping("/{caregiverId}")
-    public ResponseEntity<Caregiver> updateCaregiver(@PathVariable Long caregiverId, @RequestBody Caregiver updatedCaregiver) {
-    Caregiver caregiver = caregiverService.updateCaregiver(caregiverId, updatedCaregiver);
-    return ResponseEntity.ok(caregiver);
-  }
+    public ResponseEntity<Caregiver> updateCaregiver(@PathVariable Long caregiverId, @RequestBody Caregiver updatedCaregiver) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
+
+        Caregiver caregiver = caregiverService.updateCaregiver(caregiverId, updatedCaregiver);
+        return ResponseEntity.ok(caregiver);
+    }
+
+     @RequirePermission(Permission.CREATE_TASKS)
+
 
      @PostMapping("/{caregiverId}/patients")
     public ResponseEntity<Patient> registerPatient(
             @PathVariable Long caregiverId,
-            @RequestBody PatientRegistration reg) {
+            @RequestBody PatientRegistration reg) throws UnauthorizedException {
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
+
         reg.setCaregiverId(caregiverId);
         Patient patient = auth.registerPatient(reg);
         return ResponseEntity.ok(patient);
@@ -99,6 +126,8 @@ public class CaregiverController {
     /**
      * Add an existing patient to a caregiver's care list by email
      */
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/{caregiverId}/patients/add")
     @Operation(summary = "Add existing patient to caregiver",
             description = "Link an existing patient to the caregiver's care list using patient's email")
@@ -110,7 +139,10 @@ public class CaregiverController {
     })
     public ResponseEntity<?> addPatient(
             @PathVariable Long caregiverId,
-            @RequestBody Map<String, String> request) {
+            @RequestBody Map<String, String> request) throws UnauthorizedException {
+
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
 
         String patientEmail = request.get("email");
 
@@ -171,11 +203,16 @@ public class CaregiverController {
     /**
      * Get a specific patient under a caregiver's care
      */
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/{caregiverId}/patients/{patientId}")
     public ResponseEntity<?> getPatientForCaregiver(
             @PathVariable Long caregiverId,
-            @PathVariable Long patientId) {
-        
+            @PathVariable Long patientId) throws UnauthorizedException {
+
+        User currentUser = securityUtil.resolveCurrentUser();
+        authorizationService.requireAdminOrCaregiver(currentUser);
+
         // Check if the caregiver has access to this patient using entity IDs
         if (!caregiverService.caregiverHasAccessToPatient(caregiverId, patientId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)

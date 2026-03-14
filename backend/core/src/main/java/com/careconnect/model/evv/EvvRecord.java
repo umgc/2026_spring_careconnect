@@ -23,6 +23,8 @@ public class EvvRecord {
     @Column(name = "service_type", nullable = false) private String serviceType;
     @Column(name = "individual_name", nullable = false) private String individualName;
     @Column(name = "caregiver_id", nullable = false) private Long caregiverId;
+    /** Snapshot of caregiver full name at time of visit for immutable audit trail */
+    @Column(name = "caregiver_name") private String caregiverName;
     
     @Column(name = "scheduled_visit_id")
     private Long scheduledVisitId; // Optional link to scheduled visit

@@ -41,13 +41,25 @@ public class EvvRecordRequestDto {
     // These will be saved to evv_record_location table via EvvLocationService
     private Double checkinLocationLat;
     private Double checkinLocationLng;
-    @Pattern(regexp = "GPS|PATIENT_ADDRESS")
+    @Pattern(regexp = "GPS|PATIENT_ADDRESS|MANUAL")
     private String checkinLocationSource;
-    
+    /** Federal EVV: reason GPS was unavailable for check-in (required when not GPS) */
+    private String checkinNoGpsReason;
+    /** Manual address for check-in MANUAL location type */
+    private String checkinManualAddress;
+    /** GPS accuracy in metres for check-in */
+    private Double checkinAccuracyM;
+
     private Double checkoutLocationLat;
     private Double checkoutLocationLng;
-    @Pattern(regexp = "GPS|PATIENT_ADDRESS")
+    @Pattern(regexp = "GPS|PATIENT_ADDRESS|MANUAL")
     private String checkoutLocationSource;
+    /** Federal EVV: reason GPS was unavailable for check-out (required when not GPS) */
+    private String checkoutNoGpsReason;
+    /** Manual address for check-out MANUAL location type */
+    private String checkoutManualAddress;
+    /** GPS accuracy in metres for check-out */
+    private Double checkoutAccuracyM;
 
     @NotNull @Positive
     private Long patientId; // Direct reference to patient receiving care

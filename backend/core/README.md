@@ -37,6 +37,7 @@ Although, the following would be similar to most platforms an IDEs you want to u
 
 ## Prerequisite
 - Install Git you can follow this link.
+- Install JDK 17 (required by Maven build configuration).
 - Install Docker Desktop/Engine and Docker Compose (used for the local PostgreSQL database).
 - Clone the code (your branch if you are planning on make changes to the code).
 

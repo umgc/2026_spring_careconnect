@@ -1,5 +1,8 @@
 package com.careconnect.controller;
 
+import com.careconnect.security.Permission;
+import com.careconnect.security.RequirePermission;
+
 import com.careconnect.dto.*;
 import com.careconnect.exception.AppException;
 import com.careconnect.model.User;
@@ -14,6 +17,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/v1/api/caregiver-patient-links")
@@ -35,6 +39,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 1. Create a new caregiver-patient link
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/caregivers/{caregiverId}/patients")
     public ResponseEntity<CaregiverPatientLinkResponse> createLink(
             @PathVariable Long caregiverId,
@@ -52,6 +58,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 2. Update a link (suspend, reactivate, change type, etc.)
+    @RequirePermission(Permission.UPDATE_TASKS)
+
     @PutMapping("/{linkId}")
     public ResponseEntity<CaregiverPatientLinkResponse> updateLink(
             @PathVariable Long linkId,
@@ -69,6 +77,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 3. Temporarily suspend a link
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/{linkId}/suspend")
     public ResponseEntity<CaregiverPatientLinkResponse> suspendLink(@PathVariable Long linkId) {
         User currentUser = getCurrentUser();
@@ -84,6 +94,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 4. Reactivate a suspended link
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/{linkId}/reactivate")
     public ResponseEntity<CaregiverPatientLinkResponse> reactivateLink(@PathVariable Long linkId) {
         User currentUser = getCurrentUser();
@@ -98,6 +110,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 5. Permanently revoke a link
+    @RequirePermission(Permission.DELETE_PATIENTS)
+
     @DeleteMapping("/{linkId}")
     public ResponseEntity<Void> revokeLink(@PathVariable Long linkId) {
         User currentUser = getCurrentUser();
@@ -112,6 +126,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 6. Get all patients linked to a caregiver
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/caregivers/{caregiverId}/patients")
     public ResponseEntity<List<CaregiverPatientLinkResponse>> getPatientsByCaregiver(@PathVariable Long caregiverId) {
         User currentUser = getCurrentUser();
@@ -126,6 +142,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 7. Get all caregivers linked to a patient
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/patients/{patientId}/caregivers")
     public ResponseEntity<List<CaregiverPatientLinkResponse>> getCaregiversByPatient(@PathVariable Long patientId) {
         User currentUser = getCurrentUser();
@@ -145,6 +163,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 8. Check if caregiver has access to patient
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping("/caregivers/{caregiverId}/patients/{patientId}/access")
     public ResponseEntity<Boolean> hasAccessToPatient(
             @PathVariable Long caregiverId,
@@ -155,6 +175,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 9. Get all links (admin only)
+    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
     @GetMapping
     public ResponseEntity<List<CaregiverPatientLinkResponse>> getAllLinks() {
         User currentUser = getCurrentUser();
@@ -168,6 +190,8 @@ public class CaregiverPatientLinkController {
     }
 
     // 10. Cleanup expired links (admin only)
+    @RequirePermission(Permission.CREATE_TASKS)
+
     @PostMapping("/cleanup-expired")
     public ResponseEntity<Void> cleanupExpiredLinks() {
         User currentUser = getCurrentUser();
@@ -178,5 +202,47 @@ public class CaregiverPatientLinkController {
 
         linkService.cleanupExpiredLinks();
         return ResponseEntity.ok().build();
+    }
+
+    // 11. Caregiver toggle: allow/disallow patient-initiated video calls for this link
+    @PostMapping("/{linkId}/patient-video-calls")
+    public ResponseEntity<CaregiverPatientLinkResponse> setPatientVideoCalls(
+            @PathVariable Long linkId,
+            @RequestBody Map<String, Object> request
+    ) {
+        User currentUser = getCurrentUser();
+        Object enabledRaw = request.get("enabled");
+        boolean enabled = enabledRaw instanceof Boolean
+                ? (Boolean) enabledRaw
+                : Boolean.parseBoolean(String.valueOf(enabledRaw));
+
+        CaregiverPatientLinkResponse response = linkService.setPatientVideoCallsEnabled(
+                linkId,
+                enabled,
+                currentUser.getId(),
+                currentUser.getRole()
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    // 12. Caregiver toggle: allow/disallow patient-initiated messaging for this link
+    @PostMapping("/{linkId}/patient-messaging")
+    public ResponseEntity<CaregiverPatientLinkResponse> setPatientMessaging(
+            @PathVariable Long linkId,
+            @RequestBody Map<String, Object> request
+    ) {
+        User currentUser = getCurrentUser();
+        Object enabledRaw = request.get("enabled");
+        boolean enabled = enabledRaw instanceof Boolean
+                ? (Boolean) enabledRaw
+                : Boolean.parseBoolean(String.valueOf(enabledRaw));
+
+        CaregiverPatientLinkResponse response = linkService.setPatientMessagingEnabled(
+                linkId,
+                enabled,
+                currentUser.getId(),
+                currentUser.getRole()
+        );
+        return ResponseEntity.ok(response);
     }
 }

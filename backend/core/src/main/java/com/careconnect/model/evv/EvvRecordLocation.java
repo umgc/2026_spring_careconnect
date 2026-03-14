@@ -51,9 +51,18 @@ public class EvvRecordLocation {
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> addressSnapshotJson;
     
+    /** Reason GPS could not be captured; required when type != GPS */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "no_gps_reason", length = 50)
+    private NoGpsReason noGpsReason;
+
+    /** Free-form address for MANUAL location type (e.g. community or facility visits) */
+    @Column(name = "manual_address", length = 500)
+    private String manualAddress;
+    
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
-    
+
     @PrePersist
     void onCreate() {
         if (id == null) {
@@ -65,7 +74,8 @@ public class EvvRecordLocation {
     }
     
     /**
-     * Validate the location data based on type
+     * Validate the location data based on type.
+     * Federal EVV regulations require a noGpsReason whenever GPS is not used.
      */
     public void validate() {
         if (type == EvvLocationType.GPS) {
@@ -75,6 +85,16 @@ public class EvvRecordLocation {
         } else if (type == EvvLocationType.PATIENT_ADDRESS) {
             if (addressSnapshotJson == null || addressSnapshotJson.isEmpty()) {
                 throw new IllegalStateException("PATIENT_ADDRESS location requires address snapshot");
+            }
+            if (noGpsReason == null) {
+                throw new IllegalStateException("PATIENT_ADDRESS location requires a noGpsReason (federal EVV requirement)");
+            }
+        } else if (type == EvvLocationType.MANUAL) {
+            if (manualAddress == null || manualAddress.isBlank()) {
+                throw new IllegalStateException("MANUAL location requires a manual address");
+            }
+            if (noGpsReason == null) {
+                throw new IllegalStateException("MANUAL location requires a noGpsReason (federal EVV requirement)");
             }
         }
     }

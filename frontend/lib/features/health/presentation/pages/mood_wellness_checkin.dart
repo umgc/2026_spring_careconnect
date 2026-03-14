@@ -69,11 +69,16 @@ class _MoodWellnessCheckInState extends State<MoodWellnessCheckIn> {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        final queuedOffline = response.headers['x-offline-queued'] == 'true';
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Mood & Pain submitted successfully!'),
-              backgroundColor: Colors.green,
+            SnackBar(
+              content: Text(
+                queuedOffline
+                    ? 'Mood check-in queued for sync when internet is restored'
+                    : 'Mood & Pain submitted successfully!',
+              ),
+              backgroundColor: queuedOffline ? Colors.orange : Colors.green,
             ),
           );
 

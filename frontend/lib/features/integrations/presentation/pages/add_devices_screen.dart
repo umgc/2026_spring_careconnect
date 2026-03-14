@@ -63,7 +63,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
   String? errorMessage;
 
   // Device storage
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(webOptions: WebOptions.defaultOptions);
   List<ConnectedDevice> _connectedDevices = [];
 
   // Fitbit configuration

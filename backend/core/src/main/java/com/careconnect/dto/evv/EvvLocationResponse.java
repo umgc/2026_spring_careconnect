@@ -2,6 +2,7 @@ package com.careconnect.dto.evv;
 
 import com.careconnect.model.evv.EvvLocationRole;
 import com.careconnect.model.evv.EvvLocationType;
+import com.careconnect.model.evv.NoGpsReason;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -24,6 +25,8 @@ public class EvvLocationResponse {
     private BigDecimal longitude;
     private BigDecimal accuracyM;
     private Map<String, Object> addressSnapshot;
+    private NoGpsReason noGpsReason;
+    private String manualAddress;
     private OffsetDateTime createdAt;
 }
 

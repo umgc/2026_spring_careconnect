@@ -280,6 +280,16 @@ class _PreDefinedTaskScreenState extends State<PreDefinedTaskScreen> {
                 widget.patientId,
                 jsonEncode(task.toJson()),
               );
+              if (!mounted) return;
+              if (result.headers['x-offline-queued'] == 'true') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Task queued for sync when internet is restored',
+                    ),
+                  ),
+                );
+              }
               context.go('/patient-tasks',
                   extra: {
                     'patientId': widget.patientId,

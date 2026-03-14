@@ -19,9 +19,9 @@ public class DcSandataAltEvvClient implements EvvIntegrationClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.add("x-api-key", "REPLACE_ME");
-        String payload = """
-                {"Calls":[{"CallDateTime":"%s","CallAssignment":"In","Location":"%f,%f"}]}
-                """.formatted(record.getTimeIn(), record.getLocationLat(), record.getLocationLng());
+        String payload = String.format(
+                "{\"Calls\":[{\"CallDateTime\":\"%s\",\"CallAssignment\":\"In\",\"Location\":\"%f,%f\"}]}\n",
+                record.getTimeIn(), record.getLocationLat(), record.getLocationLng());
         ResponseEntity<String> resp = restTemplate.postForEntity(url, new HttpEntity<>(payload, headers), String.class);
         if (!resp.getStatusCode().is2xxSuccessful()) {
             throw new RuntimeException("Sandata submission failed: " + resp.getStatusCode());

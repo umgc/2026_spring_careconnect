@@ -25,20 +25,20 @@ class AIChatServiceConfigTest {
     private AIChatServiceConfig config;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         // Arrange: Create mock security audit service
         securityAuditService = mock(SecurityAuditService.class);
         config = new AIChatServiceConfig(securityAuditService);
     }
 
     @Test
-    void constructorInitializesSuccessfully() {
+    void constructorInitializesSuccessfully() throws Exception {
         // Assert: Constructor should complete without throwing
         assertNotNull(config);
     }
 
     @Test
-    void chatModelBeanCreatedSuccessfullyWithValidConfiguration() {
+    void chatModelBeanCreatedSuccessfullyWithValidConfiguration() throws Exception {
         // Arrange: Set valid configuration values
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "sk-test-1234567890abcdefghijklmnopqrstuvwxyz");
@@ -47,7 +47,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act: Create the ChatModel bean
-        ChatModel chatModel = config.chatModel();
+        final ChatModel chatModel = config.chatModel();
 
         // Assert: Bean should be created successfully
         assertNotNull(chatModel);
@@ -55,7 +55,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelThrowsExceptionWhenApiKeyIsMissing() {
+    void chatModelThrowsExceptionWhenApiKeyIsMissing() throws Exception {
         // Arrange: Set configuration with empty API key
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "");
@@ -64,7 +64,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act & Assert: Should throw IllegalStateException
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+        final IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
             config.chatModel();
         });
 
@@ -77,7 +77,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelThrowsExceptionWhenApiKeyIsNull() {
+    void chatModelThrowsExceptionWhenApiKeyIsNull() throws Exception {
         // Arrange: Set configuration with null API key
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", null);
@@ -86,7 +86,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act & Assert: Should throw IllegalStateException
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+        final IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
             config.chatModel();
         });
 
@@ -99,7 +99,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelThrowsExceptionWhenApiUrlIsMissing() {
+    void chatModelThrowsExceptionWhenApiUrlIsMissing() throws Exception {
         // Arrange: Set configuration with empty API URL
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "sk-test-1234567890abcdefghijklmnopqrstuvwxyz");
@@ -108,7 +108,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act & Assert: Should throw IllegalStateException
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+        final IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
             config.chatModel();
         });
 
@@ -121,7 +121,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelThrowsExceptionWhenApiUrlIsNull() {
+    void chatModelThrowsExceptionWhenApiUrlIsNull() throws Exception {
         // Arrange: Set configuration with null API URL
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "sk-test-1234567890abcdefghijklmnopqrstuvwxyz");
@@ -130,7 +130,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act & Assert: Should throw IllegalStateException
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+        final IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
             config.chatModel();
         });
 
@@ -143,7 +143,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelLogsWarningWhenApiUrlIsNotHttps() {
+    void chatModelLogsWarningWhenApiUrlIsNotHttps() throws Exception {
         // Arrange: Set configuration with HTTP URL (insecure)
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "sk-test-1234567890abcdefghijklmnopqrstuvwxyz");
@@ -152,11 +152,11 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act: Create ChatModel - should succeed but log warning
-        ChatModel chatModel = config.chatModel();
+        final ChatModel chatModel = config.chatModel();
 
         // Assert: Bean created but security warning logged
         assertNotNull(chatModel);
-        ArgumentCaptor<String> detailsCaptor = ArgumentCaptor.forClass(String.class);
+        final ArgumentCaptor<String> detailsCaptor = ArgumentCaptor.forClass(String.class);
         verify(securityAuditService).logConfigurationValidationError(
                 eq("openai"),
                 eq("API_URL_SECURITY"),
@@ -166,7 +166,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelSucceedsWithShortApiKeyButNoAuditLog() {
+    void chatModelSucceedsWithShortApiKeyButNoAuditLog() throws Exception {
         // Arrange: Set configuration with short API key (< 20 chars)
         // Note: This only logs a warning, doesn't call audit service
         ReflectionTestUtils.setField(config, "provider", "openai");
@@ -176,7 +176,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act: Create ChatModel - should succeed with warning
-        ChatModel chatModel = config.chatModel();
+        final ChatModel chatModel = config.chatModel();
 
         // Assert: Bean created and no audit error logged (only warning in logs)
         assertNotNull(chatModel);
@@ -184,7 +184,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelSucceedsWithTemperatureBelowRange() {
+    void chatModelSucceedsWithTemperatureBelowRange() throws Exception {
         // Arrange: Set configuration with temperature below 0.0
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "sk-test-1234567890abcdefghijklmnopqrstuvwxyz");
@@ -193,14 +193,14 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", -0.5);
 
         // Act: Create ChatModel - should succeed with warning
-        ChatModel chatModel = config.chatModel();
+        final ChatModel chatModel = config.chatModel();
 
         // Assert: Bean created successfully (warning only)
         assertNotNull(chatModel);
     }
 
     @Test
-    void chatModelSucceedsWithTemperatureAboveRange() {
+    void chatModelSucceedsWithTemperatureAboveRange() throws Exception {
         // Arrange: Set configuration with temperature above 2.0
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "sk-test-1234567890abcdefghijklmnopqrstuvwxyz");
@@ -209,14 +209,14 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 2.5);
 
         // Act: Create ChatModel - should succeed with warning
-        ChatModel chatModel = config.chatModel();
+        final ChatModel chatModel = config.chatModel();
 
         // Assert: Bean created successfully (warning only)
         assertNotNull(chatModel);
     }
 
     @Test
-    void chatModelSucceedsWithDifferentProvider() {
+    void chatModelSucceedsWithDifferentProvider() throws Exception {
         // Arrange: Set configuration with different provider (e.g., deepseek)
         ReflectionTestUtils.setField(config, "provider", "deepseek");
         ReflectionTestUtils.setField(config, "apiKey", "sk-deepseek-1234567890abcdefghijklmnopqrstuvwxyz");
@@ -225,7 +225,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 0.7);
 
         // Act: Create ChatModel
-        ChatModel chatModel = config.chatModel();
+        final ChatModel chatModel = config.chatModel();
 
         // Assert: Bean created successfully
         assertNotNull(chatModel);
@@ -233,7 +233,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelSucceedsWithValidTemperatureBoundaries() {
+    void chatModelSucceedsWithValidTemperatureBoundaries() throws Exception {
         // Arrange: Test lower boundary (0.0)
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "sk-test-1234567890abcdefghijklmnopqrstuvwxyz");
@@ -242,7 +242,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 0.0);
 
         // Act: Create ChatModel with temperature 0.0
-        ChatModel chatModel1 = config.chatModel();
+        final ChatModel chatModel1 = config.chatModel();
 
         // Assert: Bean created successfully
         assertNotNull(chatModel1);
@@ -251,28 +251,28 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 2.0);
 
         // Act: Create ChatModel with temperature 2.0
-        ChatModel chatModel2 = config.chatModel();
+        final ChatModel chatModel2 = config.chatModel();
 
         // Assert: Bean created successfully
         assertNotNull(chatModel2);
     }
 
     @Test
-    void chatModelSucceedsWithTypicalTemperatureValues() {
+    void chatModelSucceedsWithTypicalTemperatureValues() throws Exception {
         // Arrange: Test common temperature values (0.5, 0.7, 1.0)
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "sk-test-1234567890abcdefghijklmnopqrstuvwxyz");
         ReflectionTestUtils.setField(config, "apiUrl", "https://api.openai.com/v1");
         ReflectionTestUtils.setField(config, "modelName", "gpt-4o-mini");
 
-        double[] temperatures = {0.5, 0.7, 1.0, 1.5};
+        final double[] temperatures = {0.5, 0.7, 1.0, 1.5};
 
-        for (double temp : temperatures) {
+        for (final double temp : temperatures) {
             // Arrange: Set temperature
             ReflectionTestUtils.setField(config, "temperature", temp);
 
             // Act: Create ChatModel
-            ChatModel chatModel = config.chatModel();
+            final ChatModel chatModel = config.chatModel();
 
             // Assert: Bean created successfully
             assertNotNull(chatModel, "ChatModel should be created with temperature " + temp);
@@ -280,7 +280,7 @@ class AIChatServiceConfigTest {
     }
 
     @Test
-    void chatModelSucceedsWithMinimumValidApiKey() {
+    void chatModelSucceedsWithMinimumValidApiKey() throws Exception {
         // Arrange: Set configuration with API key exactly at minimum length (20 chars)
         ReflectionTestUtils.setField(config, "provider", "openai");
         ReflectionTestUtils.setField(config, "apiKey", "12345678901234567890"); // Exactly 20 chars
@@ -289,14 +289,14 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act: Create ChatModel
-        ChatModel chatModel = config.chatModel();
+        final ChatModel chatModel = config.chatModel();
 
         // Assert: Bean created successfully without warnings
         assertNotNull(chatModel);
     }
 
     @Test
-    void chatModelValidatesApiKeyBeforeApiUrl() {
+    void chatModelValidatesApiKeyBeforeApiUrl() throws Exception {
         // Arrange: Set configuration with both API key and URL missing
         // This tests the order of validation
         ReflectionTestUtils.setField(config, "provider", "openai");
@@ -306,7 +306,7 @@ class AIChatServiceConfigTest {
         ReflectionTestUtils.setField(config, "temperature", 1.0);
 
         // Act & Assert: Should throw exception for API key first
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
+        final IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
             config.chatModel();
         });
 

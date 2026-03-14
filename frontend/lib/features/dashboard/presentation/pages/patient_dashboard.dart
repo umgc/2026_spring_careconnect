@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
@@ -56,12 +56,12 @@ class _PatientDashboardState extends State<PatientDashboard> {
       final patientId = user?.patientId;
 
       if (patientId == null) {
-        print('❌ Cannot initialize call notifications - no patient ID');
+        print('âŒ Cannot initialize call notifications - no patient ID');
         return;
       }
 
       print(
-        '🔔 Initializing call notification service for patient: $patientId',
+        'ðŸ”” Initializing call notification service for patient: $patientId',
       );
 
       // Initialize call notification service
@@ -76,13 +76,13 @@ class _PatientDashboardState extends State<PatientDashboard> {
         setState(() {
           // Update state with initialization status
         });
-        print('✅ Patient call notification service initialized successfully');
+        print('âœ… Patient call notification service initialized successfully');
       } catch (e) {
-        print('❌ Error initializing patient call notification service: $e');
+        print('âŒ Error initializing patient call notification service: $e');
         _callNotificationInitialized = false;
       }
     } catch (e) {
-      print('❌ Error initializing patient dashboard services: $e');
+      print('âŒ Error initializing patient dashboard services: $e');
     }
   }
 
@@ -174,12 +174,12 @@ class _PatientDashboardState extends State<PatientDashboard> {
       final user = Provider.of<UserProvider>(context, listen: false).user;
       final userId = widget.userId ?? user?.patientId ?? 1;
 
-      print('🔍 Loading family members for userId: $userId');
+      print('ðŸ” Loading family members for userId: $userId');
 
       final response = await ApiService.getFamilyMembers(userId);
 
-      print('🔍 Family members response: ${response.statusCode}');
-      print('🔍 Family members body: ${response.body}');
+      print('ðŸ” Family members response: ${response.statusCode}');
+      print('ðŸ” Family members body: ${response.body}');
 
       if (mounted) {
         if (response.statusCode == 200) {
@@ -190,7 +190,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
             error = null;
           });
           print(
-            '🔍 Family members loaded successfully: ${familyMembers.length} members',
+            'ðŸ” Family members loaded successfully: ${familyMembers.length} members',
           );
         } else {
           setState(() {
@@ -200,7 +200,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
         }
       }
     } catch (e) {
-      print('🔍 Error loading family members: $e');
+      print('ðŸ” Error loading family members: $e');
       if (mounted) {
         setState(() {
           error = 'Error loading family members: ${e.toString()}';
@@ -231,13 +231,13 @@ class _PatientDashboardState extends State<PatientDashboard> {
         final user = Provider.of<UserProvider>(context, listen: false).user;
         final userId = widget.userId ?? user?.patientId ?? 1;
 
-        print('🔍 Adding family member for userId: $userId');
-        print('🔍 Family member data: $result');
+        print('ðŸ” Adding family member for userId: $userId');
+        print('ðŸ” Family member data: $result');
 
         final response = await ApiService.addFamilyMember(userId, result);
 
-        print('🔍 Add family member response: ${response.statusCode}');
-        print('🔍 Add family member body: ${response.body}');
+        print('ðŸ” Add family member response: ${response.statusCode}');
+        print('ðŸ” Add family member body: ${response.body}');
 
         if (response.statusCode == 201) {
           if (mounted) {
@@ -259,7 +259,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
           );
         }
       } catch (e) {
-        print('🔍 Error adding family member: $e');
+        print('ðŸ” Error adding family member: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -759,12 +759,17 @@ class _PatientDashboardState extends State<PatientDashboard> {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        final queuedOffline = response.headers['x-offline-queued'] == 'true';
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✓ Status saved automatically'),
-              backgroundColor: AppTheme.success,
-              duration: Duration(seconds: 2),
+            SnackBar(
+              content: Text(
+                queuedOffline
+                    ? 'Status queued for sync when internet is restored'
+                    : 'Status saved automatically',
+              ),
+              backgroundColor: queuedOffline ? Colors.orange : AppTheme.success,
+              duration: const Duration(seconds: 2),
             ),
           );
         }
@@ -816,12 +821,12 @@ class _PatientDashboardState extends State<PatientDashboard> {
 
   Widget _buildMoodSelector() {
     final moods = [
-      {'emoji': '😡', 'label': 'Angry'},
-      {'emoji': '😐', 'label': 'Sad'},
-      {'emoji': '😫', 'label': 'Tired'},
-      {'emoji': '😨', 'label': 'Fearful'},
-      {'emoji': '😑', 'label': 'Neutral'},
-      {'emoji': '😊', 'label': 'Happy'},
+      {'emoji': 'ðŸ˜¡', 'label': 'Angry'},
+      {'emoji': 'ðŸ˜', 'label': 'Sad'},
+      {'emoji': 'ðŸ˜«', 'label': 'Tired'},
+      {'emoji': 'ðŸ˜¨', 'label': 'Fearful'},
+      {'emoji': 'ðŸ˜‘', 'label': 'Neutral'},
+      {'emoji': 'ðŸ˜Š', 'label': 'Happy'},
     ];
 
     return SingleChildScrollView(
@@ -870,54 +875,54 @@ class _PatientDashboardState extends State<PatientDashboard> {
 
   Widget _buildPainSelector() {
     final pains = [
-      {'emoji': '😊', 'label': '0\nNo Pain', 'description': 'No pain'},
+      {'emoji': 'ðŸ˜Š', 'label': '0\nNo Pain', 'description': 'No pain'},
       {
-        'emoji': '🙂',
+        'emoji': 'ðŸ™‚',
         'label': '1\nVery Mild',
         'description': 'Pain is very mild, barely noticeable',
       },
       {
-        'emoji': '😐',
+        'emoji': 'ðŸ˜',
         'label': '2\nMinor',
         'description': 'Minor pain, annoying',
       },
       {
-        'emoji': '😕',
+        'emoji': 'ðŸ˜•',
         'label': '3\nNoticeable',
         'description': 'Noticeable pain, may distract you',
       },
       {
-        'emoji': '😒',
+        'emoji': 'ðŸ˜’',
         'label': '4\nModerate',
         'description': 'Moderate pain, can ignore while active',
       },
       {
-        'emoji': '😞',
+        'emoji': 'ðŸ˜ž',
         'label': '5\nMod. Strong',
         'description': 'Moderately strong pain',
       },
       {
-        'emoji': '😖',
+        'emoji': 'ðŸ˜–',
         'label': '6\nStronger',
         'description': 'Moderately stronger pain',
       },
       {
-        'emoji': '😫',
+        'emoji': 'ðŸ˜«',
         'label': '7\nStrong',
         'description': 'Strong pain, prevents normal activities',
       },
       {
-        'emoji': '😰',
+        'emoji': 'ðŸ˜°',
         'label': '8\nVery Strong',
         'description': 'Very strong pain, hard to do anything',
       },
       {
-        'emoji': '😭',
+        'emoji': 'ðŸ˜­',
         'label': '9\nHard to Tolerate',
         'description': 'Very hard to tolerate',
       },
       {
-        'emoji': '😱',
+        'emoji': 'ðŸ˜±',
         'label': '10\nWorst Pain',
         'description': 'Worst pain possible',
       },

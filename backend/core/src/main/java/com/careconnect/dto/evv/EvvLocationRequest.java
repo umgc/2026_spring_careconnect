@@ -2,6 +2,7 @@ package com.careconnect.dto.evv;
 
 import com.careconnect.model.evv.EvvLocationRole;
 import com.careconnect.model.evv.EvvLocationType;
+import com.careconnect.model.evv.NoGpsReason;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
@@ -22,8 +23,15 @@ public class EvvLocationRequest {
     
     @NotNull(message = "Location type is required")
     private EvvLocationType type;
-    
+
     private CoordinatesDto coords;
+
+    /** Required when type is PATIENT_ADDRESS or MANUAL (federal EVV compliance) */
+    private NoGpsReason noGpsReason;
+
+    /** Free-form address; required when type is MANUAL */
+    @Size(max = 500)
+    private String manualAddress;
     
     /**
      * Nested DTO for GPS coordinates
@@ -50,15 +58,29 @@ public class EvvLocationRequest {
     }
     
     /**
-     * Validate the request based on location type
+     * Validate the request based on location type.
+     * Federal EVV regulations require noGpsReason whenever GPS is not used.
      */
     public void validate() {
         if (type == EvvLocationType.GPS) {
             if (coords == null || coords.getLat() == null || coords.getLng() == null) {
                 throw new IllegalArgumentException("GPS location requires coordinates");
             }
+        } else if (type == EvvLocationType.PATIENT_ADDRESS) {
+            // PATIENT_ADDRESS doesn't need coords - address will be fetched from patient
+            if (noGpsReason == null) {
+                throw new IllegalArgumentException(
+                    "A noGpsReason is required when using PATIENT_ADDRESS (federal EVV requirement)");
+            }
+        } else if (type == EvvLocationType.MANUAL) {
+            if (manualAddress == null || manualAddress.isBlank()) {
+                throw new IllegalArgumentException("MANUAL location type requires a manualAddress");
+            }
+            if (noGpsReason == null) {
+                throw new IllegalArgumentException(
+                    "A noGpsReason is required when using MANUAL location (federal EVV requirement)");
+            }
         }
-        // PATIENT_ADDRESS doesn't need coords - address will be fetched from patient
     }
 }
 

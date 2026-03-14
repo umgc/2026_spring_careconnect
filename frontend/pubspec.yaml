@@ -88,9 +88,13 @@ dependencies:
   # my key storage
   flutter_dotenv: ^6.0.0
   # Local storage for offline messaging
-  drift: ^2.29.0
-  sqlite3: ^2.9.4
-  sqlcipher_flutter_libs: ^0.6.8
+  # NOTE: drift, sqlite3, and sqlcipher are native-only packages incompatible with web
+  # They are disabled to allow web builds to compile
+  # For mobile/desktop (iOS/Android/Windows/macOS/Linux), these should be re-enabled
+  # Web local storage strategy (IndexedDB/LocalStorage/Hive Web) can be implemented later
+  # drift: ^2.29.0
+  # sqlite3: ^2.9.4
+  # sqlcipher_flutter_libs: ^0.6.8
   # -- Astha - start
   # ag
   provider: ^6.1.5+1
@@ -98,6 +102,8 @@ dependencies:
   #  flutter_stripe: ^10.2.0
   geolocator: ^14.0.2
   google_maps_flutter: ^2.13.1
+  webview_flutter: ^4.10.0
+  webview_flutter_android: ^4.10.0
   fl_chart: ^1.1.0
 
   # AI Voice Commands 
@@ -121,6 +127,7 @@ dependencies:
   # Flutter SDK
   flutter:
     sdk: flutter
+  table_calendar: ^3.0.0  # Team A Dependency for calendar based scheduling of EVV visits
   flutter_web_plugins:
     sdk: flutter
   flutter_svg: ^2.0.9  # Add this line
@@ -145,7 +152,7 @@ dependencies:
   #for breaking audio into smaller files
   new_simple_audio_trimmer: ^0.1.5
   #The following is needed as the calendar for the Calendar Assisstant feature
-  table_calendar: ^3.2.0
+  #table_calendar: ^3.2.0
 # Team D - Dependencies Begin
   pdfx: ^2.9.2
   qr_flutter: ^4.1.0
@@ -179,9 +186,11 @@ dependency_overrides:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   mockito: ^5.5.1
   build_runner: ^2.4.9
-  drift_dev: ^2.29.0
+  # drift_dev: ^2.29.0  # Commented since drift is disabled for web builds
   flutter_launcher_icons: ^0.14.1
   flutter_native_splash: ^2.4.0
 
@@ -204,11 +213,12 @@ flutter:
     - assets/images/app_icon.png
     - assets/sherpa-onnx-streaming-zipformer-en-2023-06-26/
     - assets/sherpa-onnx-pyannote-segmentation-3-0/
-    
+    # - assets/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx  # file not in repo (another team's asset)
     - assets/sherpa-onnx-zipformer-gigaspeech-2023-12-12/
     - assets/images/CareConnectLogo.png
     - assets/images/CareConnectLogo.svg
     - assets/images/default_avatar.svg
+    - web/amazon-chime-sdk.min.js
  
 # -------------------------------------------------------------------
 # Splash Screen configuration

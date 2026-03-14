@@ -47,6 +47,22 @@ public class Patient {
     @Column(name = "ma_number", unique = true, length = 64)
     private String maNumber; // Medical Assistance Number for EVV compliance
 
+    // In-Home personalization fields
+    @Column(columnDefinition = "TEXT")
+    private String likes;
+
+    @Column(columnDefinition = "TEXT")
+    private String dislikes;
+
+    @Column(columnDefinition = "TEXT")
+    private String habits;
+
+    @Column(columnDefinition = "TEXT")
+    private String phobias;
+
+    @Column(name = "preferred_communication_method", length = 32)
+    private String preferredCommunicationMethod; // verbal | visual | written | gesture
+
     @Column(name = "is_alexa_linked", nullable = true) // ← Database column
     private Boolean alexaLinked; // ← Java field name
 

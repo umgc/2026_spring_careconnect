@@ -1,0 +1,7 @@
+ALTER TABLE patient
+    ADD COLUMN IF NOT EXISTS likes TEXT,
+    ADD COLUMN IF NOT EXISTS dislikes TEXT,
+    ADD COLUMN IF NOT EXISTS habits TEXT,
+    ADD COLUMN IF NOT EXISTS phobias TEXT,
+    ADD COLUMN IF NOT EXISTS preferred_communication_method VARCHAR(32);
+

@@ -1,18 +1,4 @@
-# Build stage
-FROM maven:3.9.6-eclipse-temurin-17 AS build
-WORKDIR /app
-
-# Copy dependency descriptors first for better layer caching
-COPY pom.xml .
-COPY .mvn .mvn
-COPY mvnw .
-RUN mvn dependency:go-offline -B -Pdefault
-
-# Copy source and build
-COPY src ./src
-RUN mvn clean package -DskipTests -Pdefault
-
-
+# Runtime stage — jar is built locally and passed in via build context
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
@@ -25,8 +11,8 @@ RUN apt-get update && \
 RUN groupadd --system appuser && \
     useradd --system --gid appuser --no-create-home appuser
 
-# Copy the jar from the build stage
-COPY --from=build /app/target/*.jar app.jar
+# Copy the pre-built Spring Boot fat jar
+COPY target/careconnect-backend-0.0.1-SNAPSHOT.jar app.jar
 
 # Create uploads directory (in case local file storage is used)
 RUN mkdir -p /app/uploads && chown -R appuser:appuser /app
@@ -35,11 +21,11 @@ RUN mkdir -p /app/uploads && chown -R appuser:appuser /app
 USER appuser
 
 # Spring Boot default port
-EXPOSE 8081
+EXPOSE 8080
 
 # Health check using Spring Actuator
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8081/v1/api/test/health || exit 1
+    CMD curl -f http://localhost:8080/v1/api/test/health || exit 1
 
 # JVM tuning for containers — respects Fargate memory/CPU limits
 ENTRYPOINT ["java", \

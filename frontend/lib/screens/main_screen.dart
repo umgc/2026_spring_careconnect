@@ -41,6 +41,8 @@ class _MainScreenState extends State<MainScreen> {
   Timer? _syncStartDelayTimer;
   bool _showSyncCompleteBanner = false;
   Timer? _syncCompleteBannerHideTimer;
+  Timer? _messageBadgeRefreshTimer;
+  int _unreadMessageCount = 0;
 
   @override
   void initState() {
@@ -50,6 +52,7 @@ class _MainScreenState extends State<MainScreen> {
     _selectedIndex = widget.initialTabIndex ?? 0;
     _initializeNavigation();
     _initializeConnectivitySyncBridge();
+    _startMessageBadgeRefresh();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeCallNotifications();
     });
@@ -60,9 +63,96 @@ class _MainScreenState extends State<MainScreen> {
     _observedUserProvider?.removeListener(_handleConnectivityTransition);
     _syncStartDelayTimer?.cancel();
     _syncCompleteBannerHideTimer?.cancel();
+    _messageBadgeRefreshTimer?.cancel();
     CallNotificationService.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _startMessageBadgeRefresh() {
+    _messageBadgeRefreshTimer?.cancel();
+    unawaited(_refreshUnreadMessageCount());
+    _messageBadgeRefreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => unawaited(_refreshUnreadMessageCount()),
+    );
+  }
+
+  Future<void> _refreshUnreadMessageCount() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final user = userProvider.user;
+    if (user == null) {
+      if (mounted && _unreadMessageCount != 0) {
+        setState(() {
+          _unreadMessageCount = 0;
+        });
+      }
+      return;
+    }
+
+    try {
+      final inbox = await ApiService.getInbox(user.id);
+      final unreadCount = inbox.where((entry) {
+        if (entry is Map<String, dynamic>) {
+          return entry['hasUnread'] == true;
+        }
+        if (entry is Map) {
+          return entry['hasUnread'] == true;
+        }
+        return false;
+      }).length;
+
+      if (!mounted || unreadCount == _unreadMessageCount) {
+        return;
+      }
+
+      setState(() {
+        _unreadMessageCount = unreadCount;
+      });
+    } catch (_) {
+      // Keep badge refresh best-effort only.
+    }
+  }
+
+  Widget _buildNavIcon(BottomNavItem item, {required bool active}) {
+    final routeName = item.routeName.toLowerCase();
+    final isMessagesTab = routeName == 'messages' ||
+        item.labelKey?.toLowerCase() == 'nav_messages';
+    final iconData = active ? (item.activeIcon ?? item.icon) : item.icon;
+    final icon = Icon(iconData);
+
+    if (!isMessagesTab || _unreadMessageCount <= 0) {
+      return icon;
+    }
+
+    final badgeText = _unreadMessageCount > 99 ? '99+' : '$_unreadMessageCount';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        icon,
+        Positioned(
+          right: -8,
+          top: -6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+            decoration: BoxDecoration(
+              color: Colors.red.shade600,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              badgeText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   /// Connects global connectivity state to background sync.
@@ -313,6 +403,10 @@ class _MainScreenState extends State<MainScreen> {
   /// Handle bottom nav bar item tap.
   void _onItemTapped(int index) {
     final navItem = _navItems[index];
+    if (navItem.routeName.toLowerCase() == 'messages' ||
+        navItem.labelKey?.toLowerCase() == 'nav_messages') {
+      unawaited(_refreshUnreadMessageCount());
+    }
 
     final screenName = _telemetryScreenForNavItem(navItem);
     if (screenName != null && index != _selectedIndex) {
@@ -1005,8 +1099,8 @@ class _MainScreenState extends State<MainScreen> {
         iconSize: 24,
         items: _navItems.map((item) {
           return BottomNavigationBarItem(
-            icon: Icon(item.icon),
-            activeIcon: Icon(item.activeIcon ?? item.icon),
+            icon: _buildNavIcon(item, active: false),
+            activeIcon: _buildNavIcon(item, active: true),
             label: item.localizedLabel(t),
           );
         }).toList(),

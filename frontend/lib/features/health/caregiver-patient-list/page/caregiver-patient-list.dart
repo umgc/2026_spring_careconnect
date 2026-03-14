@@ -102,11 +102,15 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
         final List<dynamic> data = jsonDecode(response.body);
         final rows = data.whereType<Map<String, dynamic>>().toList();
         final moodByUserId = await _loadLatestMoodByPatientUserId(rows);
+        final unreadByUserId =
+            await _loadInboxUnreadByUserId(userProvider.user!.id);
 
         if (!mounted) return;
 
-        final patients =
-            rows.map((json) => _patientFromJson(json, moodByUserId)).toList();
+        final patients = rows
+            .map((json) => _patientFromJson(json, moodByUserId,
+                unreadByUserId: unreadByUserId))
+            .toList();
 
         setState(() {
           _allPatients = patients;
@@ -134,8 +138,9 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
   /// Converts API JSON response to Patient model
   Patient _patientFromJson(
     Map<String, dynamic> json,
-    Map<int, _MoodSnapshot> moodByUserId,
-  ) {
+    Map<int, _MoodSnapshot> moodByUserId, {
+    Map<int, bool> unreadByUserId = const {},
+  }) {
     final patient = json['patient'] ?? {};
     final link = json['link'] ?? {};
     final patientUserId = _safeInt(link['patientUserId']);
@@ -155,7 +160,10 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
       mood: moodSnapshot?.label ?? _unknownMoodLabel,
       moodEmoji: moodSnapshot?.emoji ?? _unknownMoodEmoji,
       isUrgent: false, // TODO: Determine urgency based on patient status
-      messageCount: 0, // TODO: Fetch actual unread message count
+      messageCount:
+          (patientUserId != null && (unreadByUserId[patientUserId] ?? false))
+              ? 1
+              : 0,
     );
   }
 
@@ -239,6 +247,26 @@ class _CaregiverPatientList extends State<CaregiverPatientList> {
     if (l.contains('fair') || l.contains('neutral')) return '😐';
     if (l.contains('poor') || l.contains('sad')) return '😟';
     return _unknownMoodEmoji;
+  }
+
+  /// Fetches the inbox for [userId] and returns a map of peerId → hasUnread.
+  Future<Map<int, bool>> _loadInboxUnreadByUserId(int userId) async {
+    try {
+      final data = await ApiService.getInbox(userId);
+      final result = <int, bool>{};
+      for (final entry in data) {
+        if (entry is Map<String, dynamic>) {
+          final peerId = (entry['peerId'] as num?)?.toInt();
+          final hasUnread = entry['hasUnread'] as bool? ?? false;
+          if (peerId != null) {
+            result[peerId] = hasUnread;
+          }
+        }
+      }
+      return result;
+    } catch (_) {
+      return const {};
+    }
   }
 
   /// Handles search text changes and filters the patient list.

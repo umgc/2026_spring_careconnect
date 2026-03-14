@@ -15,15 +15,14 @@ import lombok.extern.slf4j.Slf4j;
 import com.careconnect.dto.PatientNoteDTO;
 import com.careconnect.dto.PatientNotetakerConfigDTO;
 import com.careconnect.dto.v2.TaskDtoV2;
+import com.careconnect.dto.ChatRequest;
+import com.careconnect.dto.ChatResponse;
 import com.careconnect.model.PatientNote;
 import com.careconnect.model.PatientNotetakerConfig;
 import com.careconnect.model.PatientNotetakerKeyword;
 import com.careconnect.model.PatientNotetakerKeyword.EventType;
 import com.careconnect.repository.PatientNoteRepository;
 import com.careconnect.repository.PatientNotetakerConfigRepository;
-import com.careconnect.service.OpenRouterService.Message;
-import com.careconnect.service.OpenRouterService.OpenRouterChatRequest;
-import com.careconnect.service.OpenRouterService.OpenRouterResponse;
 import com.careconnect.service.v2.TaskServiceV2;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,22 +32,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class PatientNotetakerService {
     private final TaskServiceV2 taskService;
-    private final OpenRouterService openRouterService;
+    private final AIChatService aiChatService;
     private final PatientNoteRepository patientNoteRepository;
     private final PatientNotetakerConfigRepository patientNotetakerConfigRepository;
     private final PatientService patientService;
-    private final String model = "deepseek/deepseek-chat-v3.1:free";
-
+    
     public PatientNotetakerService(PatientNoteRepository patientNoteRepository, 
         PatientNotetakerConfigRepository patientNotetakerConfigRepository, 
         PatientService patientService,
-        OpenRouterService openRouterService,
+        AIChatService aiChatService,
         TaskServiceV2 taskService
         ) {
         this.patientNoteRepository = patientNoteRepository;
         this.patientNotetakerConfigRepository = patientNotetakerConfigRepository;
         this.patientService = patientService;
-        this.openRouterService = openRouterService;
+        this.aiChatService = aiChatService;
         this.taskService = taskService;
     }
 
@@ -170,7 +168,9 @@ public class PatientNotetakerService {
         if (keyword.getEventType() == EventType.ALERT) {
             // TODO notification to caregiver when implemented
             return;
-        } else if (keyword.getEventType() == EventType.TASK) {
+        }
+        
+        if (keyword.getEventType() == EventType.TASK) {
 
             String prompt = "Given the following keyword '" + keyword.getKeyword().toLowerCase()
                     + "', generate a json object with the following properties: "
@@ -186,74 +186,59 @@ public class PatientNotetakerService {
                     + "Use the following text to derive these properties as they relate to the keyword: '"
                     + truncatedMessage
                     + ". Name, date and description are the most important properties to decipher. If you are unable to determine any of the properties, set them null or empty. Only respond with the json object beginning with { and ending with }.";
-            System.out.println("Sending OpenRouter request...");
-            OpenRouterChatRequest request = new OpenRouterChatRequest(
-                    model,
-                    Arrays.asList(new Message("system", "You are an expert language interpreter and software engineer"),new Message("user", prompt)),
-                    0.2,
-                    256);
+                        
+            ChatRequest chatRequest = new ChatRequest();
+            chatRequest.setMessage(prompt);
 
-            OpenRouterResponse response; 
+            ChatResponse chatResponse;
+
             try {
-                response = openRouterService.sendChatRequest(request);
+                chatResponse = aiChatService.processChat(chatRequest);
             } catch (Exception e) {
-                log.error("Unable to reach OpenRouter service: {}", e.getMessage());
+                log.error("AI provider failed: {}", e.getMessage());
                 return;
-            }
-            String aiContent = null;
-            if (response != null && response.getChoices() != null && !response.getChoices().isEmpty()
-                    && response.getChoices().get(0).getMessage() != null) {
-                aiContent = response.getChoices().get(0).getMessage().getContent();
-            } else {
-                aiContent = "";
             }
 
+            String aiContent = chatResponse != null ? chatResponse.getAiResponse() : "";    
+            
             TaskDtoV2 aiTask = mapJson(aiContent, TaskDtoV2.class);
-            if (aiTask == null || aiTask.getName() == null || aiTask.getTaskType() == null
-                    || aiTask.getDescription() == null || aiTask.getDate() == null) {
-                log.error("Invalid AI Task generated for keyword '{}': {}", keyword.getKeyword(), aiTask);
+
+            if (aiTask == null || aiTask.getName() == null || aiTask.getDate() == null) {
+                log.error("Invalid AI Task generated for keyword '{}'", keyword.getKeyword());
                 return;
             }
-            log.info("OpenRouter response for keyword '{}': {}", keyword.getKeyword(), response);
-            log.info("Created Task from AI: {}", aiTask);
+            
             aiTask.setDescription("AI GENERATED TASK: " + aiTask.getDescription());
             aiTask.setCompleted(false);
-            //deepseek model is old, so it gets the current year wrong, fix.
-            LocalDate date = LocalDate.parse(aiTask.getDate()); 
+
+            LocalDate date = LocalDate.parse(aiTask.getDate());
             aiTask.setDate(date.withYear(LocalDate.now().getYear()).toString());
+
             taskService.createTask(patientId, aiTask);
         }
     }
 
     @Async
     private String processAiSummary(String noteContent) {
-        String prompt = "Given the following converation transcription, summarize the following into a maximum of 1-2 concise sentences, focusing on key health information and any action items or takeaways. Specify which individual identified in the conversation each item pertains to: '"
-                + noteContent + "'";
 
-        OpenRouterChatRequest request = new OpenRouterChatRequest(
-                model,
-                Arrays.asList(new Message("system", "You are a helpful assistant who's main focus is to summarize detailed conversations into simple, concise takeways. do not use verbose language or symbols."),new Message("user", prompt)),
-                0.2,
-                256);
+    String prompt = "Summarize the following conversation into 1–2 concise sentences, "
+            + "focusing on key health information and action items: '"
+            + noteContent + "'";
 
-        OpenRouterResponse response; 
-        try {
-            response = openRouterService.sendChatRequest(request);
-        } catch (Exception e) {
-            log.error("Unable to reach OpenRouter service: {}", e.getMessage());
-            return "Failed to generate AI Summary";
-        }
-        String aiSummary = null;
-        if (response != null && response.getChoices() != null && !response.getChoices().isEmpty()
-                && response.getChoices().get(0).getMessage() != null) {
-            aiSummary = response.getChoices().get(0).getMessage().getContent();
-            aiSummary = aiSummary.split("<")[0].trim();
-        } else {
-            aiSummary = "";
-        }
-        log.info("AI Summary generated: {}", aiSummary);
-        return aiSummary;
+    ChatRequest chatRequest = new ChatRequest();
+    chatRequest.setMessage(prompt);
+
+    ChatResponse chatResponse;
+
+    try {
+        chatResponse = aiChatService.processChat(chatRequest);
+    } catch (Exception e) {
+        log.error("AI provider failed: {}", e.getMessage());
+        return "Failed to generate AI Summary";
     }
+
+    return chatResponse != null ? chatResponse.getAiResponse() : "";
+}
 
     private <T> T mapJson(String json, Class<T> object) {
         ObjectMapper objectMapper = new ObjectMapper();

@@ -23,7 +23,7 @@ public class UserAIConfigDTO {
     @Min(value = 100, message = "Max tokens must be at least 100")
     @Max(value = 8000, message = "Max tokens cannot exceed 8000")
     @Builder.Default
-    private Integer maxTokens = 2000;
+    private Integer maxTokens = 200;
     @DecimalMin(value = "0.0", message = "Temperature must be between 0.0 and 2.0")
     @DecimalMax(value = "2.0", message = "Temperature must be between 0.0 and 2.0")
     @Builder.Default

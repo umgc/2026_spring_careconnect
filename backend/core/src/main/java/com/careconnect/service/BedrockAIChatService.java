@@ -27,7 +27,7 @@ public class BedrockAIChatService implements AIChatService {
 
     public BedrockAIChatService() {
         this.client = BedrockRuntimeClient.builder()
-                .region(Region.US_EAST_2) // match your region
+                .region(Region.US_EAST_1) // match your region
                 .build();
     }
 
@@ -38,12 +38,20 @@ public class BedrockAIChatService implements AIChatService {
 
         String payload = """
         {
-          "inputText": "%s"
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 500,
+            "temperature": 0.5,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "%s"
+                }
+            ]
         }
-        """.formatted(request.getMessage());
+        """.formatted(request.getMessage().replace("\"", "\\\""));
 
         InvokeModelRequest invokeRequest = InvokeModelRequest.builder()
-                .modelId("meta.llama3-8b-instruct-v1:0") // or titan
+                .modelId("anthropic.claude-3-haiku-20240307-v1:0") 
                 .body(software.amazon.awssdk.core.SdkBytes.fromString(payload, StandardCharsets.UTF_8))
                 .build();
 

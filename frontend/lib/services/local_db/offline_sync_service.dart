@@ -46,6 +46,12 @@ class OfflineSyncRunSummary {
 }
 
 class OfflineSyncService {
+  OfflineSyncService({
+    AppDatabase? appDatabase,
+    http.Client? replayClient,
+  })  : _appDatabase = appDatabase ?? AppDatabase(),
+        _replayClient = replayClient ?? http.Client();
+
   OfflineSyncService._internal({
     AppDatabase? appDatabase,
     http.Client? replayClient,
@@ -83,8 +89,7 @@ class OfflineSyncService {
     String? body,
   }) async {
     final normalizedHeaders = _normalizeHeaders(headers ?? <String, String>{});
-    final normalizedBody =
-        (body == null || body.isEmpty) ? null : body;
+    final normalizedBody = (body == null || body.isEmpty) ? null : body;
     final createdAt = DateTime.now().toUtc();
     final fingerprint = _buildFingerprint(
       method: method,
@@ -428,9 +433,9 @@ class OfflineSyncService {
 
   String _humanizeField(String raw) {
     final withSpaces = raw.replaceAll(RegExp(r'[_-]+'), ' ').replaceAllMapped(
-      RegExp(r'([a-z])([A-Z])'),
-      (m) => '${m.group(1)} ${m.group(2)}',
-    );
+          RegExp(r'([a-z])([A-Z])'),
+          (m) => '${m.group(1)} ${m.group(2)}',
+        );
     final trimmed = withSpaces.trim();
     if (trimmed.isEmpty) {
       return 'Field';

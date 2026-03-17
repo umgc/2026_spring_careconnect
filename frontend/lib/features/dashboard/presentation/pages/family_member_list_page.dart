@@ -30,11 +30,13 @@ class _FamilyPatientsPageState extends State<FamilyPatientsPage> {
       List<Map<String, dynamic>> fetchedPatients =
           await ApiService.getAccessiblePatients();
 
+      if (!mounted) return;
       setState(() {
         patients = fetchedPatients;
         isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         error = e.toString();
         isLoading = false;
@@ -65,7 +67,7 @@ class _FamilyPatientsPageState extends State<FamilyPatientsPage> {
                     Icon(Icons.error, size: 64, color: Colors.red.shade400),
                     const SizedBox(height: 16),
                     Text(
-                      'Error: $error',
+                      'Unable to load patients. Please try again.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.red.shade700),
                     ),
@@ -101,6 +103,13 @@ class _FamilyPatientsPageState extends State<FamilyPatientsPage> {
                 itemCount: patients.length,
                 itemBuilder: (context, index) {
                   final patient = patients[index];
+                  final String? patientName = patient['name'] as String?;
+                  final String patientInitial =
+                      (patientName != null && patientName.isNotEmpty)
+                      ? patientName.substring(0, 1).toUpperCase()
+                      : 'P';
+                  final String? email = patient['email'] as String?;
+                  final String? phone = patient['phone'] as String?;
                   return Card(
                     margin: const EdgeInsets.only(bottom: 12),
                     elevation: 2,
@@ -108,7 +117,7 @@ class _FamilyPatientsPageState extends State<FamilyPatientsPage> {
                       leading: CircleAvatar(
                         backgroundColor: Colors.blue.shade100,
                         child: Text(
-                          patient['name']?.substring(0, 1).toUpperCase() ?? 'P',
+                          patientInitial,
                           style: TextStyle(
                             color: Colors.blue.shade900,
                             fontWeight: FontWeight.bold,
@@ -122,10 +131,10 @@ class _FamilyPatientsPageState extends State<FamilyPatientsPage> {
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (patient['email'] != null)
-                            Text('Email: ${patient['email']}'),
-                          if (patient['phone'] != null)
-                            Text('Phone: ${patient['phone']}'),
+                          if (email != null && email.isNotEmpty)
+                            Text('Email: $email'),
+                          if (phone != null && phone.isNotEmpty)
+                            Text('Phone: $phone'),
                           const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(

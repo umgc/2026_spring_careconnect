@@ -30,7 +30,7 @@ import com.careconnect.model.ScheduledNotification;
 @Repository
 public interface ScheduledNotificationRepository extends JpaRepository<ScheduledNotification, Long> {
 
-    /**
+  /**
      * Finds all notifications that match the given {@code status} and
      * are scheduled before the specified {@code before} time.
      *
@@ -45,19 +45,19 @@ public interface ScheduledNotificationRepository extends JpaRepository<Scheduled
      *               before this time will be returned
      * @return a list of matching {@link ScheduledNotification} entities
      */
-    List<ScheduledNotification> findByStatusAndScheduledTimeBefore(String status, LocalDateTime before);
+  List<ScheduledNotification> findByStatusAndScheduledTimeBefore(String status, LocalDateTime before);
 
-    /**
+  /**
      * Finds all notifications that belong to a specific user, identified
      * by their {@code receiverId}.
      *
      * <p>
-     * Typical use case: retrieving a user’s history of notifications
+     * Typical use case: retrieving a userÃ¢â‚¬â„¢s history of notifications
      * or filtering active notifications for display in the UI.
      * </p>
      *
      * @param receiverId the ID of the user who received the notifications
      * @return a list of matching {@link ScheduledNotification} entities
      */
-    List<ScheduledNotification> findByReceiverId(Long receiverId);
+  List<ScheduledNotification> findByReceiverId(Long receiverId);
 }

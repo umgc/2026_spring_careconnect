@@ -8,9 +8,9 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "aws.s3")
 public class S3Props {
-    private String bucket;
-    private String region = "us-east-1";
-    private String accessKey;
-    private String secretKey;
-    private String baseUrl; 
+  private String bucket;
+  private String region = "us-east-1";
+  private String accessKey;
+  private String secretKey;
+  private String baseUrl; 
 }

@@ -31,68 +31,68 @@ import java.util.List;
 @RequestMapping(path = {"/api/questions", "/v1/api/questions"}) // supports both
 public class QuestionController {
 
-    private final QuestionService questions;
-    private final SecurityUtil securityUtil;
-    private final AuthorizationService authorizationService;
+  private final QuestionService questions;
+  private final SecurityUtil securityUtil;
+  private final AuthorizationService authorizationService;
 
-    public QuestionController(QuestionService questions, SecurityUtil securityUtil, AuthorizationService authorizationService) {
-        this.questions = questions;
-        this.securityUtil = securityUtil;
-        this.authorizationService = authorizationService;
-    }
+  public QuestionController(QuestionService questions, SecurityUtil securityUtil, AuthorizationService authorizationService) {
+    this.questions = questions;
+    this.securityUtil = securityUtil;
+    this.authorizationService = authorizationService;
+  }
 
-    /** GET /api/questions?active=true|false */
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  /** GET /api/questions?active=true|false */
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping
+  @GetMapping
     public List<QuestionDTO> list(@RequestParam(required = false) Boolean active) {
-        return questions.listQuestions(active);
-    }
+    return questions.listQuestions(active);
+  }
 
-    /** GET /api/questions/{id} */
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  /** GET /api/questions/{id} */
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/{id}")
+  @GetMapping("/{id}")
     public ResponseEntity<QuestionDTO> one(@PathVariable Long id) {
-        return questions.getOne(id)
+    return questions.getOne(id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
-    }
+  }
 
-    /** POST /api/questions */
-    @RequirePermission(Permission.CREATE_TASKS)
+  /** POST /api/questions */
+  @RequirePermission(Permission.CREATE_TASKS)
 
-    @PostMapping
+  @PostMapping
     public ResponseEntity<QuestionDTO> create(@RequestBody QuestionUpsertDTO body) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdmin(currentUser);
-        QuestionDTO created = questions.create(body);
-        return ResponseEntity.ok(created);
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdmin(currentUser);
+    QuestionDTO created = questions.create(body);
+    return ResponseEntity.ok(created);
+  }
 
-    /** PUT /api/questions/{id} */
-    @RequirePermission(Permission.UPDATE_TASKS)
+  /** PUT /api/questions/{id} */
+  @RequirePermission(Permission.UPDATE_TASKS)
 
-    @PutMapping("/{id}")
+  @PutMapping("/{id}")
     public ResponseEntity<QuestionDTO> update(@PathVariable Long id,
                                               @RequestBody QuestionUpsertDTO body) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdmin(currentUser);
-        return questions.update(id, body)
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdmin(currentUser);
+    return questions.update(id, body)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
-    }
+  }
 
-    /** PATCH /api/questions/{id}/active?active=true|false */
-    @RequirePermission(Permission.UPDATE_TASKS)
+  /** PATCH /api/questions/{id}/active?active=true|false */
+  @RequirePermission(Permission.UPDATE_TASKS)
 
-    @PatchMapping("/{id}/active")
+  @PatchMapping("/{id}/active")
     public ResponseEntity<QuestionDTO> setActive(@PathVariable Long id,
                                                  @RequestParam boolean active) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdmin(currentUser);
-        return questions.setActive(id, active)
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdmin(currentUser);
+    return questions.setActive(id, active)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
-    }
+  }
 }

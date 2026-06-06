@@ -15,31 +15,31 @@ import java.util.Collections;
 @ConditionalOnProperty(name = "careconnect.stripe.enabled", havingValue = "true", matchIfMissing = false)
 public class StripeService {
 
-    public List<PlanDTO> listPlans() {
-        return Collections.emptyList();
-    }
+  public List<PlanDTO> listPlans() {
+    return Collections.emptyList();
+  }
 
-    public String listProducts() {
-        return "{}";
-    }
+  public String listProducts() {
+    return "{}";
+  }
 
-    public String listSubscriptions(String customerId) {
-        return "{}";
-    }
+  public String listSubscriptions(String customerId) {
+    return "{}";
+  }
 
-    public String getSubscription(String subscriptionId) {
-        return "{}";
-    }
+  public String getSubscription(String subscriptionId) {
+    return "{}";
+  }
 
-    public java.util.Map<String, Object> createCustomer(String name, String email) {
-        return java.util.Map.of("id", "cus_stub_" + System.currentTimeMillis(), "success", true);
-    }
+  public java.util.Map<String, Object> createCustomer(String name, String email) {
+    return java.util.Map.of("id", "cus_stub_" + System.currentTimeMillis(), "success", true);
+  }
 
-    public java.util.Map<String, Object> createSubscription(String customerId, String priceId) {
-        return java.util.Map.of("id", "sub_stub_" + System.currentTimeMillis(), "success", true);
-    }
+  public java.util.Map<String, Object> createSubscription(String customerId, String priceId) {
+    return java.util.Map.of("id", "sub_stub_" + System.currentTimeMillis(), "success", true);
+  }
 
-    public String getCustomerActiveSubscriptions(String customerId) {
-        return "{}";
-    }
+  public String getCustomerActiveSubscriptions(String customerId) {
+    return "{}";
+  }
 }

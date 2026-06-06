@@ -21,29 +21,29 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class USPSController {
 
-    private final USPSDigestService service;
+  private final USPSDigestService service;
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    @GetMapping("/mail")
+  @GetMapping("/mail")
     public ResponseEntity<USPSDigest> getDigest(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) throws UnauthorizedException {
-        // RBAC: Only admins and caregivers can access USPS mail data
-        if (securityUtil != null && authorizationService != null) {
-            User currentUser = securityUtil.resolveCurrentUser();
-            authorizationService.requireAdminOrCaregiver(currentUser);
-        }
-        var userId = jwt != null ? jwt.getSubject() : "demo-user"; // fallback for early testing
-        var digestOpt = date != null
+    // RBAC: Only admins and caregivers can access USPS mail data
+    if (securityUtil != null && authorizationService != null) {
+      User currentUser = securityUtil.resolveCurrentUser();
+      authorizationService.requireAdminOrCaregiver(currentUser);
+    }
+    var userId = jwt != null ? jwt.getSubject() : "demo-user"; // fallback for early testing
+    var digestOpt = date != null
                 ? service.digestForDate(userId, date)
                 : service.latestForUser(userId);
-        var digest = digestOpt.orElseGet(() -> new USPSDigest(null, java.util.List.of(), java.util.List.of()));
-        return ResponseEntity.ok(digest);
-    }
+    var digest = digestOpt.orElseGet(() -> new USPSDigest(null, java.util.List.of(), java.util.List.of()));
+    return ResponseEntity.ok(digest);
+  }
 }

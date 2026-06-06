@@ -18,22 +18,22 @@ import org.springframework.core.env.Environment;
  */
 @Configuration
 public class WebSocketModeConfig {
-    private static final Logger log = LoggerFactory.getLogger(WebSocketModeConfig.class);
+  private static final Logger log = LoggerFactory.getLogger(WebSocketModeConfig.class);
 
-    @Bean
+  @Bean
     public String websocketMode(Environment env) {
-        String awsEndpoint = env.getProperty("AWS_WEBSOCKET_API_GATEWAY_ENDPOINT");
-        if (awsEndpoint == null || awsEndpoint.isBlank()) {
-            awsEndpoint = env.getProperty("AWS_WEBSOCKET_API_ENDPOINT");
-        }
-
-        if (awsEndpoint != null && !awsEndpoint.isBlank()) {
-            log.info("AWS WebSocket endpoint detected: Using AWS WebSocket mode");
-            log.info("AWS WebSocket endpoint: {}", awsEndpoint);
-            return "aws";
-        } else {
-            log.info("AWS WebSocket endpoint not set: Using Local WebSocket mode");
-            return "local";
-        }
+    String awsEndpoint = env.getProperty("AWS_WEBSOCKET_API_GATEWAY_ENDPOINT");
+    if (awsEndpoint == null || awsEndpoint.isBlank()) {
+      awsEndpoint = env.getProperty("AWS_WEBSOCKET_API_ENDPOINT");
     }
+
+    if (awsEndpoint != null && !awsEndpoint.isBlank()) {
+      log.info("AWS WebSocket endpoint detected: Using AWS WebSocket mode");
+      log.info("AWS WebSocket endpoint: {}", awsEndpoint);
+      return "aws";
+    } else {
+      log.info("AWS WebSocket endpoint not set: Using Local WebSocket mode");
+      return "local";
+    }
+  }
 }

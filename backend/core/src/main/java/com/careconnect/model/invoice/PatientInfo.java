@@ -6,8 +6,8 @@ import lombok.Data;
 @Data
 @Builder
 public class PatientInfo {
-    private String name;
-    private String address;
-    private String accountNumber;
-    private String billingAddress;
+  private String name;
+  private String address;
+  private String accountNumber;
+  private String billingAddress;
 }

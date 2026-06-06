@@ -43,9 +43,9 @@ public class ChatMessageWebSocketHandler extends TextWebSocketHandler {
     
     // Send welcome message
     Map<String, Object> response = Map.of(
-      "type", "connection-established",
-      "message", "Connected to CareConnect chat service",
-      "sessionId", session.getId()
+        "type", "connection-established",
+        "message", "Connected to CareConnect chat service",
+        "sessionId", session.getId()
     );
     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
   }
@@ -54,7 +54,7 @@ public class ChatMessageWebSocketHandler extends TextWebSocketHandler {
   protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
     try {
       Map<String, Object> payload = objectMapper.readValue(
-        message.getPayload(),
+          message.getPayload(),
         new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}
       );
 
@@ -102,9 +102,9 @@ public class ChatMessageWebSocketHandler extends TextWebSocketHandler {
 
     // Send confirmation
     Map<String, Object> response = Map.of(
-      "type", "authenticated",
-      "userId", userId,
-      "message", "Successfully authenticated"
+        "type", "authenticated",
+        "userId", userId,
+        "message", "Successfully authenticated"
     );
     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
   }
@@ -149,14 +149,14 @@ public class ChatMessageWebSocketHandler extends TextWebSocketHandler {
     if (recipientSession != null && recipientSession.isOpen()) {
       try {
         Map<String, Object> deliveryPayload = Map.of(
-          "type", "message-received",
-          "messageId", savedMessage.getId(),
-          "clientMessageId", clientMessageId != null ? clientMessageId : "",
-          "senderId", senderId,
-          "recipientId", recipientId,
-          "content", content,
-          "timestamp", savedMessage.getTimestamp().toString(),
-          "delivered", true
+            "type", "message-received",
+            "messageId", savedMessage.getId(),
+            "clientMessageId", clientMessageId != null ? clientMessageId : "",
+            "senderId", senderId,
+            "recipientId", recipientId,
+            "content", content,
+            "timestamp", savedMessage.getTimestamp().toString(),
+            "delivered", true
         );
         recipientSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(deliveryPayload)));
         delivered = true;
@@ -168,11 +168,11 @@ public class ChatMessageWebSocketHandler extends TextWebSocketHandler {
 
     // Send acknowledgment to sender
     Map<String, Object> ack = Map.of(
-      "type", "message-sent",
-      "clientMessageId", clientMessageId != null ? clientMessageId : "",
-      "messageId", savedMessage.getId(),
-      "delivered", delivered,
-      "timestamp", savedMessage.getTimestamp().toString()
+        "type", "message-sent",
+        "clientMessageId", clientMessageId != null ? clientMessageId : "",
+        "messageId", savedMessage.getId(),
+        "delivered", delivered,
+        "timestamp", savedMessage.getTimestamp().toString()
     );
     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(ack)));
   }
@@ -196,9 +196,9 @@ public class ChatMessageWebSocketHandler extends TextWebSocketHandler {
     if (recipientSession != null && recipientSession.isOpen()) {
       try {
         Map<String, Object> typingPayload = Map.of(
-          "type", "user-typing",
-          "senderId", senderId,
-          "isTyping", isTyping != null ? isTyping : true
+            "type", "user-typing",
+            "senderId", senderId,
+            "isTyping", isTyping != null ? isTyping : true
         );
         recipientSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(typingPayload)));
       } catch (Exception e) {
@@ -235,9 +235,9 @@ public class ChatMessageWebSocketHandler extends TextWebSocketHandler {
         WebSocketSession senderSession = userSessions.get(msg.getSenderId().toString());
         if (senderSession != null && senderSession.isOpen()) {
           Map<String, Object> readPayload = Map.of(
-            "type", "message-read",
-            "messageId", messageId,
-            "recipientId", recipientId
+              "type", "message-read",
+              "messageId", messageId,
+              "recipientId", recipientId
           );
           senderSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(readPayload)));
         }
@@ -262,8 +262,8 @@ public class ChatMessageWebSocketHandler extends TextWebSocketHandler {
   private void sendError(WebSocketSession session, String errorMessage) {
     try {
       Map<String, Object> errorPayload = Map.of(
-        "type", "error",
-        "message", errorMessage
+          "type", "error",
+          "message", errorMessage
       );
       session.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorPayload)));
     } catch (Exception e) {

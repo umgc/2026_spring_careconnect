@@ -13,24 +13,24 @@ import java.time.OffsetDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class HistoryEntry {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "invoice_id")
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "invoice_id")
     private Invoice invoice;
 
-    private int version;
+  private int version;
 
-    @Column(columnDefinition = "text")
+  @Column(columnDefinition = "text")
     private String changes;
 
-    private String userId;
-    private String action;
+  private String userId;
+  private String action;
 
-    @Column(columnDefinition = "text")
+  @Column(columnDefinition = "text")
     private String details;
 
-    private OffsetDateTime timestamp;
+  private OffsetDateTime timestamp;
 }

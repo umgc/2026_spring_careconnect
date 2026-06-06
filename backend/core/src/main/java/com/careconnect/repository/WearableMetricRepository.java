@@ -12,8 +12,8 @@ import java.util.List;
 public interface WearableMetricRepository
         extends JpaRepository<WearableMetric, Long> {
 
-    /** Average of a metric over a time-window */
-    @Query("SELECT AVG(w.metricValue) " +
+  /** Average of a metric over a time-window */
+  @Query("SELECT AVG(w.metricValue) " +
            "FROM WearableMetric w " +
            "WHERE w.patient.id = :pid " +
            "AND w.metric = :metric " +

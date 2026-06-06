@@ -12,20 +12,20 @@ import java.util.List;
 @Configuration
 public class CorsFilterConfig {
 
-    @Value("${careconnect.cors_allowed}")
+  @Value("${careconnect.cors_allowed}")
     List<String> allowedOrigins;
 
-    @Bean(name = "corsConfigurationSource")
+  @Bean(name = "corsConfigurationSource")
     public CorsConfigurationSource corsFilter() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(allowedOrigins);
-        config.setAllowCredentials(true);
-        config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("*"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+    CorsConfiguration config = new CorsConfiguration();
+    config.setAllowedOriginPatterns(allowedOrigins);
+    config.setAllowCredentials(true);
+    config.setAllowedHeaders(List.of("*"));
+    config.setExposedHeaders(List.of("*"));
+    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
-    }
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return source;
+  }
 }

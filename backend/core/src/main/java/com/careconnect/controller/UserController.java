@@ -26,23 +26,23 @@ import java.util.Optional;
 @RequestMapping("/v1/api/users")
 @Tag(name = "User Management", description = "User management endpoints including search and password management")
 public class UserController {
-    @Autowired
+  @Autowired
     private UserPasswordService userPasswordService;
 
-    @Autowired
+  @Autowired
     private UserRepository userRepo;
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    /**
+  /**
      * Reset password for user (caregiver or patient) using username (email) and reset token
      */
-    @PostMapping("/reset-password")
-    @Operation(
+  @PostMapping("/reset-password")
+  @Operation(
         summary = "Reset user password",
         description = "Reset password for any user (caregiver or patient) using username (email), reset token, and new password. This endpoint completes the password reset flow after the user receives a reset token via email.",
         tags = {"Authentication", "User Management"},
@@ -60,33 +60,33 @@ public class UserController {
             )
         )
     )
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Password reset successful",
+  @ApiResponses(value = {
+    @ApiResponse(responseCode = "200", description = "Password reset successful",
             content = @Content(mediaType = "application/json",
                 examples = @ExampleObject(value = "{\n    \"message\": \"Password updated successfully\"\n}")
             )
         ),
-        @ApiResponse(responseCode = "400", description = "Invalid request or expired token",
+    @ApiResponse(responseCode = "400", description = "Invalid request or expired token",
             content = @Content(mediaType = "application/json",
                 examples = @ExampleObject(value = "{\n    \"error\": \"Invalid or expired reset token\"\n}")
             )
         )
-    })
+  })
     public ResponseEntity<?> resetPassword(@RequestBody com.careconnect.dto.ResetPasswordRequest req) {
-        try {
-            userPasswordService.resetPasswordWithToken(req.getUsername(), req.getResetToken(), req.getNewPassword());
-            return ResponseEntity.ok(Collections.singletonMap("message", "Password updated successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Collections.singletonMap("error", e.getMessage()));
-        }
+    try {
+      userPasswordService.resetPasswordWithToken(req.getUsername(), req.getResetToken(), req.getNewPassword());
+      return ResponseEntity.ok(Collections.singletonMap("message", "Password updated successfully"));
+    } catch (Exception e) {
+      return ResponseEntity.badRequest().body(Collections.singletonMap("error", e.getMessage()));
     }
+  }
 
 
-    /**
+  /**
      * Set up password for new users using verification token (from patient registration)
      */
-    @PostMapping("/setup-password")
-    @Operation(
+  @PostMapping("/setup-password")
+  @Operation(
         summary = "Set up password for new user",
         description = "Set up password for new users (patients) using verification token from registration email. This is different from password reset - it's for users who haven't set their password yet.",
         tags = {"Authentication", "User Management"},
@@ -104,46 +104,46 @@ public class UserController {
             )
         )
     )
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Password setup successful",
+  @ApiResponses(value = {
+    @ApiResponse(responseCode = "200", description = "Password setup successful",
             content = @Content(mediaType = "application/json",
                 examples = @ExampleObject(value = "{\n    \"message\": \"Password setup completed successfully\"\n}")
             )
         ),
-        @ApiResponse(responseCode = "400", description = "Invalid request or token",
+    @ApiResponse(responseCode = "400", description = "Invalid request or token",
             content = @Content(mediaType = "application/json",
                 examples = @ExampleObject(value = "{\n    \"error\": \"Invalid or expired verification token\"\n}")
             )
         )
-    })
+  })
     public ResponseEntity<?> setupPassword(@RequestBody com.careconnect.dto.SetupPasswordRequest req) {
-        try {
-            userPasswordService.setupPasswordWithVerificationToken(req.username(), req.verificationToken(), req.newPassword());
-            return ResponseEntity.ok(Collections.singletonMap("message", "Password setup completed successfully"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Collections.singletonMap("error", e.getMessage()));
-        }
+    try {
+      userPasswordService.setupPasswordWithVerificationToken(req.username(), req.verificationToken(), req.newPassword());
+      return ResponseEntity.ok(Collections.singletonMap("message", "Password setup completed successfully"));
+    } catch (Exception e) {
+      return ResponseEntity.badRequest().body(Collections.singletonMap("error", e.getMessage()));
     }
+  }
 
-    @GetMapping("/search")
+  @GetMapping("/search")
     public ResponseEntity<List<UserResponse>> searchUsers(
             @RequestParam String query,
             @RequestParam Long currentUserId) throws UnauthorizedException {
 
-        User authUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdmin(authUser);
+    User authUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdmin(authUser);
 
-        List<User> users = userRepo.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(query, query);
+    List<User> users = userRepo.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(query, query);
 
-        Optional<User> currentUserOpt = userRepo.findById(currentUserId);
-        if (currentUserOpt.isEmpty()) {
-            return ResponseEntity.badRequest().body(Collections.emptyList());
-        }
+    Optional<User> currentUserOpt = userRepo.findById(currentUserId);
+    if (currentUserOpt.isEmpty()) {
+      return ResponseEntity.badRequest().body(Collections.emptyList());
+    }
 
-        User currentUser = currentUserOpt.get();
+    User currentUser = currentUserOpt.get();
 
 
-        List<UserResponse> response = users.stream()
+    List<UserResponse> response = users.stream()
                 .filter(u -> !(
                         u.getId().equals(currentUserId) &&
                                 u.getEmail().equalsIgnoreCase(currentUser.getEmail()) &&
@@ -160,64 +160,64 @@ public class UserController {
                 ))
                 .toList();
 
-        return ResponseEntity.ok(response);
-    }
-    @PutMapping("/{userId}/leaderboard-opt-in")
+    return ResponseEntity.ok(response);
+  }
+  @PutMapping("/{userId}/leaderboard-opt-in")
     public ResponseEntity<?> toggleLeaderboardOptIn(
             @PathVariable Long userId,
             @RequestBody Map<String, Boolean> body) {
 
-        Boolean optIn = body.get("optIn");
-        if (optIn == null) {
-            return ResponseEntity.badRequest().body(Collections.singletonMap("error", "Missing 'optIn' in request body."));
-        }
-
-        Optional<User> userOpt = userRepo.findById(userId);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(404).body(Collections.singletonMap("error", "User not found."));
-        }
-
-        User user = userOpt.get();
-        user.setLeaderboardOptIn(optIn);
-        userRepo.save(user);
-
-        return ResponseEntity.ok(Collections.singletonMap("message", "Leaderboard opt-in status updated."));
+    Boolean optIn = body.get("optIn");
+    if (optIn == null) {
+      return ResponseEntity.badRequest().body(Collections.singletonMap("error", "Missing 'optIn' in request body."));
     }
 
-    @GetMapping("/leaderboard")
+    Optional<User> userOpt = userRepo.findById(userId);
+    if (userOpt.isEmpty()) {
+      return ResponseEntity.status(404).body(Collections.singletonMap("error", "User not found."));
+    }
+
+    User user = userOpt.get();
+    user.setLeaderboardOptIn(optIn);
+    userRepo.save(user);
+
+    return ResponseEntity.ok(Collections.singletonMap("message", "Leaderboard opt-in status updated."));
+  }
+
+  @GetMapping("/leaderboard")
     public ResponseEntity<List<com.careconnect.dto.LeaderboardEntry>> getLeaderboard() {
-        List<com.careconnect.dto.LeaderboardEntry> leaderboard = userRepo.findLeaderboard();
-        return ResponseEntity.ok(leaderboard);
-    }
+    List<com.careconnect.dto.LeaderboardEntry> leaderboard = userRepo.findLeaderboard();
+    return ResponseEntity.ok(leaderboard);
+  }
 
-    @GetMapping("/check-email")
-    @Operation(
+  @GetMapping("/check-email")
+  @Operation(
         summary = "Check if email exists",
         description = "Check if a user exists with the given email address and return their role if they do",
         tags = {"User Management"},
         security = {}
     )
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Email check completed",
+  @ApiResponses(value = {
+    @ApiResponse(responseCode = "200", description = "Email check completed",
             content = @Content(mediaType = "application/json",
                 examples = @ExampleObject(value = "{\n    \"exists\": true,\n    \"role\": \"PATIENT\"\n}")
             )
         )
-    })
+  })
     public ResponseEntity<?> checkEmailExists(@RequestParam String email) {
-        Optional<User> userOpt = userRepo.findByEmail(email);
+    Optional<User> userOpt = userRepo.findByEmail(email);
         
-        if (userOpt.isPresent()) {
-            User user = userOpt.get();
-            return ResponseEntity.ok(Map.of(
+    if (userOpt.isPresent()) {
+      User user = userOpt.get();
+      return ResponseEntity.ok(Map.of(
                 "exists", true,
                 "role", user.getRole(),
                 "userId", user.getId()
             ));
-        } else {
-            return ResponseEntity.ok(Map.of(
+    } else {
+      return ResponseEntity.ok(Map.of(
                 "exists", false
             ));
-        }
     }
+  }
 }

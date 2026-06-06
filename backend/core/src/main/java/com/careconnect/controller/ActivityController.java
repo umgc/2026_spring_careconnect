@@ -22,24 +22,24 @@ import java.util.Map;
 @RequestMapping("/v1/api/activities")
 public class ActivityController {
 
-    @Autowired
+  @Autowired
     private UserRepository userRepository;
 
-    private User getCurrentUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return userRepository.findByEmail(auth.getName())
+  private User getCurrentUser() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    return userRepository.findByEmail(auth.getName())
                 .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "User not authenticated"));
-    }
+  }
 
-    /**
+  /**
      * Get all activities, optionally filtered by category (ADL or IADL).
      * Returns id, name, category, defaultIconUrl.
      */
-    @GetMapping
+  @GetMapping
     public ResponseEntity<List<Map<String, Object>>> getActivities(
             @RequestParam(required = false) String category) {
-        getCurrentUser();
-        // TODO: load from activity table when it exists
-        return ResponseEntity.ok(Collections.emptyList());
-    }
+    getCurrentUser();
+    // TODO: load from activity table when it exists
+    return ResponseEntity.ok(Collections.emptyList());
+  }
 }

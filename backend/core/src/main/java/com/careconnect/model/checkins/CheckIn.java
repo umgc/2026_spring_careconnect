@@ -4,18 +4,18 @@ import java.util.Date;
 
 public class CheckIn {
 
-    int id;
+  int id;
 
-    CheckInTemplate template;
+  CheckInTemplate template;
 
-    Date dateSubmitted;
+  Date dateSubmitted;
 
-    CheckIn(CheckInTemplate inTemplate)
+  CheckIn(CheckInTemplate inTemplate)
     {
-        template = inTemplate;
+      template = inTemplate;
     }
 
-    public CheckIn()
+  public CheckIn()
     {
         //This just exists to make the controller stop complaining.
     }

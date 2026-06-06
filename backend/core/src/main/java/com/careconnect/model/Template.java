@@ -12,24 +12,24 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Template {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String name;
-    @Nullable
+  private String name;
+  @Nullable
     private String description;
-    @Nullable
+  @Nullable
     private String frequency;
-    @Nullable
+  @Nullable
     private int taskInterval;
-    @Nullable
+  @Nullable
     private int doCount;
-    @Nullable
+  @Nullable
     private List<Boolean> daysOfWeek;
-    @Nullable
+  @Nullable
     private String timeOfDay;
-    private int icon;
-    @Nullable
+  private int icon;
+  @Nullable
     private List<String> notifications;
 }

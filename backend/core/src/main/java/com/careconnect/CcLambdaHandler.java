@@ -14,37 +14,37 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public class CcLambdaHandler implements RequestStreamHandler {
-    private static final Logger LOG = LoggerFactory.getLogger(CcLambdaHandler.class);
-    private static final SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse> HANDLER;
+  private static final Logger LOG = LoggerFactory.getLogger(CcLambdaHandler.class);
+  private static final SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse> HANDLER;
 
-    static {
-        try {
-            LOG.info("Initializing Lambda Handler");
-            // Initialize the handler with specific configurations
-            HANDLER = SpringBootLambdaContainerHandler
+  static {
+    try {
+      LOG.info("Initializing Lambda Handler");
+      // Initialize the handler with specific configurations
+      HANDLER = SpringBootLambdaContainerHandler
                     .getAwsProxyHandler(CareconnectBackendApplication.class);
             
-            LOG.info("Lambda Handler initialized successfully");
-        } catch (ContainerInitializationException e) {
-            LOG.error("Failed to initialize Spring Boot application", e);
-            throw new RuntimeException("Could not initialize Spring Boot application", e);
-        }
+      LOG.info("Lambda Handler initialized successfully");
+    } catch (ContainerInitializationException e) {
+      LOG.error("Failed to initialize Spring Boot application", e);
+      throw new RuntimeException("Could not initialize Spring Boot application", e);
     }
+  }
 
-    @Override
+  @Override
     public void handleRequest(InputStream inputStream, OutputStream outputStream, Context context)
             throws IOException {
-        try {
-            LOG.info("Initializing Lambda in the handler again");
+    try {
+      LOG.info("Initializing Lambda in the handler again");
 
-            // Process the request and write directly to output stream
-            HANDLER.proxyStream(inputStream, outputStream, context);
+      // Process the request and write directly to output stream
+      HANDLER.proxyStream(inputStream, outputStream, context);
             
-            // Log after processing
-            LOG.info("Response sent directly to output stream");
-        } catch (Exception e) {
-            LOG.error("Error processing request", e);
-            throw new RuntimeException(e);
-        }
+      // Log after processing
+      LOG.info("Response sent directly to output stream");
+    } catch (Exception e) {
+      LOG.error("Error processing request", e);
+      throw new RuntimeException(e);
     }
+  }
 }

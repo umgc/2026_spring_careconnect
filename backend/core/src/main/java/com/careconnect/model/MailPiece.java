@@ -6,17 +6,17 @@ import java.time.OffsetDateTime;
 
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class MailPiece {
-    private String id;
-    private String sender;
+  private String id;
+  private String sender;
 
-    @JsonProperty("summary")
+  @JsonProperty("summary")
     private String subject;
 
-    @JsonProperty("imageDataUrl")
+  @JsonProperty("imageDataUrl")
     private String thumbnailUrl;        // data: URL or https link
 
-    private OffsetDateTime receivedAt;  // when the digest says it's from
+  private OffsetDateTime receivedAt;  // when the digest says it's from
 
-    @JsonProperty("actions")
+  @JsonProperty("actions")
     private ActionLinks actionLinks;
 }

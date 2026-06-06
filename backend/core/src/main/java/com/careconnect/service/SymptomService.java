@@ -17,15 +17,15 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class SymptomService {
 
-    private final SymptomEntryRepository symptomRepo;
-    private final PatientRepository patientRepo;
+  private final SymptomEntryRepository symptomRepo;
+  private final PatientRepository patientRepo;
 
-    @Transactional
+  @Transactional
     public SymptomDTO create(SymptomDTO dto) {
-        Patient patient = patientRepo.findById(dto.patientId())
+    Patient patient = patientRepo.findById(dto.patientId())
                 .orElseThrow(() -> new IllegalArgumentException("Patient not found: " + dto.patientId()));
 
-        SymptomEntry entry = SymptomEntry.builder()
+    SymptomEntry entry = SymptomEntry.builder()
                 .patient(patient)
                 .symptomKey(dto.symptomKey())
                 .symptomValue(dto.symptomValue())
@@ -35,43 +35,43 @@ public class SymptomService {
                 .takenAt(dto.takenAt() != null ? dto.takenAt() : Instant.now())
                 .build();
 
-        return toDto(symptomRepo.save(entry));
-    }
+    return toDto(symptomRepo.save(entry));
+  }
 
-    @Transactional
+  @Transactional
     public SymptomDTO update(Long id, SymptomDTO dto) {
-        SymptomEntry e = symptomRepo.findById(id)
+    SymptomEntry e = symptomRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Symptom not found: " + id));
 
-        if (dto.symptomKey()   != null) e.setSymptomKey(dto.symptomKey());
-        if (dto.symptomValue() != null) e.setSymptomValue(dto.symptomValue());
-        if (dto.severity()     != null) e.setSeverity(dto.severity());
-        if (dto.notes()        != null) e.setNotes(dto.notes());
-        if (dto.completed()    != null) e.setCompleted(dto.completed());
-        if (dto.takenAt()      != null) e.setTakenAt(dto.takenAt());
+    if (dto.symptomKey()   != null) e.setSymptomKey(dto.symptomKey());
+    if (dto.symptomValue() != null) e.setSymptomValue(dto.symptomValue());
+    if (dto.severity()     != null) e.setSeverity(dto.severity());
+    if (dto.notes()        != null) e.setNotes(dto.notes());
+    if (dto.completed()    != null) e.setCompleted(dto.completed());
+    if (dto.takenAt()      != null) e.setTakenAt(dto.takenAt());
 
-        return toDto(symptomRepo.save(e));
-    }
+    return toDto(symptomRepo.save(e));
+  }
 
-    public Optional<SymptomDTO> get(Long id) {
-        return symptomRepo.findById(id).map(this::toDto);
-    }
+  public Optional<SymptomDTO> get(Long id) {
+    return symptomRepo.findById(id).map(this::toDto);
+  }
 
-    public List<SymptomDTO> listByPatient(Long patientId) {
-        return symptomRepo.findByPatientIdOrderByTakenAtDesc(patientId)
+  public List<SymptomDTO> listByPatient(Long patientId) {
+    return symptomRepo.findByPatientIdOrderByTakenAtDesc(patientId)
                 .stream().map(this::toDto).toList();
-    }
+  }
 
-    @Transactional
+  @Transactional
     public void delete(Long id) {
-        if (!symptomRepo.existsById(id)) {
-            throw new IllegalArgumentException("Symptom not found: " + id);
-        }
-        symptomRepo.deleteById(id);
+    if (!symptomRepo.existsById(id)) {
+      throw new IllegalArgumentException("Symptom not found: " + id);
     }
+    symptomRepo.deleteById(id);
+  }
 
-    private SymptomDTO toDto(SymptomEntry e) {
-        return SymptomDTO.builder()
+  private SymptomDTO toDto(SymptomEntry e) {
+    return SymptomDTO.builder()
                 .id(e.getId())
                 .patientId(e.getPatient().getId())
                 .symptomKey(e.getSymptomKey())
@@ -81,5 +81,5 @@ public class SymptomService {
                 .takenAt(e.getTakenAt())
                 .notes(e.getNotes())
                 .build();
-    }
+  }
 }

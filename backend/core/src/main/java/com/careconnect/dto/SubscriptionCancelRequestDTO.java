@@ -4,9 +4,9 @@ import lombok.Data;
 
 @Data
 public class SubscriptionCancelRequestDTO {
-    private Long subscriptionId;
+  private Long subscriptionId;
 
-	public Long getSubscriptionId() {
-		return this.subscriptionId;
-	}
+  public Long getSubscriptionId() {
+    return this.subscriptionId;
+  }
 }

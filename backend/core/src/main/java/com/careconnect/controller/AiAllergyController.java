@@ -30,49 +30,49 @@ import java.util.Map;
 @RequestMapping({"/api/ai", "/v1/api/ai"})
 public class AiAllergyController {
 
-    private final AiAllergyService aiAllergyService;
-    private final AllergyRepository allergyRepository;
-    private final SecurityUtil securityUtil;
-    private final AuthorizationService authorizationService;
+  private final AiAllergyService aiAllergyService;
+  private final AllergyRepository allergyRepository;
+  private final SecurityUtil securityUtil;
+  private final AuthorizationService authorizationService;
 
-    @RequirePermission(Permission.CREATE_TASKS)
+  @RequirePermission(Permission.CREATE_TASKS)
 
 
-    @PostMapping(
+  @PostMapping(
             value = "/analyze/allergy",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE
     )
     public ResponseEntity<?> analyze(@Valid @RequestBody AiAllergyDTO.Request body) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        if (currentUser.isFamilyMember()) {
-            throw new UnauthorizedException("This feature requires ADMIN, CAREGIVER, or PATIENT role");
-        }
-        Long pid = body.getPatientId();
-        if (pid != null) {
-            authorizationService.requirePatientAccess(currentUser, pid);
-        }
-        try {
-            List<Allergy> history = pid == null
+    User currentUser = securityUtil.resolveCurrentUser();
+    if (currentUser.isFamilyMember()) {
+      throw new UnauthorizedException("This feature requires ADMIN, CAREGIVER, or PATIENT role");
+    }
+    Long pid = body.getPatientId();
+    if (pid != null) {
+      authorizationService.requirePatientAccess(currentUser, pid);
+    }
+    try {
+      List<Allergy> history = pid == null
                     ? List.of()
                     : allergyRepository.findActiveAllergiesByPatientId(pid);
 
-            AiAllergyDTO.Result result = aiAllergyService.analyze(body, history);
+      AiAllergyDTO.Result result = aiAllergyService.analyze(body, history);
 
-            return ResponseEntity.ok(Map.of(
+      return ResponseEntity.ok(Map.of(
                     "data", Map.of(
                             "allergen", result.getAllergen(),
                             "reaction", result.getReaction(),
                             "severity", result.getSeverity()
                     )
             ));
-        } catch (Exception e) {
-            log.error("AI allergy analyze failed", e);
-            return ResponseEntity.badRequest().body(Map.of(
+    } catch (Exception e) {
+      log.error("AI allergy analyze failed", e);
+      return ResponseEntity.badRequest().body(Map.of(
                     "error", "AI_ANALYZE_FAILED",
                     "message", e.getMessage()
             ));
-        }
     }
+  }
 }
 

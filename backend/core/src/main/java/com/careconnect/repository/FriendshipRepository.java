@@ -8,6 +8,6 @@ import org.springframework.data.repository.query.Param;
 
 @Repository
 public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
-    @Query("SELECT COUNT(f) FROM Friendship f WHERE f.user1.id = :userId OR f.user2.id = :userId")
+  @Query("SELECT COUNT(f) FROM Friendship f WHERE f.user1.id = :userId OR f.user2.id = :userId")
     long countByUserId(@Param("userId") Long userId);
 }

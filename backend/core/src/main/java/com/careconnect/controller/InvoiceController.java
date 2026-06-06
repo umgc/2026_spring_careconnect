@@ -61,11 +61,11 @@ public class InvoiceController {
         this.aiServiceFactory = aiServiceFactory;
     }
 
-    // ==============================
-    // Invoice CRUD
-    // ==============================
+  // ==============================
+  // Invoice CRUD
+  // ==============================
 
-    @GetMapping
+  @GetMapping
     public ResponseEntity<Map<String, Object>> list(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
@@ -95,88 +95,99 @@ public class InvoiceController {
         Sort s = InvoiceService.resolveSort(sort);
         Pageable pageable = PageRequest.of(page, pageSize, s);
 
-        var statuses = InvoiceService.parseStatuses(status);
-        var ds = parseDate(dueStart);
-        var de = parseDate(dueEnd);
-        var amin = parseDecimal(amountMin);
-        var amax = parseDecimal(amountMax);
+    var statuses = InvoiceService.parseStatuses(status);
+    var ds = parseDate(dueStart);
+    var de = parseDate(dueEnd);
+    var amin = parseDecimal(amountMin);
+    var amax = parseDecimal(amountMax);
 
-        Page<InvoiceDto> result = service.list(
+    Page<InvoiceDto> result = service.list(
                 search, statuses, providerName, patientName, ds, de, amin, amax, pageable
         );
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("items", result.getContent());
-        body.put("page", result.getNumber());
-        body.put("pageSize", result.getSize());
-        body.put("totalPages", result.getTotalPages());
-        body.put("totalItems", result.getTotalElements());
+    Map<String, Object> body = new HashMap<>();
+    body.put("items", result.getContent());
+    body.put("page", result.getNumber());
+    body.put("pageSize", result.getSize());
+    body.put("totalPages", result.getTotalPages());
+    body.put("totalItems", result.getTotalElements());
 
-        return ResponseEntity.ok(body);
-    }
+    return ResponseEntity.ok(body);
+  }
 
-    @GetMapping("/{id}")
+  @GetMapping("/{id}")
     public ResponseEntity<InvoiceDto> get(@PathVariable String id) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        return service.get(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    return service.get(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+  }
 
-    @PostMapping
+  @PostMapping
     public ResponseEntity<InvoiceDto> create(@RequestBody InvoiceDto dto) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        InvoiceDto created = service.create(dto);
-        return ResponseEntity.status(201).body(created);
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    InvoiceDto created = service.create(dto);
+    return ResponseEntity.status(201).body(created);
+  }
 
-    @PutMapping("/{id}")
+  @PutMapping("/{id}")
     public ResponseEntity<InvoiceDto> update(@PathVariable String id, @RequestBody InvoiceDto dto) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        InvoiceDto updated = service.update(id, dto);
-        return ResponseEntity.ok(updated);
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    InvoiceDto updated = service.update(id, dto);
+    return ResponseEntity.ok(updated);
+  }
 
-    @DeleteMapping("/{id}")
+  @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        service.delete(id);
-        return ResponseEntity.noContent().build();
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    service.delete(id);
+    return ResponseEntity.noContent().build();
+  }
 
-    // ==============================
-    // Payments
-    // ==============================
+  // ==============================
+  // Payments
+  // ==============================
 
-    @PostMapping("/{id}/payments")
+  @PostMapping("/{id}/payments")
     public ResponseEntity<InvoiceDto> addPayment(
             @PathVariable String id,
             @RequestBody PaymentDto dto,
             java.security.Principal principal
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        String actor = principal != null ? principal.getName() : "system";
-        InvoiceDto updated = service.recordPayment(id, dto, actor);
-        return ResponseEntity.ok(updated);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    String actor = principal != null ? principal.getName() : "system";
+    InvoiceDto updated = service.recordPayment(id, dto, actor);
+    return ResponseEntity.ok(updated);
+  }
 
-    @DeleteMapping("/{id}/payments/{paymentId}")
+  @DeleteMapping("/{id}/payments/{paymentId}")
     public ResponseEntity<InvoiceDto> removePayment(
             @PathVariable String id,
             @PathVariable String paymentId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        InvoiceDto updated = service.deletePayment(id, paymentId);
-        return ResponseEntity.ok(updated);
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    InvoiceDto updated = service.deletePayment(id, paymentId);
+    return ResponseEntity.ok(updated);
+  }
+
+  // ==============================
+  // LLM + Textract Extraction
+  // ==============================
+
+  @PostMapping(value = "/extract-llm", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> extractWithLlm(@RequestParam("files") List<MultipartFile> files) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    if (isFileListInvalid(files)) {
+      return ResponseEntity.badRequest().body("Please provide at least one valid file.");
     }
 
-    // ==============================
-    // LLM + Textract Extraction
-    // ==============================
+    try {
+      log.info("Received file for OCR: {}", files.get(0).getOriginalFilename());
 
     @PostMapping(value = "/extract-llm", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> extractWithLlm(@RequestParam("files") List<MultipartFile> files) throws UnauthorizedException {
@@ -198,8 +209,9 @@ public class InvoiceController {
             return ResponseEntity.badRequest().body("Please provide at least one valid file.");
         }
 
-        try {
-            log.info("Received file for OCR: {}", files.get(0).getOriginalFilename());
+      // Step 2: LLM
+      String json = llmExtractionService.extractInvoiceData(result.rawText);
+      String sanitizedJson = JsonSanitizer.extractFirstJsonObject(json);
 
             // Step 1: Textract
             AiRequest.AnalysisResult result = textractService.analyzeAndGetResult(files);
@@ -215,81 +227,81 @@ public class InvoiceController {
             invoiceDto.aiSummary = aiResult;
             invoiceDto.documentLink = result.s3Key;
 
-            // Step 3: Duplicate check
-            final String providerName =
+      // Step 3: Duplicate check
+      final String providerName =
                     invoiceDto.provider == null ? null : invoiceDto.provider.name;
 
-            final Double total =
+      final Double total =
                     invoiceDto.amounts == null ? null : invoiceDto.amounts.total;
 
-            final String invoiceNumber = invoiceDto.invoiceNumber;
+      final String invoiceNumber = invoiceDto.invoiceNumber;
 
-            Optional<Invoice> dup =
+      Optional<Invoice> dup =
                     service.findDuplicateByProviderAndTotal(providerName, total, invoiceNumber);
 
-            InvoiceResponseDto payload = new InvoiceResponseDto();
-            payload.invoice = invoiceDto;
+      InvoiceResponseDto payload = new InvoiceResponseDto();
+      payload.invoice = invoiceDto;
 
-            if (dup.isPresent()) {
-                Invoice existing = dup.get();
-                payload.duplicate = true;
-                payload.duplicateId = existing.getId();
-                payload.duplicateInvoiceNumber = existing.getInvoiceNumber();
-                payload.message = String.format(
+      if (dup.isPresent()) {
+        Invoice existing = dup.get();
+        payload.duplicate = true;
+        payload.duplicateId = existing.getId();
+        payload.duplicateInvoiceNumber = existing.getInvoiceNumber();
+        payload.message = String.format(
                         "Duplicate invoice detected for provider %s with total %.2f",
                         providerName,
                         total
                 );
-            } else {
-                payload.duplicate = false;
-            }
+      } else {
+        payload.duplicate = false;
+      }
 
-            return ResponseEntity.ok(payload);
+      return ResponseEntity.ok(payload);
 
-        } catch (Exception e) {
-            log.error("Error during LLM extraction", e);
-            return ResponseEntity.internalServerError()
+    } catch (Exception e) {
+      log.error("Error during LLM extraction", e);
+      return ResponseEntity.internalServerError()
                     .body("Failed to process with LLM: " + e.getMessage());
-        }
     }
+  }
 
-    // ==============================
-    // Helpers
-    // ==============================
+  // ==============================
+  // Helpers
+  // ==============================
 
-    private boolean isFileListInvalid(List<MultipartFile> files) {
-        return files == null
+  private boolean isFileListInvalid(List<MultipartFile> files) {
+    return files == null
                 || files.isEmpty()
                 || files.stream().allMatch(MultipartFile::isEmpty);
-    }
+  }
 
-    private static OffsetDateTime parseDate(String s) {
-        return s == null || s.isBlank() ? null : OffsetDateTime.parse(s);
-    }
+  private static OffsetDateTime parseDate(String s) {
+    return s == null || s.isBlank() ? null : OffsetDateTime.parse(s);
+  }
 
-    private static BigDecimal parseDecimal(String s) {
-        return s == null || s.isBlank() ? null : new BigDecimal(s);
-    }
+  private static BigDecimal parseDecimal(String s) {
+    return s == null || s.isBlank() ? null : new BigDecimal(s);
+  }
 
-    public static final class JsonSanitizer {
-        private JsonSanitizer() {}
+  public static final class JsonSanitizer {
+    private JsonSanitizer() {}
 
-        public static String extractFirstJsonObject(String s) {
-            if (s == null) return null;
+    public static String extractFirstJsonObject(String s) {
+      if (s == null) return null;
 
-            String t = s.trim();
-            int start = t.indexOf('{');
-            if (start < 0) return null;
+      String t = s.trim();
+      int start = t.indexOf('{');
+      if (start < 0) return null;
 
-            int depth = 0;
-            for (int i = start; i < t.length(); i++) {
-                if (t.charAt(i) == '{') depth++;
-                else if (t.charAt(i) == '}') {
-                    depth--;
-                    if (depth == 0) return t.substring(start, i + 1);
-                }
-            }
-            return null;
+      int depth = 0;
+      for (int i = start; i < t.length(); i++) {
+        if (t.charAt(i) == '{') depth++;
+        else if (t.charAt(i) == '}') {
+          depth--;
+          if (depth == 0) return t.substring(start, i + 1);
         }
+      }
+      return null;
     }
+  }
 }

@@ -19,38 +19,38 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class BedrockTestService {
 
-    private final BedrockRuntimeClient client;
+  private final BedrockRuntimeClient client;
 
-    /**
+  /**
      * Initialize Bedrock client using default AWS credentials
      * and the us-east-1 region.
      */
-    public BedrockTestService() {
-        this.client = BedrockRuntimeClient.builder()
+  public BedrockTestService() {
+    this.client = BedrockRuntimeClient.builder()
                 .region(Region.US_EAST_1)
                 .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
-    }
+  }
 
-    /**
+  /**
      * Sends a prompt to Llama 3 and extracts the generated text.
      *
      * @param prompt User input
      * @return Generated model response
      */
-    public String testPrompt(String prompt) {
+  public String testPrompt(String prompt) {
 
-        // Llama 3 request body format
-        String body = """
+    // Llama 3 request body format
+    String body = """
         {
           "prompt": "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\\n%s\\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
           "max_gen_len": 200,
           "temperature": 0.5
         }
-        """.formatted(prompt);
+            """.formatted(prompt);
 
-        //Log incoming log
-        System.out.println("Calling Bedrock with prompt: " + prompt);
+    //Log incoming log
+    System.out.println("Calling Bedrock with prompt: " + prompt);
 
         InvokeModelRequest request = InvokeModelRequest.builder()
                 .modelId("amazon.nova-lite-v1:0")
@@ -62,23 +62,23 @@ public class BedrockTestService {
                 )
                 .build();
 
-        InvokeModelResponse response = client.invokeModel(request);
+    InvokeModelResponse response = client.invokeModel(request);
 
-        String json = response.body().asUtf8String();
+    String json = response.body().asUtf8String();
 
-        //Log raw JSON returned from bedrock
-        System.out.println("Raw Bedrock JSON response: " + json);
+    //Log raw JSON returned from bedrock
+    System.out.println("Raw Bedrock JSON response: " + json);
 
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(json);
+    try {
+      ObjectMapper mapper = new ObjectMapper();
+      JsonNode root = mapper.readTree(json);
 
-            // Llama returns:
-            // { "generation": "model output text" }
-            return root.path("generation").asText().trim();
+      // Llama returns:
+      // { "generation": "model output text" }
+      return root.path("generation").asText().trim();
 
-        } catch (Exception e) {
-            return "Failed to parse model response: " + json;
-        }
+    } catch (Exception e) {
+      return "Failed to parse model response: " + json;
     }
+  }
 }

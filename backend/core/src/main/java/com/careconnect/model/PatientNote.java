@@ -12,29 +12,29 @@ import java.time.LocalDateTime;
 @Builder
 public class PatientNote {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Column(name = "patient_id", nullable = false)
+  @Column(name = "patient_id", nullable = false)
     private Long patientId;
-    @Column(name = "note", columnDefinition = "TEXT", nullable = false)
+  @Column(name = "note", columnDefinition = "TEXT", nullable = false)
     private String note;
-    @Column(name = "ai_summary", columnDefinition = "TEXT", nullable = true)
+  @Column(name = "ai_summary", columnDefinition = "TEXT", nullable = true)
     private String aiSummary;
-    @Column(name = "created_at", nullable = false)
+  @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
-    @Column(name = "updated_at", nullable = false)
+  @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @PrePersist
+  @PrePersist
     protected void onCreate() {
-        LocalDateTime now = LocalDateTime.now();
-        this.createdAt = now;
-        this.updatedAt = now;
-    }
+    LocalDateTime now = LocalDateTime.now();
+    this.createdAt = now;
+    this.updatedAt = now;
+  }
     
-    @PreUpdate
+  @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }   
+    this.updatedAt = LocalDateTime.now();
+  }   
 }

@@ -18,7 +18,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 
 /**
- * BedrockSentimentService — real-time sentiment analysis during video calls.
+ * BedrockSentimentService Ã¢â‚¬â€ real-time sentiment analysis during video calls.
  *
  * <p>Three analysis modes:
  *
@@ -232,6 +232,7 @@ public class BedrockSentimentService {
     if (!isBedrockAvailable()) {
       return SentimentResult.neutral(CHANNEL_VIDEO, callId, "Bedrock disabled in local mode");
     }
+  }
 
     final String prompt =
         """

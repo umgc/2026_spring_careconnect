@@ -8,8 +8,8 @@ import java.time.OffsetDateTime;
 
 @Entity
 @Table(
-  name = "answers",
-  uniqueConstraints = @UniqueConstraint(name = "uq_answers_checkin_question",
+    name = "answers",
+    uniqueConstraints = @UniqueConstraint(name = "uq_answers_checkin_question",
                                         columnNames = {"check_in_id","question_id"})
 )
 @Data @NoArgsConstructor @AllArgsConstructor @Builder

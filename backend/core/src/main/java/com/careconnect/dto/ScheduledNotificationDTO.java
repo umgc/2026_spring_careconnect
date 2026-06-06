@@ -38,34 +38,34 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 public class ScheduledNotificationDTO {
-    /**
+  /**
      * The ID of the user who will receive the notification.
      * <p>
      * <b>Required.</b>
      * </p>
      */
-    @NotNull(message = "Receiver ID is required")
+  @NotNull(message = "Receiver ID is required")
     private Long receiverId;
 
-    /**
+  /**
      * Title of the notification (short summary shown to the user).
      * <p>
      * <b>Required.</b>
      * </p>
      */
-    @NotNull(message = "Title is required")
+  @NotNull(message = "Title is required")
     private String title;
 
-    /**
+  /**
      * Body content of the notification (detailed message).
      * <p>
      * <b>Required.</b>
      * </p>
      */
-    @NotNull(message = "Body is required")
+  @NotNull(message = "Body is required")
     private String body;
 
-    /**
+  /**
      * Type of notification.
      * <p>
      * Examples: {@code REMINDER}, {@code ALERT}, {@code EMERGENCY}.
@@ -74,10 +74,10 @@ public class ScheduledNotificationDTO {
      * Optional.
      * </p>
      */
-    @Nullable
+  @Nullable
     private String notificationType;
 
-    /**
+  /**
      * Scheduled date and time when the notification should be sent.
      *
      * <p>
@@ -90,6 +90,6 @@ public class ScheduledNotificationDTO {
      * <b>Required.</b>
      * </p>
      */
-    @NotNull(message = "Scheduled time is required")
+  @NotNull(message = "Scheduled time is required")
     private String scheduledTime;
 }

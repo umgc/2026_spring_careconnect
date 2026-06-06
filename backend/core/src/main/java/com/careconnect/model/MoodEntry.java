@@ -9,12 +9,12 @@ import java.time.Instant;
 @EqualsAndHashCode(callSuper = false)
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class MoodEntry extends Auditable {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)  @JoinColumn(name = "patient_user_id")
+  @ManyToOne(fetch = FetchType.LAZY)  @JoinColumn(name = "patient_user_id")
     private Patient patient;
 
-    private Integer moodScore;               // 1-5
-    private Instant takenAt;
+  private Integer moodScore;               // 1-5
+  private Instant takenAt;
 }

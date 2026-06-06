@@ -6,9 +6,9 @@ import lombok.*;
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class EorApprovalRequestDto {
     
-    @NotNull
+  @NotNull
     private Long recordId;
     
-    private String comment;
+  private String comment;
 }
 

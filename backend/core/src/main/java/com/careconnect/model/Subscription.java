@@ -12,8 +12,8 @@ import java.time.Instant;
 @Getter @Setter @NoArgsConstructor
 public class Subscription {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(unique = true)
@@ -21,26 +21,26 @@ public class Subscription {
 
     private String paymentCustomerId;
 
-    private String priceId;
+  private String priceId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "user_id")
     private User user;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "plan_id")
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "plan_id")
     private Plan plan;
 
-    private String status; // ACTIVE, CANCELLED, etc.
-    private Instant startedAt;
-    private Instant currentPeriodEnd;
-    @Enumerated(EnumType.STRING)
+  private String status; // ACTIVE, CANCELLED, etc.
+  private Instant startedAt;
+  private Instant currentPeriodEnd;
+  @Enumerated(EnumType.STRING)
     private BillingPlatform platform;
 
-    private String externalSubscriptionId;
+  private String externalSubscriptionId;
 
-    private Instant lastValidatedAt;
-    // Platform-agnostic fields (stored above)
+  private Instant lastValidatedAt;
+  // Platform-agnostic fields (stored above)
     
     // Explicit getter methods for compatibility
     public Long getId() { return id; }

@@ -17,16 +17,16 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class SymptomEntryService {
 
-    private final SymptomEntryRepository symptomEntryRepository;
-    private final PatientRepository patientRepository;
+  private final SymptomEntryRepository symptomEntryRepository;
+  private final PatientRepository patientRepository;
 
-    /** Create a new symptom entry for a patient */
-    @Transactional
+  /** Create a new symptom entry for a patient */
+  @Transactional
     public SymptomEntryDTO createSymptom(SymptomEntryDTO dto) {
-        Patient patient = patientRepository.findById(dto.patientId())
+    Patient patient = patientRepository.findById(dto.patientId())
             .orElseThrow(() -> new IllegalArgumentException("Patient not found with id: " + dto.patientId()));
 
-        SymptomEntry entry = SymptomEntry.builder()
+    SymptomEntry entry = SymptomEntry.builder()
             .patient(patient)
             .caregiver(null)
             .symptomKey(dto.symptomKey())
@@ -36,29 +36,29 @@ public class SymptomEntryService {
             .completed(true)
             .build();
 
-        SymptomEntry saved = symptomEntryRepository.save(entry);
-        return mapToDTO(saved);
-    }
+    SymptomEntry saved = symptomEntryRepository.save(entry);
+    return mapToDTO(saved);
+  }
 
-    /** Get all symptom entries for a patient */
-    public List<SymptomEntryDTO> getSymptomsForPatient(Long patientId) {
-        return symptomEntryRepository.findAll().stream()
+  /** Get all symptom entries for a patient */
+  public List<SymptomEntryDTO> getSymptomsForPatient(Long patientId) {
+    return symptomEntryRepository.findAll().stream()
             .filter(e -> e.getPatient().getId().equals(patientId))
             .map(this::mapToDTO)
             .toList();
-    }
+  }
 
-    /** Delete a symptom entry */
-    @Transactional
+  /** Delete a symptom entry */
+  @Transactional
     public void deleteSymptom(Long id) {
-        if (!symptomEntryRepository.existsById(id)) {
-            throw new IllegalArgumentException("Symptom not found with id: " + id);
-        }
-        symptomEntryRepository.deleteById(id);
+    if (!symptomEntryRepository.existsById(id)) {
+      throw new IllegalArgumentException("Symptom not found with id: " + id);
     }
+    symptomEntryRepository.deleteById(id);
+  }
 
-    private SymptomEntryDTO mapToDTO(SymptomEntry entry) {
-        return SymptomEntryDTO.builder()
+  private SymptomEntryDTO mapToDTO(SymptomEntry entry) {
+    return SymptomEntryDTO.builder()
             .id(entry.getId())
             .patientId(entry.getPatient().getId())
             .symptomKey(entry.getSymptomKey())
@@ -67,5 +67,5 @@ public class SymptomEntryService {
             .takenAt(entry.getTakenAt())
             .completed(entry.getCompleted())
             .build();
-    }
+  }
 }

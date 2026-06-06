@@ -16,29 +16,29 @@ import java.util.List;
 @RequestMapping(path = {"/api/checkins", "/v1/api/checkins"})
 public class CheckInQuestionController {
 
-    private final QuestionService questionService;
+  private final QuestionService questionService;
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    public CheckInQuestionController(QuestionService questionService) {
-        this.questionService = questionService;
-    }
+  public CheckInQuestionController(QuestionService questionService) {
+    this.questionService = questionService;
+  }
 
-    /**
+  /**
      * GET /api/checkins/{checkInId}/questions
      * GET /v1/api/checkins/{checkInId}/questions
      */
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/{checkInId}/questions")
+  @GetMapping("/{checkInId}/questions")
     public ResponseEntity<List<QuestionDTO>> getQuestions(@PathVariable("checkInId") Long checkInId) {
-        // RBAC: Defense-in-depth — verify caller is a real user in the database
-        if (securityUtil != null) {
-            securityUtil.resolveCurrentUser();
-        }
-        // Temporary: return active, ordered questions until per-check-in mapping is ready
-        List<QuestionDTO> questions = questionService.findActiveOrdered();
-        return ResponseEntity.ok(questions);
+    // RBAC: Defense-in-depth Ã¢â‚¬â€ verify caller is a real user in the database
+    if (securityUtil != null) {
+      securityUtil.resolveCurrentUser();
     }
+    // Temporary: return active, ordered questions until per-check-in mapping is ready
+    List<QuestionDTO> questions = questionService.findActiveOrdered();
+    return ResponseEntity.ok(questions);
+  }
 }

@@ -11,14 +11,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RecommendedAction {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "invoice_id")
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "invoice_id")
     private Invoice invoice;
 
-    @Column(name = "action_text", nullable = false)
+  @Column(name = "action_text", nullable = false)
     private String actionText;
 }

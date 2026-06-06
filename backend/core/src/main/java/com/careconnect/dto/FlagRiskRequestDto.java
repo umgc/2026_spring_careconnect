@@ -4,5 +4,5 @@ import lombok.Data;
 
 @Data
 public class FlagRiskRequestDto {
-    private Long riskTypeId;
+  private Long riskTypeId;
 }

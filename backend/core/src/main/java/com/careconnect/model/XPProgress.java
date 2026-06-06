@@ -15,30 +15,30 @@ import lombok.AllArgsConstructor;
 @Table(name = "xp_progress")
 public class XPProgress {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private int xp;
+  private int xp;
 
-    private int level;
+  private int level;
 
-    @Column(name = "user_id")
+  @Column(name = "user_id")
     private Long userId;
 
-    private LocalDateTime updatedAt = LocalDateTime.now();
+  private LocalDateTime updatedAt = LocalDateTime.now();
 
-    // Explicit setters to ensure compilation works if Lombok isn't processing
-    public void setUserId(Long userId) { this.userId = userId; }
-    public void setXp(int xp) { this.xp = xp; }
-    public void setLevel(int level) { this.level = level; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+  // Explicit setters to ensure compilation works if Lombok isn't processing
+  public void setUserId(Long userId) { this.userId = userId; }
+  public void setXp(int xp) { this.xp = xp; }
+  public void setLevel(int level) { this.level = level; }
+  public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 
-    // Explicit getters to ensure compilation works if Lombok isn't processing
-    public int getXp() { return xp; }
-    public int getLevel() { return level; }
-    public Long getUserId() { return userId; }
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
+  // Explicit getters to ensure compilation works if Lombok isn't processing
+  public int getXp() { return xp; }
+  public int getLevel() { return level; }
+  public Long getUserId() { return userId; }
+  public LocalDateTime getUpdatedAt() { return updatedAt; }
 
-    // Getters and Setters
+  // Getters and Setters
 }

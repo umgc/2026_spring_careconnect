@@ -9,10 +9,10 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ConflictCheckResponse {
-    private boolean hasConflicts;
-    private List<String> conflictMessages;
-    private List<String> warnings;
-    private List<ScheduledVisitResponse> conflictingVisits;
-    private boolean exceedsDailyLimit;
-    private boolean exceedsDailyHours;
+  private boolean hasConflicts;
+  private List<String> conflictMessages;
+  private List<String> warnings;
+  private List<ScheduledVisitResponse> conflictingVisits;
+  private boolean exceedsDailyLimit;
+  private boolean exceedsDailyHours;
 }

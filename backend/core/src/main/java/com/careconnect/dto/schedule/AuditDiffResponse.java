@@ -10,10 +10,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AuditDiffResponse {
-    private ScheduledVisitResponse before;
-    private ScheduledVisitResponse after;
-    private String changedField;
-    private String action;
-    private String changedBy;
-    private LocalDateTime changedAt;
+  private ScheduledVisitResponse before;
+  private ScheduledVisitResponse after;
+  private String changedField;
+  private String action;
+  private String changedBy;
+  private LocalDateTime changedAt;
 }

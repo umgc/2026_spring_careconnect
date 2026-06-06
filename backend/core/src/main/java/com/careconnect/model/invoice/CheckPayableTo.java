@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 @Builder
 public class CheckPayableTo {
-    private String name;
-    private String address;
-    private String reference;
+  private String name;
+  private String address;
+  private String reference;
 }

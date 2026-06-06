@@ -5,7 +5,7 @@ import jakarta.persistence.Id;
 
 @Entity
 public class ResetToken {
-    @Id
+  @Id
     private Long id;
-    private String token;
+  private String token;
 }

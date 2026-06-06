@@ -9,15 +9,15 @@ import java.time.LocalDateTime;
 
 public class AuditLogDtos {
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class AuditLogItem {
-        private String type;
-        private String summary;
-        private String caregiverName;
-        private LocalDateTime createdAt;
-    }
+  @Data
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class AuditLogItem {
+    private String type;
+    private String summary;
+    private String caregiverName;
+    private LocalDateTime createdAt;
+  }
 }
 

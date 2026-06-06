@@ -21,61 +21,61 @@ import java.util.List;
 @Tag(name = "Check-In", description = "Endpoint for the virtual Check-In, including both patient submitting and caregiver checking")
 public class CheckInController {
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    @Autowired
+  @Autowired
     private CheckInService checkInService;
 
-    @RequirePermission(Permission.CREATE_TASKS)
+  @RequirePermission(Permission.CREATE_TASKS)
 
 
-    @PostMapping()
+  @PostMapping()
     public ResponseEntity<CheckIn> patientCheckIn() throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
+    User currentUser = securityUtil.resolveCurrentUser();
 
-        // TODO: Replace with actual patient check-in logic later
-        return ResponseEntity.ok(new CheckIn());
-    }
+    // TODO: Replace with actual patient check-in logic later
+    return ResponseEntity.ok(new CheckIn());
+  }
 
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
 
-    @GetMapping()
+  @GetMapping()
     public ResponseEntity<List<CheckIn>> getCheckIns() throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
 
-        // Fetch all check-ins (placeholder)
-        return ResponseEntity.ok(checkInService.getAllCheckIns());
-    }
+    // Fetch all check-ins (placeholder)
+    return ResponseEntity.ok(checkInService.getAllCheckIns());
+  }
 
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
 
-    @GetMapping("/{id}")
+  @GetMapping("/{id}")
     public ResponseEntity<CheckIn> getCheckIn(@PathVariable Long id) throws UnauthorizedException {
-        // RBAC: Only admins and caregivers can view individual check-ins
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
+    // RBAC: Only admins and caregivers can view individual check-ins
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
 
-        // Retrieve a specific check-in by ID
-        CheckIn target = checkInService.getCheckInByID(id);
-        return ResponseEntity.ok(target);
-    }
+    // Retrieve a specific check-in by ID
+    CheckIn target = checkInService.getCheckInByID(id);
+    return ResponseEntity.ok(target);
+  }
 
-    @RequirePermission(Permission.UPDATE_TASKS)
+  @RequirePermission(Permission.UPDATE_TASKS)
 
 
-    @PutMapping("/{id}")
+  @PutMapping("/{id}")
     public ResponseEntity<CheckIn> updateCheckIn(@PathVariable Long id) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
 
-        // TODO: Implement update logic later
-        return ResponseEntity.ok(new CheckIn());
-    }
+    // TODO: Implement update logic later
+    return ResponseEntity.ok(new CheckIn());
+  }
 }

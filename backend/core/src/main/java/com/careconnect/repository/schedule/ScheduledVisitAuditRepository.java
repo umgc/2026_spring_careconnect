@@ -10,8 +10,8 @@ import java.util.List;
 @Repository
 public interface ScheduledVisitAuditRepository extends JpaRepository<ScheduledVisitAudit, Long> {
 
-    List<ScheduledVisitAudit> findByVisitIdOrderByChangedAtDesc(Long visitId);
+  List<ScheduledVisitAudit> findByVisitIdOrderByChangedAtDesc(Long visitId);
 
-    List<ScheduledVisitAudit> findByVisitIdAndChangedAtBeforeOrderByChangedAtDesc(
+  List<ScheduledVisitAudit> findByVisitIdAndChangedAtBeforeOrderByChangedAtDesc(
             Long visitId, LocalDateTime changedAt);
 }

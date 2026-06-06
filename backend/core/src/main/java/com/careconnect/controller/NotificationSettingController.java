@@ -20,36 +20,36 @@ import org.springframework.web.bind.annotation.*;
 @Tag(name = "Notification Settings", description = "Manage notification preferences for users")
 public class NotificationSettingController {
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    @Autowired
+  @Autowired
     private NotificationSettingService notificationSettingService;
 
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
 
-    @GetMapping("/{userId}")
-    @Operation(summary = "Get notification settings for a user")
+  @GetMapping("/{userId}")
+  @Operation(summary = "Get notification settings for a user")
     public ResponseEntity<NotificationSettingDTO> getSettings(@PathVariable Long userId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, userId);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, userId);
 
-        return ResponseEntity.ok(notificationSettingService.getByUserId(userId));
-    }
+    return ResponseEntity.ok(notificationSettingService.getByUserId(userId));
+  }
 
-    @RequirePermission(Permission.CREATE_TASKS)
+  @RequirePermission(Permission.CREATE_TASKS)
 
 
-    @PostMapping
-    @Operation(summary = "Create or update notification settings for a user")
+  @PostMapping
+  @Operation(summary = "Create or update notification settings for a user")
     public ResponseEntity<NotificationSettingDTO> createOrUpdate(@RequestBody NotificationSettingDTO dto) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, dto.userId());
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, dto.userId());
 
-        return ResponseEntity.ok(notificationSettingService.createOrUpdate(dto));
-    }
+    return ResponseEntity.ok(notificationSettingService.createOrUpdate(dto));
+  }
 }

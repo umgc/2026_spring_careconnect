@@ -6,9 +6,9 @@ import java.util.Optional;
 
 public interface EmailCredentialRepository extends JpaRepository<EmailCredential, Long> {
 
-    // ✅ This method is required by UspsDigestService
-    Optional<EmailCredential> findFirstByUserIdAndProvider(String userId, EmailCredential.Provider provider);
+  // Ã¢Å“â€¦ This method is required by UspsDigestService
+  Optional<EmailCredential> findFirstByUserIdAndProvider(String userId, EmailCredential.Provider provider);
 
-    // (Optional, but useful if you use it elsewhere)
-    Optional<EmailCredential> findFirstByUserIdAndProviderOrderByIdDesc(String userId, EmailCredential.Provider provider);
+  // (Optional, but useful if you use it elsewhere)
+  Optional<EmailCredential> findFirstByUserIdAndProviderOrderByIdDesc(String userId, EmailCredential.Provider provider);
 }

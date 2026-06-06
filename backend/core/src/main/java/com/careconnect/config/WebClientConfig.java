@@ -14,21 +14,21 @@ import org.springframework.web.client.RestTemplate;
 @Configuration
 public class WebClientConfig {
 
-    @Bean
+  @Bean
     public RestTemplate restTemplate() {
-        RequestConfig requestConfig = RequestConfig.custom()
+    RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(Timeout.ofSeconds(10))
                 .setResponseTimeout(Timeout.ofSeconds(60))
                 .build();
 
-        CloseableHttpClient httpClient = HttpClients.custom()
+    CloseableHttpClient httpClient = HttpClients.custom()
                 .setDefaultRequestConfig(requestConfig)
                 .disableRedirectHandling()
                 .build();
 
-        ClientHttpRequestFactory baseFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        BufferingClientHttpRequestFactory bufferingFactory = new BufferingClientHttpRequestFactory(baseFactory);
+    ClientHttpRequestFactory baseFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
+    BufferingClientHttpRequestFactory bufferingFactory = new BufferingClientHttpRequestFactory(baseFactory);
 
-        return new RestTemplate(bufferingFactory);
-    }
+    return new RestTemplate(bufferingFactory);
+  }
 }

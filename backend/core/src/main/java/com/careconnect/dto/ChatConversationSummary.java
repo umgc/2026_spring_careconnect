@@ -11,14 +11,14 @@ import java.time.LocalDateTime;
 @Builder
 public class ChatConversationSummary {
     
-    private String conversationId;
-    private String title;
-    private ChatConversation.ChatType chatType;
-    private String aiProvider;
-    private String aiModel;
-    private Integer totalMessages;
-    private Integer totalTokensUsed;
-    private LocalDateTime lastMessageAt;
-    private LocalDateTime createdAt;
-    private Boolean isActive;
+  private String conversationId;
+  private String title;
+  private ChatConversation.ChatType chatType;
+  private String aiProvider;
+  private String aiModel;
+  private Integer totalMessages;
+  private Integer totalTokensUsed;
+  private LocalDateTime lastMessageAt;
+  private LocalDateTime createdAt;
+  private Boolean isActive;
 }

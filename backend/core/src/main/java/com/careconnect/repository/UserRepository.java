@@ -1,12 +1,12 @@
-    package com.careconnect.repository;
+package com.careconnect.repository;
 
-    import com.careconnect.dto.LeaderboardEntry;
-    import com.careconnect.model.User;
-    import com.careconnect.security.Role;
-    import org.springframework.data.jpa.repository.JpaRepository;
-    import org.springframework.data.jpa.repository.Query;
-    import org.springframework.data.repository.query.Param;
-    import org.springframework.stereotype.Repository;
+import com.careconnect.dto.LeaderboardEntry;
+import com.careconnect.model.User;
+import com.careconnect.security.Role;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
     import java.util.Optional;
     import java.util.List;
@@ -26,7 +26,7 @@
                "WHERE f.status = 'CONFIRMED'")
         List<Long> findConfirmedFriendIds(@Param("userId") Long userId);
 
-        @Query("SELECT new com.careconnect.dto.LeaderboardEntry(" +
+  @Query("SELECT new com.careconnect.dto.LeaderboardEntry(" +
                "u.id, p.lastName, p.firstName, xp.xp, xp.level, u.profileImageUrl) " +
                "FROM User u " +
                "JOIN XPProgress xp ON xp.userId = u.id " +
@@ -35,4 +35,4 @@
                "ORDER BY xp.xp DESC")
         List<LeaderboardEntry> findLeaderboard();
 
-    }
+}

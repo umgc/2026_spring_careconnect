@@ -24,61 +24,61 @@ import java.util.stream.Collectors;
 @RequestMapping("/v1/api/activity-logs")
 public class ActivityLogController {
 
-    private final PatientService patientService;
-    private final UserRepository userRepository;
-    private final CaregiverPatientLinkService caregiverPatientLinkService;
-    private final FamilyMemberService familyMemberService;
-    private final ActivityLogRepository activityLogRepository;
+  private final PatientService patientService;
+  private final UserRepository userRepository;
+  private final CaregiverPatientLinkService caregiverPatientLinkService;
+  private final FamilyMemberService familyMemberService;
+  private final ActivityLogRepository activityLogRepository;
 
-    public ActivityLogController(
+  public ActivityLogController(
             PatientService patientService,
             UserRepository userRepository,
             CaregiverPatientLinkService caregiverPatientLinkService,
             FamilyMemberService familyMemberService,
             ActivityLogRepository activityLogRepository
-    ) {
-        this.patientService = patientService;
-        this.userRepository = userRepository;
-        this.caregiverPatientLinkService = caregiverPatientLinkService;
-        this.familyMemberService = familyMemberService;
-        this.activityLogRepository = activityLogRepository;
-    }
+  ) {
+    this.patientService = patientService;
+    this.userRepository = userRepository;
+    this.caregiverPatientLinkService = caregiverPatientLinkService;
+    this.familyMemberService = familyMemberService;
+    this.activityLogRepository = activityLogRepository;
+  }
 
-    private User getCurrentUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return userRepository.findByEmail(auth.getName())
+  private User getCurrentUser() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    return userRepository.findByEmail(auth.getName())
                 .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "User not authenticated"));
-    }
+  }
 
-    private void validateAccessToPatient(Long patientId, User currentUser) {
-        Patient patient = patientService.getPatientById(patientId);
-        Long patientUserId = patient.getUser().getId();
-        switch (currentUser.getRole()) {
-            case PATIENT:
-                if (!currentUser.getId().equals(patientUserId)) {
-                    throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
-                }
-                break;
-            case CAREGIVER:
-                if (!caregiverPatientLinkService.hasAccessToPatient(currentUser.getId(), patientUserId)) {
-                    throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
-                }
-                break;
-            case FAMILY_MEMBER:
-                if (!familyMemberService.hasAccessToPatient(currentUser.getId(), patientUserId)) {
-                    throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
-                }
-                break;
-            case ADMIN:
-                break;
-            default:
-                throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+  private void validateAccessToPatient(Long patientId, User currentUser) {
+    Patient patient = patientService.getPatientById(patientId);
+    Long patientUserId = patient.getUser().getId();
+    switch (currentUser.getRole()) {
+      case PATIENT:
+        if (!currentUser.getId().equals(patientUserId)) {
+          throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
         }
+        break;
+      case CAREGIVER:
+        if (!caregiverPatientLinkService.hasAccessToPatient(currentUser.getId(), patientUserId)) {
+          throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        break;
+      case FAMILY_MEMBER:
+        if (!familyMemberService.hasAccessToPatient(currentUser.getId(), patientUserId)) {
+          throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        break;
+      case ADMIN:
+        break;
+      default:
+        throw new AppException(HttpStatus.FORBIDDEN, "Access denied");
     }
+  }
 
-    @PostMapping
+  @PostMapping
     public ResponseEntity<?> createActivityLog(@RequestBody ActivityLogDtos.CreateActivityLogRequest req) {
-        User currentUser = getCurrentUser();
+    User currentUser = getCurrentUser();
 
         if (req.getClientId() == null || req.getActivityId() == null || req.getCompetencyScore() == null) {
             throw new AppException(HttpStatus.BAD_REQUEST, "clientId, activityId, and competencyScore are required");
@@ -91,12 +91,12 @@ public class ActivityLogController {
             throw new AppException(HttpStatus.BAD_REQUEST, "satisfactionRating out of range");
         }
 
-        validateAccessToPatient(req.getClientId(), currentUser);
+    validateAccessToPatient(req.getClientId(), currentUser);
 
-        String activityName = req.getActivityName() != null ? req.getActivityName().trim() : null;
-        if (activityName != null && activityName.isEmpty()) activityName = null;
+    String activityName = req.getActivityName() != null ? req.getActivityName().trim() : null;
+    if (activityName != null && activityName.isEmpty()) activityName = null;
 
-        ActivityLog saved = activityLogRepository.save(ActivityLog.builder()
+    ActivityLog saved = activityLogRepository.save(ActivityLog.builder()
                 .clientId(req.getClientId())
                 .activityId(req.getActivityId())
                 .activityName(activityName)
@@ -106,22 +106,22 @@ public class ActivityLogController {
                 .notes(req.getNotes())
                 .build());
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
-    }
+    return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+  }
 
-    @GetMapping
+  @GetMapping
     public ResponseEntity<List<ActivityLogDtos.ActivityLogResponse>> getActivityLogs(
             @RequestParam Long clientId,
             @RequestParam(required = false, defaultValue = "100") int limit
-    ) {
-        User currentUser = getCurrentUser();
-        validateAccessToPatient(clientId, currentUser);
+  ) {
+    User currentUser = getCurrentUser();
+    validateAccessToPatient(clientId, currentUser);
 
-        int safeLimit = Math.min(Math.max(limit, 1), 500);
-        List<ActivityLog> logs = activityLogRepository.findByClientIdOrderByCreatedAtDesc(
+    int safeLimit = Math.min(Math.max(limit, 1), 500);
+    List<ActivityLog> logs = activityLogRepository.findByClientIdOrderByCreatedAtDesc(
                 clientId, PageRequest.of(0, safeLimit));
 
-        List<ActivityLogDtos.ActivityLogResponse> body = logs.stream()
+    List<ActivityLogDtos.ActivityLogResponse> body = logs.stream()
                 .map(log -> new ActivityLogDtos.ActivityLogResponse(
                         log.getId(),
                         log.getClientId(),
@@ -133,7 +133,7 @@ public class ActivityLogController {
                         log.getCreatedAt()
                 ))
                 .collect(Collectors.toList());
-        return ResponseEntity.ok(body);
-    }
+    return ResponseEntity.ok(body);
+  }
 }
 

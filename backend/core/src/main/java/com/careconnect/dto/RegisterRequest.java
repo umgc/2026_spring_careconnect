@@ -15,9 +15,9 @@ import lombok.NoArgsConstructor;
     @JsonSubTypes.Type(value = CaregiverRegistration.class, name = "CAREGIVER")
 })
 public abstract class RegisterRequest {
-    private String name;
-    private String email;
-    private String password;
-    private String role;
-    private String verificationBaseUrl;
+  private String name;
+  private String email;
+  private String password;
+  private String role;
+  private String verificationBaseUrl;
 }

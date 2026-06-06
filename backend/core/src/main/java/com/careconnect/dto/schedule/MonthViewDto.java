@@ -6,7 +6,7 @@ import java.util.Map;
 
 @Data
 public class MonthViewDto {
-    private Integer month;
-    private Integer year;
-    private Map<LocalDate, CalendarViewDto> days;
+  private Integer month;
+  private Integer year;
+  private Map<LocalDate, CalendarViewDto> days;
 }

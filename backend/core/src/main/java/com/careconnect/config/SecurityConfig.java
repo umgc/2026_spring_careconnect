@@ -25,17 +25,17 @@ import jakarta.servlet.http.HttpServletResponse;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    private static final String ROLE_ADMIN = "ADMIN";
+  private static final String ROLE_ADMIN = "ADMIN";
 
-    @Bean
-    @Order(0)
-    @Profile("dev")
+  @Bean
+  @Order(0)
+  @Profile("dev")
     SecurityFilterChain devChain(
             HttpSecurity http,
             CorsConfigurationSource corsConfigurationSource
-    ) throws Exception {
+  ) throws Exception {
 
-        return http
+    return http
                 .securityMatcher("/v1/api/dev/**")
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -55,19 +55,19 @@ public class SecurityConfig {
                         .anyRequest().denyAll()
                 )
                 .build();
-    }
+  }
 
-    @Bean
-    @Order(1)
+  @Bean
+  @Order(1)
     SecurityFilterChain apiChain(
             HttpSecurity http,
             JwtTokenProvider jwt,
             UserDetailsService uds,
             CorsConfigurationSource corsConfigurationSource) throws Exception {
 
-        JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwt, uds);
+    JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwt, uds);
 
-        return http
+    return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .headers(headers -> headers
@@ -193,10 +193,10 @@ public class SecurityConfig {
                         .anyRequest().denyAll()
                 )
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
-        return new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
-    }
+    return new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
+  }
 }

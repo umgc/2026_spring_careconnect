@@ -58,19 +58,19 @@ import org.springframework.context.annotation.Configuration;
                 )
         ),
         servers = {
-                @Server(
+          @Server(
                         url = "http://localhost:8080",
                         description = "Development Server"
                 ),
-                @Server(
+          @Server(
                         url = "https://api.careconnect.com",
                         description = "Production Server"
                 )
         },
         security = {
-                @SecurityRequirement(name = "JWT Authentication"),
-                @SecurityRequirement(name = "Cookie Authentication"),
-                @SecurityRequirement(name = "Basic Authentication")
+          @SecurityRequirement(name = "JWT Authentication"),
+          @SecurityRequirement(name = "Cookie Authentication"),
+          @SecurityRequirement(name = "Basic Authentication")
         }
 )
 @SecurityScheme(

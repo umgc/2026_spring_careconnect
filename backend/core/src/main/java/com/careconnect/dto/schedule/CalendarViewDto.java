@@ -8,9 +8,9 @@ import java.util.List;
 
 @Data
 public class CalendarViewDto {
-    private LocalDate date;
-    private List<ScheduledVisitResponse> visits;
-    private Integer totalDuration; // minutes
-    private Integer visitCount;
-    private List<String> conflict_warnings;
+  private LocalDate date;
+  private List<ScheduledVisitResponse> visits;
+  private Integer totalDuration; // minutes
+  private Integer visitCount;
+  private List<String> conflict_warnings;
 }

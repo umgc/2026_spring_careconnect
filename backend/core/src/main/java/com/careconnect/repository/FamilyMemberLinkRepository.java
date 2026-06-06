@@ -14,34 +14,34 @@ import java.util.Optional;
 @Repository
 public interface FamilyMemberLinkRepository extends JpaRepository<FamilyMemberLink, Long> {
     
-    // Find all active and non-expired links for a patient
-    List<FamilyMemberLink> findByPatientUserAndStatus(User patientUser, FamilyMemberLink.LinkStatus status);
+  // Find all active and non-expired links for a patient
+  List<FamilyMemberLink> findByPatientUserAndStatus(User patientUser, FamilyMemberLink.LinkStatus status);
     
-    // Find all active and non-expired links for a family member
-    List<FamilyMemberLink> findByFamilyUserAndStatus(User familyUser, FamilyMemberLink.LinkStatus status);
+  // Find all active and non-expired links for a family member
+  List<FamilyMemberLink> findByFamilyUserAndStatus(User familyUser, FamilyMemberLink.LinkStatus status);
     
-    // Find specific active link between family member and patient
-    Optional<FamilyMemberLink> findByFamilyUserAndPatientUserAndStatus(
+  // Find specific active link between family member and patient
+  Optional<FamilyMemberLink> findByFamilyUserAndPatientUserAndStatus(
         User familyUser, User patientUser, FamilyMemberLink.LinkStatus status);
 
-    // Check if active and non-expired link exists
-    @Query("SELECT CASE WHEN COUNT(fml) > 0 THEN true ELSE false END FROM FamilyMemberLink fml WHERE fml.familyUser = :familyUser AND fml.patientUser = :patientUser AND fml.status = 'ACTIVE' AND (fml.expiresAt IS NULL OR fml.expiresAt > :now)")
+  // Check if active and non-expired link exists
+  @Query("SELECT CASE WHEN COUNT(fml) > 0 THEN true ELSE false END FROM FamilyMemberLink fml WHERE fml.familyUser = :familyUser AND fml.patientUser = :patientUser AND fml.status = 'ACTIVE' AND (fml.expiresAt IS NULL OR fml.expiresAt > :now)")
     boolean existsActiveNonExpiredLink(@Param("familyUser") User familyUser, @Param("patientUser") User patientUser, @Param("now") LocalDateTime now);
     
-    @Query("SELECT fml FROM FamilyMemberLink fml WHERE fml.familyUser.id = :familyUserId AND fml.status = 'ACTIVE' AND (fml.expiresAt IS NULL OR fml.expiresAt > :now)")
+  @Query("SELECT fml FROM FamilyMemberLink fml WHERE fml.familyUser.id = :familyUserId AND fml.status = 'ACTIVE' AND (fml.expiresAt IS NULL OR fml.expiresAt > :now)")
     List<FamilyMemberLink> findActivePatientsByFamilyMember(@Param("familyUserId") Long familyUserId, @Param("now") LocalDateTime now);
     
-    @Query("SELECT fml FROM FamilyMemberLink fml WHERE fml.patientUser.id = :patientUserId AND fml.status = 'ACTIVE' AND (fml.expiresAt IS NULL OR fml.expiresAt > :now)")
+  @Query("SELECT fml FROM FamilyMemberLink fml WHERE fml.patientUser.id = :patientUserId AND fml.status = 'ACTIVE' AND (fml.expiresAt IS NULL OR fml.expiresAt > :now)")
     List<FamilyMemberLink> findActiveFamilyMembersByPatient(@Param("patientUserId") Long patientUserId, @Param("now") LocalDateTime now);
     
-    // Optimized queries using denormalized patient_id (faster, no joins needed)
-    @Query("SELECT fml FROM FamilyMemberLink fml WHERE fml.patientId = :patientId AND fml.status = 'ACTIVE' AND (fml.expiresAt IS NULL OR fml.expiresAt > :now)")
+  // Optimized queries using denormalized patient_id (faster, no joins needed)
+  @Query("SELECT fml FROM FamilyMemberLink fml WHERE fml.patientId = :patientId AND fml.status = 'ACTIVE' AND (fml.expiresAt IS NULL OR fml.expiresAt > :now)")
     List<FamilyMemberLink> findActiveFamilyMembersByPatientId(@Param("patientId") Long patientId, @Param("now") LocalDateTime now);
     
-    boolean existsByFamilyUserAndPatientUserAndStatus(
+  boolean existsByFamilyUserAndPatientUserAndStatus(
         User familyUser, User patientUser, FamilyMemberLink.LinkStatus status);
     
-    @Query("SELECT COUNT(f) > 0 FROM FamilyMemberLink f " +
+  @Query("SELECT COUNT(f) > 0 FROM FamilyMemberLink f " +
            "WHERE f.familyUser.id = :familyMemberUserId " +
            "AND (f.patientId = :patientId OR f.patientUser.id = :patientId) " +
            "AND f.status = 'ACTIVE' " +

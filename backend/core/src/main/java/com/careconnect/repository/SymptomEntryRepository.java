@@ -11,11 +11,11 @@ import java.util.List;
 @Repository
 public interface SymptomEntryRepository extends JpaRepository<SymptomEntry, Long> {
 
-    // listing symptoms by patient
-    List<SymptomEntry> findByPatientIdOrderByTakenAtDesc(Long patientId);
+  // listing symptoms by patient
+  List<SymptomEntry> findByPatientIdOrderByTakenAtDesc(Long patientId);
 
-    // Already existing analytics queries:
-    @Query("SELECT COUNT(s) " +
+  // Already existing analytics queries:
+  @Query("SELECT COUNT(s) " +
            "FROM SymptomEntry s " +
            "WHERE s.patient.id = :patientId " +
            "AND s.takenAt BETWEEN :from AND :to " +
@@ -24,7 +24,7 @@ public interface SymptomEntryRepository extends JpaRepository<SymptomEntry, Long
                         @Param("from") Instant from,
                         @Param("to") Instant to);
 
-    @Query("SELECT COUNT(s) " +
+  @Query("SELECT COUNT(s) " +
            "FROM SymptomEntry s " +
            "WHERE s.patient.id = :patientId " +
            "AND s.takenAt BETWEEN :from AND :to")

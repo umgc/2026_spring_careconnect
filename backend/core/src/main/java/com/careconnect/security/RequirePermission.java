@@ -16,5 +16,5 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RequirePermission {
-    Permission value();  // ✅ Permission is in the same package, so no import needed
+  Permission value();  // âœ… Permission is in the same package, so no import needed
 }

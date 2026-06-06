@@ -32,7 +32,7 @@ public class TaskService {
     @Autowired
     private TaskRepository taskRepository;
 
-    @Autowired
+  @Autowired
     private PatientRepository patientRepository;
     
     @Autowired
@@ -47,24 +47,24 @@ public class TaskService {
     @Value("${demo.notifications.phone:}")
     private String demoNotificationPhone;
 
-    public Task getTaskById(Long taskId) {
-        return taskRepository.findById(taskId)
+  public Task getTaskById(Long taskId) {
+    return taskRepository.findById(taskId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Task not found"));
-    }
+  }
 
-    public List<Task> getTasksByPatient(Long patientId) {
-        Optional<List<Task>> tasksOpt = taskRepository.findByPatientId(patientId);
-        return tasksOpt.orElseGet(ArrayList::new);
-    }
+  public List<Task> getTasksByPatient(Long patientId) {
+    Optional<List<Task>> tasksOpt = taskRepository.findByPatientId(patientId);
+    return tasksOpt.orElseGet(ArrayList::new);
+  }
     
-    public Task createTask(Long patientId, TaskDto task) {
-        // Get the patient and ensure it exists
-        Patient patient = patientRepository.findById(patientId).orElseThrow(
+  public Task createTask(Long patientId, TaskDto task) {
+    // Get the patient and ensure it exists
+    Patient patient = patientRepository.findById(patientId).orElseThrow(
             () -> new AppException(HttpStatus.NOT_FOUND, "Patient not found")
         );
-        System.out.println("Creating task for patient: " + patient.getId());
-        System.out.println("Task details: " + task);
-        Task newTask = Task.builder()
+    System.out.println("Creating task for patient: " + patient.getId());
+    System.out.println("Task details: " + task);
+    Task newTask = Task.builder()
                 .name(task.getName())
                 .description(task.getDescription())
                 .date(task.getDate())
@@ -90,8 +90,8 @@ public class TaskService {
         } catch (Exception e) {
             throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to create task: " + e.getMessage());
-        }
     }
+  }
 
     public Map<String, Object> previewTaskNotification(Long patientId, TaskDto task) {
         Patient patient = patientRepository.findById(patientId).orElseThrow(
@@ -141,9 +141,27 @@ public class TaskService {
         existingTask.setDoCount(task.getCount());
         existingTask.setDaysOfWeek(task.getDaysOfWeek());
 
-        // Save the updated task
-        return taskRepository.save(existingTask);   
+    // Save the updated task
+    return taskRepository.save(existingTask);   
+  }
+
+  public boolean deleteTask(Long taskId) {
+    Task task = getTaskById(taskId);
+    taskRepository.delete(task);
+    return true;
+  }
+
+  public boolean existsById(Long taskId) {
+    return taskRepository.findById(taskId).isPresent();
+  }
+
+  public List<Task> getAllTasks() {
+    List<Task> tasks = taskRepository.findAll();
+    if (tasks.isEmpty()) {
+      throw new AppException(HttpStatus.NOT_FOUND, "No tasks found");
     }
+    return tasks;
+  }
 
     public boolean deleteTask(Long taskId) {
         Task task = getTaskById(taskId);

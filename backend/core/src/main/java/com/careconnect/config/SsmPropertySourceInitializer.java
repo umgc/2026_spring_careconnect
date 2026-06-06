@@ -29,12 +29,12 @@ import java.util.Map;
  */
 public class SsmPropertySourceInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(SsmPropertySourceInitializer.class);
-    private static final String SSM_PARAMETER_PREFIX = "/careconnect/prod/";
-    private static final String PROPERTY_SOURCE_NAME = "ssmPropertySource";
+  private static final Logger LOGGER = LoggerFactory.getLogger(SsmPropertySourceInitializer.class);
+  private static final String SSM_PARAMETER_PREFIX = "/careconnect/prod/";
+  private static final String PROPERTY_SOURCE_NAME = "ssmPropertySource";
 
-    // List of parameter names to load from SSM
-    private static final List<String> SSM_PARAMETERS = Arrays.asList(
+  // List of parameter names to load from SSM
+  private static final List<String> SSM_PARAMETERS = Arrays.asList(
             "stripe-secret-key",
             "stripe-webhook-secret",
             "openai-api-key",
@@ -52,8 +52,8 @@ public class SsmPropertySourceInitializer implements ApplicationContextInitializ
             "aws-secret-access-key"
     );
 
-    // Mapping of SSM parameter names to Spring property names
-    private static final Map<String, String> PARAMETER_MAPPING = new HashMap<String, String>() {{
+  // Mapping of SSM parameter names to Spring property names
+  private static final Map<String, String> PARAMETER_MAPPING = new HashMap<String, String>() {{
         put("stripe-secret-key", "stripe.secret-key");
         put("stripe-webhook-secret", "stripe.webhook-secret");
         put("openai-api-key", "openai.api-key");
@@ -71,83 +71,83 @@ public class SsmPropertySourceInitializer implements ApplicationContextInitializ
         put("aws-secret-access-key", "aws.s3.secret-key");
     }};
 
-    @Override
+  @Override
     public void initialize(ConfigurableApplicationContext applicationContext) {
-        ConfigurableEnvironment environment = applicationContext.getEnvironment();
+    ConfigurableEnvironment environment = applicationContext.getEnvironment();
 
-        // Check if we're in production profile and AWS is enabled
-        String[] activeProfiles = environment.getActiveProfiles();
-        boolean isProduction = Arrays.asList(activeProfiles).contains("prod");
+    // Check if we're in production profile and AWS is enabled
+    String[] activeProfiles = environment.getActiveProfiles();
+    boolean isProduction = Arrays.asList(activeProfiles).contains("prod");
 
-        // Check if AWS is enabled (default true if not specified)
-        String awsEnabled = environment.getProperty("careconnect.aws.enabled", "true");
+    // Check if AWS is enabled (default true if not specified)
+    String awsEnabled = environment.getProperty("careconnect.aws.enabled", "true");
 
-        if (!isProduction || !"true".equalsIgnoreCase(awsEnabled)) {
-            LOGGER.info("SSM PropertySource not initialized - not in production mode or AWS disabled");
-            return;
-        }
+    if (!isProduction || !"true".equalsIgnoreCase(awsEnabled)) {
+      LOGGER.info("SSM PropertySource not initialized - not in production mode or AWS disabled");
+      return;
+    }
 
-        LOGGER.info("Initializing SSM Parameter Store property source for production...");
+    LOGGER.info("Initializing SSM Parameter Store property source for production...");
 
-        try {
-            // Create SSM client
-            Region region = new DefaultAwsRegionProviderChain().getRegion();
-            SsmClient ssmClient = SsmClient.builder()
+    try {
+      // Create SSM client
+      Region region = new DefaultAwsRegionProviderChain().getRegion();
+      SsmClient ssmClient = SsmClient.builder()
                     .region(region)
                     .credentialsProvider(DefaultCredentialsProvider.create())
                     .build();
 
-            // Load parameters from SSM
-            Map<String, Object> ssmProperties = loadParametersFromSsm(ssmClient);
+      // Load parameters from SSM
+      Map<String, Object> ssmProperties = loadParametersFromSsm(ssmClient);
 
-            // Add SSM property source to environment
-            if (!ssmProperties.isEmpty()) {
-                PropertySource<?> ssmPropertySource = new MapPropertySource(PROPERTY_SOURCE_NAME, ssmProperties);
-                environment.getPropertySources().addFirst(ssmPropertySource);
-                LOGGER.info("SSM PropertySource initialized with {} parameters", ssmProperties.size());
-            } else {
-                LOGGER.warn("No SSM parameters loaded - application may use environment variable fallbacks");
-            }
+      // Add SSM property source to environment
+      if (!ssmProperties.isEmpty()) {
+        PropertySource<?> ssmPropertySource = new MapPropertySource(PROPERTY_SOURCE_NAME, ssmProperties);
+        environment.getPropertySources().addFirst(ssmPropertySource);
+        LOGGER.info("SSM PropertySource initialized with {} parameters", ssmProperties.size());
+      } else {
+        LOGGER.warn("No SSM parameters loaded - application may use environment variable fallbacks");
+      }
 
-            // Close SSM client
-            ssmClient.close();
+      // Close SSM client
+      ssmClient.close();
 
-        } catch (Exception e) {
-            LOGGER.error("Failed to initialize SSM PropertySource - falling back to environment variables", e);
-            // Don't fail application startup, just log the error and continue
-        }
+    } catch (Exception e) {
+      LOGGER.error("Failed to initialize SSM PropertySource - falling back to environment variables", e);
+      // Don't fail application startup, just log the error and continue
     }
+  }
 
-    private Map<String, Object> loadParametersFromSsm(SsmClient ssmClient) {
-        Map<String, Object> properties = new HashMap<>();
+  private Map<String, Object> loadParametersFromSsm(SsmClient ssmClient) {
+    Map<String, Object> properties = new HashMap<>();
 
-        for (String parameterName : SSM_PARAMETERS) {
-            String fullParameterName = SSM_PARAMETER_PREFIX + parameterName;
-            String springPropertyName = PARAMETER_MAPPING.get(parameterName);
+    for (String parameterName : SSM_PARAMETERS) {
+      String fullParameterName = SSM_PARAMETER_PREFIX + parameterName;
+      String springPropertyName = PARAMETER_MAPPING.get(parameterName);
 
-            if (springPropertyName == null) {
-                LOGGER.warn("No Spring property mapping found for SSM parameter: {}", parameterName);
-                continue;
-            }
+      if (springPropertyName == null) {
+        LOGGER.warn("No Spring property mapping found for SSM parameter: {}", parameterName);
+        continue;
+      }
 
-            try {
-                GetParameterRequest request = GetParameterRequest.builder()
+      try {
+        GetParameterRequest request = GetParameterRequest.builder()
                         .name(fullParameterName)
                         .withDecryption(true)
                         .build();
 
-                GetParameterResponse response = ssmClient.getParameter(request);
-                String value = response.parameter().value();
+        GetParameterResponse response = ssmClient.getParameter(request);
+        String value = response.parameter().value();
 
-                properties.put(springPropertyName, value);
-                LOGGER.info("Loaded SSM parameter: {} -> {}", fullParameterName, springPropertyName);
+        properties.put(springPropertyName, value);
+        LOGGER.info("Loaded SSM parameter: {} -> {}", fullParameterName, springPropertyName);
 
-            } catch (Exception e) {
-                LOGGER.warn("Could not load SSM parameter: {} - will use environment variable fallback if available",
+      } catch (Exception e) {
+        LOGGER.warn("Could not load SSM parameter: {} - will use environment variable fallback if available",
                         fullParameterName);
-            }
-        }
-
-        return properties;
+      }
     }
+
+    return properties;
+  }
 }

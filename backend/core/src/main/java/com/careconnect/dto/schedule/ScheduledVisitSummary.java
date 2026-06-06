@@ -9,8 +9,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ScheduledVisitSummary {
     
-    private long overdue;
-    private long ready;
-    private long upcoming;
-    private long totalToday;
+  private long overdue;
+  private long ready;
+  private long upcoming;
+  private long totalToday;
 }

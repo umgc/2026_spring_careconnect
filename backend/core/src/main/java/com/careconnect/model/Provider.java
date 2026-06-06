@@ -12,13 +12,13 @@ import lombok.*;
 @Builder
 public class Provider {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String name;
-    private String specialty;
-    private String organization;
-    private String phone;
-    private String email;
+  private String name;
+  private String specialty;
+  private String organization;
+  private String phone;
+  private String email;
 }

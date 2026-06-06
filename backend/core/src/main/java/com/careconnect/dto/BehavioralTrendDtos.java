@@ -11,22 +11,22 @@ import java.util.List;
  */
 public class BehavioralTrendDtos {
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class WeekCount {
-        private String weekStartDate;
-        private int incidentCount;
-    }
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class WeekCount {
+    private String weekStartDate;
+    private int incidentCount;
+  }
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class BehavioralTrendsResponse {
-        /** "UP", "STABLE", or "DOWN" for trend indicator */
-        private String trend;
-        private List<WeekCount> weeklyCounts;
-        /** Top 3 most frequently observed behavior keywords */
-        private List<String> topKeywords;
-    }
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class BehavioralTrendsResponse {
+    /** "UP", "STABLE", or "DOWN" for trend indicator */
+    private String trend;
+    private List<WeekCount> weeklyCounts;
+    /** Top 3 most frequently observed behavior keywords */
+    private List<String> topKeywords;
+  }
 }

@@ -12,12 +12,12 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class MoodPainLogResponse {
     
-    private Long id;
-    private Long patientId;
-    private Integer moodValue;
-    private Integer painValue;
-    private String note;
-    private LocalDateTime timestamp;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+  private Long id;
+  private Long patientId;
+  private Integer moodValue;
+  private Integer painValue;
+  private String note;
+  private LocalDateTime timestamp;
+  private LocalDateTime createdAt;
+  private LocalDateTime updatedAt;
 }

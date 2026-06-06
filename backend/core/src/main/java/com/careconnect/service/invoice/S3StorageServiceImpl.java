@@ -16,28 +16,28 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 @ConditionalOnProperty(name = "careconnect.aws.enabled", havingValue = "true", matchIfMissing = true)
 public class S3StorageServiceImpl implements S3StorageService {
 
-    private final S3Client s3Client;
+  private final S3Client s3Client;
 
-    @Value("${aws.s3.bucket-name}")
+  @Value("${aws.s3.bucket-name}")
     private String bucket;
 
-    @Override
+  @Override
     public void upload(byte[] data, String key) {
-        upload(data, key, null);
-    }
+    upload(data, key, null);
+  }
 
-    @Override
+  @Override
     public void upload(byte[] data, String key, String contentType) {
-        PutObjectRequest.Builder put = PutObjectRequest.builder()
+    PutObjectRequest.Builder put = PutObjectRequest.builder()
                 .bucket(bucket)
                 .key(key)
                 .acl(ObjectCannedACL.BUCKET_OWNER_FULL_CONTROL);
 
-        if (contentType != null && !contentType.isBlank()) {
-            put.contentType(contentType);
-        }
-
-        s3Client.putObject(put.build(), RequestBody.fromBytes(data));
-        log.info("Uploaded to s3://{}/{}", bucket, key);
+    if (contentType != null && !contentType.isBlank()) {
+      put.contentType(contentType);
     }
+
+    s3Client.putObject(put.build(), RequestBody.fromBytes(data));
+    log.info("Uploaded to s3://{}/{}", bucket, key);
+  }
 }

@@ -12,21 +12,21 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Post {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private Long userId;
+  private Long userId;
 
-    private String content;
+  private String content;
 
-    private String imageUrl;
+  private String imageUrl;
 
-    private LocalDateTime createdAt = LocalDateTime.now();
+  private LocalDateTime createdAt = LocalDateTime.now();
 
-    // Explicit setters to ensure compilation works if Lombok isn't processing
-    public void setUserId(Long userId) { this.userId = userId; }
-    public void setContent(String content) { this.content = content; }
-    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+  // Explicit setters to ensure compilation works if Lombok isn't processing
+  public void setUserId(Long userId) { this.userId = userId; }
+  public void setContent(String content) { this.content = content; }
+  public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+  public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

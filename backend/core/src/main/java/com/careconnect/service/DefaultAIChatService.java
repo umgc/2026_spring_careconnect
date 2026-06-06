@@ -23,6 +23,7 @@ public class DefaultAIChatService implements AIService {
     public DefaultAIChatService() {
         log.info("DefaultAIChatService initialized (DeepSeek path disabled)");
     }
+  }
 
     /**
      * DeepSeek path DISABLED

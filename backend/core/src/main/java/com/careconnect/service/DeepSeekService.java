@@ -24,27 +24,34 @@ import java.util.List;
 @ConditionalOnProperty(name = "careconnect.ai.provider", havingValue = "deepseek")
 public class DeepSeekService implements AIService {
 
-    @Value("${deepseek.api.key:}")
+  @Value("${deepseek.api.key:}")
     private String apiKey;
 
-    @Value("${deepseek.api.url:https://api.deepseek.com/v1}")
+  @Value("${deepseek.api.url:https://api.deepseek.com/v1}")
     private String apiUrl;
 
-    private final RestClient restClient;
+  private final RestClient restClient;
 
-    public DeepSeekService(
+  public DeepSeekService(
             @Value("${deepseek.api.key:}") String apiKey,
             @Value("${deepseek.api.url:https://api.deepseek.com/v1}") String apiUrl
-    ) {
-        this.apiKey = apiKey;
-        this.apiUrl = apiUrl;
-        this.restClient = RestClient.builder()
+  ) {
+    this.apiKey = apiKey;
+    this.apiUrl = apiUrl;
+    this.restClient = RestClient.builder()
                 .baseUrl(apiUrl)
                 .defaultHeader("Authorization", "Bearer " + (apiKey == null ? "" : apiKey))
                 .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader("User-Agent", "CareConnect/1.0")
                 .build();
+  }
+
+  public DeepSeekResponse sendChatRequest(DeepSeekChatRequest request) {
+    if (apiKey == null || apiKey.trim().isEmpty()) {
+      throw new IllegalStateException("DeepSeek API key is not configured");
     }
+    try {
+      log.info("DeepSeek: POST {}/chat/completions model={}", apiUrl, request.getModel());
 
     @Override
     public ChatResponse processChat(ChatRequest request) {
@@ -93,19 +100,20 @@ public class DeepSeekService implements AIService {
             throw new RuntimeException("DeepSeek call error", e);
         }
     }
+  }
 
-    public DeepSeekChatRequest buildChatRequest(String systemPrompt, String userPrompt) {
-        DeepSeekChatRequest chat = new DeepSeekChatRequest();
-        chat.setModel("deepseek-chat");
-        chat.setTemperature(0.2);
-        chat.setMaxTokens(256);
-        chat.setStream(false);
-        chat.setMessages(List.of(
+  public DeepSeekChatRequest buildChatRequest(String systemPrompt, String userPrompt) {
+    DeepSeekChatRequest chat = new DeepSeekChatRequest();
+    chat.setModel("deepseek-chat");
+    chat.setTemperature(0.2);
+    chat.setMaxTokens(256);
+    chat.setStream(false);
+    chat.setMessages(List.of(
                 new Message("system", systemPrompt),
                 new Message("user", userPrompt)
         ));
-        return chat;
-    }
+    return chat;
+  }
 
     @Data
     @NoArgsConstructor
@@ -128,6 +136,7 @@ public class DeepSeekService implements AIService {
             this.content = content;
         }
     }
+  }
 
     // ===== Stubbed methods =====
 
@@ -165,23 +174,23 @@ public class DeepSeekService implements AIService {
         private Usage usage;
     }
 
-    @Data
-    @NoArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class Choice {
-        private Integer index;
-        private Message message;
-        private String finishReason;
-    }
+  @Data
+  @NoArgsConstructor
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public static class Choice {
+    private Integer index;
+    private Message message;
+    private String finishReason;
+  }
 
-    @Data
-    @NoArgsConstructor
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class Usage {
-        private Integer promptTokens;
-        private Integer completionTokens;
-        private Integer totalTokens;
-    }
+  @Data
+  @NoArgsConstructor
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public static class Usage {
+    private Integer promptTokens;
+    private Integer completionTokens;
+    private Integer totalTokens;
+  }
 
     public static class DeepSeekException extends RuntimeException {
         public DeepSeekException(String message, Throwable cause) {

@@ -8,18 +8,18 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/bedrock")
 public class BedrockTestController {
 
-    private final BedrockTestService service;
+  private final BedrockTestService service;
 
-    /**
+  /**
      * Constructor injection of Bedrock service
      * Spring automatically injects the service bean
      */
 
-    public BedrockTestController(BedrockTestService service) {
-        this.service = service;
-    }
+  public BedrockTestController(BedrockTestService service) {
+    this.service = service;
+  }
 
-    /**
+  /**
      * Simple Get endpoint to test Bedrock
      * 
      * Example:
@@ -30,12 +30,12 @@ public class BedrockTestController {
      * @return          Raw JSON response from Bedrock
      */
 
-    @GetMapping("/test")
+  @GetMapping("/test")
     public BedrockResponse test(@RequestParam String prompt) {
-        // Call Bedrock service
-        String result = service.testPrompt(prompt);
+    // Call Bedrock service
+    String result = service.testPrompt(prompt);
 
-        // Wrap result inside DTO
-        return new BedrockResponse(result);
-    }
+    // Wrap result inside DTO
+    return new BedrockResponse(result);
+  }
 }

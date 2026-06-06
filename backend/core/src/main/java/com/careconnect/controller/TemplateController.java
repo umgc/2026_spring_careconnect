@@ -17,52 +17,52 @@ import java.util.List;
 @RequestMapping("/v1/api/templates")
 public class TemplateController {
 
-    @Autowired
+  @Autowired
     private TemplateService templateService;
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    @GetMapping
+  @GetMapping
     public ResponseEntity<List<Template>> getAllTemplates() {
-        return ResponseEntity.ok(templateService.getAllTemplates());
-    }
+    return ResponseEntity.ok(templateService.getAllTemplates());
+  }
 
-    @GetMapping("/all")
+  @GetMapping("/all")
     public ResponseEntity<List<Template>> getAll() {
-        return ResponseEntity.ok(templateService.getAllTemplates());
-    }
+    return ResponseEntity.ok(templateService.getAllTemplates());
+  }
 
-    @GetMapping("/{id}")
+  @GetMapping("/{id}")
     public ResponseEntity<Template> getTemplateById(@PathVariable Long id) {
-        Template template = templateService.getTemplateById(id);
-        return ResponseEntity.ok(template);
-    }
+    Template template = templateService.getTemplateById(id);
+    return ResponseEntity.ok(template);
+  }
 
-    @PostMapping
+  @PostMapping
     public ResponseEntity<Template> createTemplate(@RequestBody TemplateDto templateDto) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        Template created = templateService.createTemplate(templateDto);
-        return ResponseEntity.ok(created);
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    Template created = templateService.createTemplate(templateDto);
+    return ResponseEntity.ok(created);
+  }
 
-    @PutMapping("/{id}")
+  @PutMapping("/{id}")
     public ResponseEntity<Template> updateTemplate(@PathVariable Long id, @RequestBody TemplateDto templateDto) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        Template updated = templateService.updateTemplate(id, templateDto);
-        return ResponseEntity.ok(updated);
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    Template updated = templateService.updateTemplate(id, templateDto);
+    return ResponseEntity.ok(updated);
+  }
 
-    @DeleteMapping("/{id}")
+  @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTemplate(@PathVariable Long id) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        templateService.deleteTemplate(id);
-        return ResponseEntity.noContent().build();
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    templateService.deleteTemplate(id);
+    return ResponseEntity.noContent().build();
+  }
 }

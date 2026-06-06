@@ -1371,12 +1371,24 @@ public class CallController {
     if (body == null || body.isEmpty()) {
       return Map.of();
     }
+    String text = value.toString().trim();
+    return text.isEmpty() ? null : text;
+  }
 
     Map<String, Object> metadata = new LinkedHashMap<>();
     String callKind = asString(body.get("callKind"));
     if (callKind != null) {
       metadata.put("callKind", callKind.toUpperCase(Locale.ROOT));
     }
+    if (value instanceof Number n) {
+      return n.longValue();
+    }
+    try {
+      return Long.parseLong(value.toString().trim());
+    } catch (NumberFormatException ignored) {
+      return null;
+    }
+  }
 
     Object rawContextIds = body.get("contextPatientUserIds");
     List<Long> contextPatientUserIds = new ArrayList<>();
@@ -1388,6 +1400,10 @@ public class CallController {
         }
       }
     }
+    return callTelemetryService.getTelemetryForCall(callId).stream().anyMatch(e ->
+        userId.equals(e.getActorUserId()) || userId.equals(e.getTargetUserId())
+    );
+  }
 
     if (contextPatientUserIds.isEmpty()) {
       Long singleContext = asLong(body.get("contextPatientUserId"));
@@ -1449,6 +1465,15 @@ public class CallController {
       }
       return segments;
     }
+    if (currentUser.getRole() == com.careconnect.security.Role.ADMIN) {
+      return true;
+    }
+    if (currentUser.getId().equals(requestedUserId)) {
+      return true;
+    }
+    return currentUser.getRole() == com.careconnect.security.Role.CAREGIVER
+        && caregiverPatientLinkService.hasAccessToPatient(currentUser.getId(), requestedUserId);
+  }
 
     segments.add(
         new CallTranscriptService.TranscriptSegmentInput(

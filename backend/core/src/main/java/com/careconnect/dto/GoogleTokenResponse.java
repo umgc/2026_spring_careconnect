@@ -11,7 +11,7 @@ public record GoogleTokenResponse(
         @JsonProperty("scope") String scope,
         @JsonProperty("token_type") String tokenType
 ) {
-    public Instant computeExpiryFromNow() {
-        return Instant.now().plusSeconds(expiresIn != null ? expiresIn : 3600);
-    }
+  public Instant computeExpiryFromNow() {
+    return Instant.now().plusSeconds(expiresIn != null ? expiresIn : 3600);
+  }
 }

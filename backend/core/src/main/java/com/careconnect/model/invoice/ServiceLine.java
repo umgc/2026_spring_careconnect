@@ -15,18 +15,18 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ServiceLine {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "invoice_id")
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "invoice_id")
     private Invoice invoice;
 
-    private String description;
-    private String serviceCode;
-    private OffsetDateTime serviceDate;
-    private BigDecimal charge;
-    private BigDecimal patientBalance;
-    private BigDecimal insuranceAdjustments;
+  private String description;
+  private String serviceCode;
+  private OffsetDateTime serviceDate;
+  private BigDecimal charge;
+  private BigDecimal patientBalance;
+  private BigDecimal insuranceAdjustments;
 }

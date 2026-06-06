@@ -24,8 +24,8 @@ import java.util.Map;
 public class TestController {
 
 
-    @GetMapping("/health")
-    @Operation(
+  @GetMapping("/health")
+  @Operation(
         summary = "Health check",
         description = "Public health check endpoint to verify the API is running.\n\n"
             + "**Use this endpoint to:**\n"
@@ -36,8 +36,8 @@ public class TestController {
             + "This is a great starting point for testing the API!\n",
         tags = {"Testing"}
     )
-    @ApiResponses({
-        @ApiResponse(
+  @ApiResponses({
+    @ApiResponse(
             responseCode = "200",
             description = "API is healthy and running",
             content = @Content(
@@ -45,20 +45,20 @@ public class TestController {
                 examples = @ExampleObject(value = "{\n    \"status\": \"healthy\",\n    \"timestamp\": \"2025-01-15T10:30:00Z\",\n    \"message\": \"CareConnect API is running successfully!\",\n    \"version\": \"1.0.0\"\n}")
             )
         )
-    })
+  })
     public ResponseEntity<Map<String, Object>> healthCheck() {
-        return ResponseEntity.ok(Map.of(
+    return ResponseEntity.ok(Map.of(
             "status", "healthy",
             "timestamp", LocalDateTime.now(),
             "message", "CareConnect API is running successfully!",
             "version", "1.0.0",
             "documentation", "Available at /swagger-ui.html"
         ));
-    }
+  }
 
-    @GetMapping("/swagger-info")
-    @Operation(
-        summary = "ℹSwagger usage guide",
+  @GetMapping("/swagger-info")
+  @Operation(
+        summary = "ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¹Swagger usage guide",
         description = "Get information about how to use this API with Swagger UI.\n\n"
             + "**Quick Start Guide:**\n"
             + "1. **Test this endpoint** - No authentication required\n"
@@ -73,8 +73,8 @@ public class TestController {
             + "- Re-login if you get 401 errors\n",
         tags = {"Testing"}
     )
-    @ApiResponses({
-        @ApiResponse(
+  @ApiResponses({
+    @ApiResponse(
             responseCode = "200",
             description = "Swagger usage information",
             content = @Content(
@@ -82,9 +82,9 @@ public class TestController {
                 examples = @ExampleObject(value = "{\n    \"message\": \"Welcome to CareConnect API!\",\n    \"swaggerUrl\": \"/swagger-ui.html\",\n    \"steps\": [\n        \"1. Test this endpoint (no auth required)\",\n        \"2. Register: POST /v1/api/auth/register\",\n        \"3. Login: POST /v1/api/auth/login\",\n        \"4. Click Authorize button\",\n        \"5. Enter: Bearer {your-token}\",\n        \"6. Test protected endpoints\"\n    ]\n}"))
         )
         
-    })
+  })
     public ResponseEntity<Map<String, Object>> swaggerInfo() {
-        return ResponseEntity.ok(Map.of(
+    return ResponseEntity.ok(Map.of(
             "message", "Welcome to CareConnect API!",
             "swaggerUrl", "/swagger-ui.html",
             "apiDocsUrl", "/v3/api-docs",
@@ -100,7 +100,7 @@ public class TestController {
             "tokenLifetime", "3 hours",
             "supportContact", "support@careconnect.com"
         ));
-    }
+  }
 
 
 }

@@ -17,16 +17,16 @@ import java.util.UUID;
 @Builder
 public class EvvLocationResponse {
     
-    private UUID id;
-    private Long evvRecordId;
-    private EvvLocationRole role;
-    private EvvLocationType type;
-    private BigDecimal latitude;
-    private BigDecimal longitude;
-    private BigDecimal accuracyM;
-    private Map<String, Object> addressSnapshot;
-    private NoGpsReason noGpsReason;
-    private String manualAddress;
-    private OffsetDateTime createdAt;
+  private UUID id;
+  private Long evvRecordId;
+  private EvvLocationRole role;
+  private EvvLocationType type;
+  private BigDecimal latitude;
+  private BigDecimal longitude;
+  private BigDecimal accuracyM;
+  private Map<String, Object> addressSnapshot;
+  private NoGpsReason noGpsReason;
+  private String manualAddress;
+  private OffsetDateTime createdAt;
 }
 

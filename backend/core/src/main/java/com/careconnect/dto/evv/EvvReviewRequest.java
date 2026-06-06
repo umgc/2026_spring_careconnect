@@ -6,8 +6,8 @@ import lombok.*;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class EvvReviewRequest {
-    private boolean approve;
+  private boolean approve;
 
-    @Size(max = 500)
+  @Size(max = 500)
     private String comment;
 }

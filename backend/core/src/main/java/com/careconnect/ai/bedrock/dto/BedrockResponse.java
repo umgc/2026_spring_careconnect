@@ -9,16 +9,16 @@ package com.careconnect.ai.bedrock.dto;
 
 public class BedrockResponse {
 
-    private String response;
+  private String response;
 
-    /**
+  /**
      * Constructor used to create response object
      */
-    public BedrockResponse(String response) {
-        this.response = response;
-    }
+  public BedrockResponse(String response) {
+    this.response = response;
+  }
 
-    public String getResponse() {
-        return response;
-    }
+  public String getResponse() {
+    return response;
+  }
 }

@@ -81,56 +81,56 @@ public enum Role {
     FAMILY_MEMBER("Family Member", "Read-only access to linked patient");
     
     
-    // ========== Instance Variables ==========
+  // ========== Instance Variables ==========
     
-    /**
+  /**
      * Human-readable display name for the role.
      * Used in UI dropdowns and user-facing messages.
      */
-    private final String displayName;
+  private final String displayName;
     
-    /**
+  /**
      * Brief description of the role and its purpose.
      */
-    private final String description;
+  private final String description;
     
     
-    // ========== Constructor ==========
+  // ========== Constructor ==========
     
-    /**
+  /**
      * Private constructor called automatically for each enum constant.
      * 
      * @param displayName User-friendly name for this role
      * @param description Brief explanation of role's purpose
      */
-    Role(String displayName, String description) {
-        this.displayName = displayName;
-        this.description = description;
-    }
+  Role(String displayName, String description) {
+    this.displayName = displayName;
+    this.description = description;
+  }
     
     
-    // ========== Public Methods ==========
+  // ========== Public Methods ==========
     
-    /**
+  /**
      * Gets the human-readable display name of this role.
      * Use this for UI elements and user-facing messages.
      * 
      * @return Display name (e.g., "Administrator", "Caregiver")
      */
-    public String getDisplayName() {
-        return displayName;
-    }
+  public String getDisplayName() {
+    return displayName;
+  }
     
-    /**
+  /**
      * Gets the description of what this role can do.
      * 
      * @return Role description
      */
-    public String getDescription() {
-        return description;
-    }
+  public String getDescription() {
+    return description;
+  }
     
-    /**
+  /**
      * Safely converts a string to a Role enum.
      * Handles case-insensitive input and provides helpful error messages.
      * 
@@ -143,93 +143,93 @@ public enum Role {
      * @return Corresponding Role enum value
      * @throws IllegalArgumentException if role string is invalid
      */
-    public static Role fromString(String roleStr) {
-        // Handle null input
-        if (roleStr == null || roleStr.trim().isEmpty()) {
-            throw new IllegalArgumentException(
+  public static Role fromString(String roleStr) {
+    // Handle null input
+    if (roleStr == null || roleStr.trim().isEmpty()) {
+      throw new IllegalArgumentException(
                 "Role cannot be null or empty. Valid roles are: " + 
                 "ADMIN, CAREGIVER, PATIENT, FAMILY_MEMBER"
             );
-        }
+    }
         
-        // Convert to uppercase and handle common variations
-        String normalized = roleStr.trim().toUpperCase();
+    // Convert to uppercase and handle common variations
+    String normalized = roleStr.trim().toUpperCase();
         
-        // Handle underscore vs space (e.g., "family member" vs "family_member")
-        normalized = normalized.replace(' ', '_');
+    // Handle underscore vs space (e.g., "family member" vs "family_member")
+    normalized = normalized.replace(' ', '_');
         
-        // Try to find matching role
-        try {
-            return Role.valueOf(normalized);
-        } catch (IllegalArgumentException e) {
-            // Provide helpful error message with valid options
-            throw new IllegalArgumentException(
+    // Try to find matching role
+    try {
+      return Role.valueOf(normalized);
+    } catch (IllegalArgumentException e) {
+      // Provide helpful error message with valid options
+      throw new IllegalArgumentException(
                 String.format(
                     "Invalid role: '%s'. Valid roles are: ADMIN, CAREGIVER, PATIENT, FAMILY_MEMBER",
                     roleStr
                 )
             );
-        }
     }
+  }
     
-    /**
+  /**
      * Converts this role to a string suitable for API responses and database storage.
      * Returns lowercase with underscores (e.g., "family_member").
      * 
      * @return API-friendly string representation
      */
-    public String toApiString() {
-        return this.name().toLowerCase();
-    }
+  public String toApiString() {
+    return this.name().toLowerCase();
+  }
     
-    /**
+  /**
      * Checks if this role is an administrator.
      * Convenience method for common permission check.
      * 
      * @return true if this role is ADMIN
      */
-    public boolean isAdmin() {
-        return this == ADMIN;
-    }
+  public boolean isAdmin() {
+    return this == ADMIN;
+  }
     
-    /**
+  /**
      * Checks if this role is a caregiver.
      * 
      * @return true if this role is CAREGIVER
      */
-    public boolean isCaregiver() {
-        return this == CAREGIVER;
-    }
+  public boolean isCaregiver() {
+    return this == CAREGIVER;
+  }
     
-    /**
+  /**
      * Checks if this role is a patient.
      * 
      * @return true if this role is PATIENT
      */
-    public boolean isPatient() {
-        return this == PATIENT;
-    }
+  public boolean isPatient() {
+    return this == PATIENT;
+  }
     
-    /**
+  /**
      * Checks if this role is a family member.
      * 
      * @return true if this role is FAMILY_MEMBER
      */
-    public boolean isFamilyMember() {
-        return this == FAMILY_MEMBER;
-    }
+  public boolean isFamilyMember() {
+    return this == FAMILY_MEMBER;
+  }
     
-    /**
+  /**
      * Checks if this role can modify data (not read-only).
      * Family members have read-only access.
      * 
      * @return true if role can create/update/delete data
      */
-    public boolean canModifyData() {
-        return this != FAMILY_MEMBER;
-    }
+  public boolean canModifyData() {
+    return this != FAMILY_MEMBER;
+  }
     
-    /**
+  /**
      * Gets the hierarchy level of this role (lower number = more power).
      * Useful for comparing role authority levels.
      * 
@@ -241,43 +241,43 @@ public enum Role {
      * 
      * @return Hierarchy level (0-3)
      */
-    public int getHierarchyLevel() {
-        switch (this) {
-            case ADMIN:
-                return 0;
-            case CAREGIVER:
-                return 1;
-            case PATIENT:
-                return 2;
-            case FAMILY_MEMBER:
-                return 3;
-            default:
-                return Integer.MAX_VALUE; // Should never happen
-        }
+  public int getHierarchyLevel() {
+    switch (this) {
+      case ADMIN:
+        return 0;
+      case CAREGIVER:
+        return 1;
+      case PATIENT:
+        return 2;
+      case FAMILY_MEMBER:
+        return 3;
+      default:
+        return Integer.MAX_VALUE; // Should never happen
     }
+  }
     
-    /**
+  /**
      * Checks if this role has higher or equal authority than another role.
      * 
      * @param otherRole Role to compare against
      * @return true if this role is higher or equal in hierarchy
      */
-    public boolean hasHigherOrEqualAuthorityThan(Role otherRole) {
-        return this.getHierarchyLevel() <= otherRole.getHierarchyLevel();
-    }
+  public boolean hasHigherOrEqualAuthorityThan(Role otherRole) {
+    return this.getHierarchyLevel() <= otherRole.getHierarchyLevel();
+  }
     
-    /**
+  /**
      * Returns a detailed string representation of this role.
      * 
      * @return Role information including name and description
      */
-    @Override
+  @Override
     public String toString() {
-        return String.format(
+    return String.format(
             "Role{name=%s, displayName='%s', description='%s'}",
             this.name(),
             this.displayName,
             this.description
         );
-    }
+  }
 }

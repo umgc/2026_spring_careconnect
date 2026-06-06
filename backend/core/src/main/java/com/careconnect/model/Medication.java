@@ -12,98 +12,98 @@ import java.time.Instant;
 @Builder
 public class Medication {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_id", nullable = false)
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @Column(name = "medication_name", nullable = false)
+  @Column(name = "medication_name", nullable = false)
     private String medicationName;
 
-    @Column(name = "dosage")
+  @Column(name = "dosage")
     private String dosage; // e.g., "10mg", "2 tablets"
 
-    @Column(name = "frequency")
+  @Column(name = "frequency")
     private String frequency; // e.g., "twice daily", "every 8 hours"
 
-    @Column(name = "route")
+  @Column(name = "route")
     private String route; // e.g., "oral", "injection", "topical"
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "medication_type")
+  @Enumerated(EnumType.STRING)
+  @Column(name = "medication_type")
     private MedicationType medicationType;
 
-    @Column(name = "prescribed_by")
+  @Column(name = "prescribed_by")
     private String prescribedBy; // Doctor's name
 
-    @Column(name = "prescribed_date")
+  @Column(name = "prescribed_date")
     private String prescribedDate;
 
-    @Column(name = "start_date")
+  @Column(name = "start_date")
     private String startDate;
 
-    @Column(name = "end_date")
+  @Column(name = "end_date")
     private String endDate; // null for ongoing medications
 
-    @Column(name = "notes", columnDefinition = "TEXT")
+  @Column(name = "notes", columnDefinition = "TEXT")
     private String notes; // Additional instructions or notes
 
-    @Builder.Default
-    @Column(name = "is_active", nullable = false)
+  @Builder.Default
+  @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
-    // 🟢 NEW FIELD: approval_status
-    @Builder.Default
-    @Column(name = "approval_status", length = 20, nullable = false)
+  // Ã°Å¸Å¸Â¢ NEW FIELD: approval_status
+  @Builder.Default
+  @Column(name = "approval_status", length = 20, nullable = false)
     private String approvalStatus = "PENDING";
 
-    @Column(name = "last_taken")
+  @Column(name = "last_taken")
     private Instant lastTaken;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+  @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(name = "updated_at")
+  @Column(name = "updated_at")
     private Instant updatedAt;
 
-    @PrePersist
+  @PrePersist
     protected void onCreate() {
-        Instant now = Instant.now();
-        this.createdAt = now;
-        this.updatedAt = now;
+    Instant now = Instant.now();
+    this.createdAt = now;
+    this.updatedAt = now;
 
-        if (this.isActive == null) {
-            this.isActive = true;
-        }
-        if (this.approvalStatus == null) {
-            this.approvalStatus = "PENDING";
-        }
+    if (this.isActive == null) {
+      this.isActive = true;
     }
+    if (this.approvalStatus == null) {
+      this.approvalStatus = "PENDING";
+    }
+  }
 
-    @PreUpdate
+  @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = Instant.now();
-    }
+    this.updatedAt = Instant.now();
+  }
 
-    // ENUM for medication type
-    public enum MedicationType {
+  // ENUM for medication type
+  public enum MedicationType {
         PRESCRIPTION("Prescription"),
         OVER_THE_COUNTER("Over-the-counter"),
         SUPPLEMENT("Supplement/Vitamin"),
         HERBAL("Herbal/Natural"),
         EMERGENCY("Emergency Medication");
 
-        private final String displayName;
+    private final String displayName;
 
-        MedicationType(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
+    MedicationType(String displayName) {
+      this.displayName = displayName;
     }
+
+    public String getDisplayName() {
+      return displayName;
+    }
+  }
 }

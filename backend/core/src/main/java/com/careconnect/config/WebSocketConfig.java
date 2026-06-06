@@ -32,60 +32,60 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
 
-    @Autowired
+  @Autowired
     private CallNotificationHandler callNotificationHandler;
 
-    @Autowired
+  @Autowired
     private CareConnectWebSocketHandler careConnectWebSocketHandler;
 
-    @Autowired
+  @Autowired
     private NotificationWebSocketHandler notificationWebSocketHandler;
 
-    @Autowired
+  @Autowired
     private ChatMessageWebSocketHandler chatMessageWebSocketHandler;
 
-    @Value("${careconnect.websocket.endpoint:/ws/careconnect}")
+  @Value("${careconnect.websocket.endpoint:/ws/careconnect}")
     private String careConnectEndpoint;
 
-    @Value("${careconnect.websocket.allowed-origins:*}")
+  @Value("${careconnect.websocket.allowed-origins:*}")
     private String allowedOrigins;
 
-        private String[] allowedOriginPatterns() {
-                return java.util.Arrays.stream(allowedOrigins.split(","))
+  private String[] allowedOriginPatterns() {
+    return java.util.Arrays.stream(allowedOrigins.split(","))
                                 .map(String::trim)
                                 .filter(s -> !s.isEmpty())
                                 .toArray(String[]::new);
-        }
+  }
 
-    @Override
+  @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        log.info("Registering WebSocket handlers for local development mode");
-        log.info("CareConnect WebSocket endpoint: {}", careConnectEndpoint);
-        log.info("Allowed origins: {}", allowedOrigins);
+    log.info("Registering WebSocket handlers for local development mode");
+    log.info("CareConnect WebSocket endpoint: {}", careConnectEndpoint);
+    log.info("Allowed origins: {}", allowedOrigins);
 
-        String[] originPatterns = allowedOriginPatterns();
+    String[] originPatterns = allowedOriginPatterns();
 
-        // Call/SMS notification WebSocket endpoint
-        registry.addHandler(callNotificationHandler, "/ws/calls-ws")
+    // Call/SMS notification WebSocket endpoint
+    registry.addHandler(callNotificationHandler, "/ws/calls-ws")
                 .setAllowedOriginPatterns(originPatterns);
 
-        registry.addHandler(callNotificationHandler, "/ws/calls")
+    registry.addHandler(callNotificationHandler, "/ws/calls")
                 .setAllowedOriginPatterns(originPatterns)
                 .withSockJS();
 
-        // General CareConnect WebSocket endpoint for real-time updates
-        registry.addHandler(careConnectWebSocketHandler, careConnectEndpoint)
+    // General CareConnect WebSocket endpoint for real-time updates
+    registry.addHandler(careConnectWebSocketHandler, careConnectEndpoint)
                 .setAllowedOriginPatterns(originPatterns)
                 .withSockJS();
 
-        // Notification WebSocket endpoint (no SockJS fallback)
-        registry.addHandler(notificationWebSocketHandler, "/ws/notifications")
+    // Notification WebSocket endpoint (no SockJS fallback)
+    registry.addHandler(notificationWebSocketHandler, "/ws/notifications")
                 .setAllowedOriginPatterns(originPatterns);
 
-        // Person-to-Person Chat — native WebSocket (no SockJS, Flutter uses ws:// directly)
-        registry.addHandler(chatMessageWebSocketHandler, "/ws/chat")
+    // Person-to-Person Chat Ã¢â‚¬â€ native WebSocket (no SockJS, Flutter uses ws:// directly)
+    registry.addHandler(chatMessageWebSocketHandler, "/ws/chat")
                 .setAllowedOriginPatterns(originPatterns);
 
-        log.info("WebSocket handlers registered successfully in LOCAL mode");
-    }
+    log.info("WebSocket handlers registered successfully in LOCAL mode");
+  }
 }

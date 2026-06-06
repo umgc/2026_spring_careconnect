@@ -26,55 +26,55 @@ import java.util.stream.Collectors;
 @ConditionalOnProperty(name = "careconnect.ai.provider", havingValue = "mock", matchIfMissing = true)
 public class MockAIChatService implements AIChatService {
 
-    private final UserAIConfigRepository userAIConfigRepository;
-    private final ChatConversationRepository chatConversationRepository;
-    private final ChatMessageRepository chatMessageRepository;
-    private final PatientRepository patientRepository;
+  private final UserAIConfigRepository userAIConfigRepository;
+  private final ChatConversationRepository chatConversationRepository;
+  private final ChatMessageRepository chatMessageRepository;
+  private final PatientRepository patientRepository;
 
-    @Autowired
+  @Autowired
     public MockAIChatService(
             UserAIConfigRepository userAIConfigRepository,
             ChatConversationRepository chatConversationRepository,
             ChatMessageRepository chatMessageRepository,
             PatientRepository patientRepository) {
-        this.userAIConfigRepository = userAIConfigRepository;
-        this.chatConversationRepository = chatConversationRepository;
-        this.chatMessageRepository = chatMessageRepository;
-        this.patientRepository = patientRepository;
-        log.info("MockAIChatService initialized - AI features disabled, using mock responses");
-    }
+    this.userAIConfigRepository = userAIConfigRepository;
+    this.chatConversationRepository = chatConversationRepository;
+    this.chatMessageRepository = chatMessageRepository;
+    this.patientRepository = patientRepository;
+    log.info("MockAIChatService initialized - AI features disabled, using mock responses");
+  }
 
-    @Override
-    @Transactional
+  @Override
+  @Transactional
     public ChatResponse processChat(ChatRequest request) {
-        log.info("Processing mock chat request for user: {}, patient: {}",
+    log.info("Processing mock chat request for user: {}, patient: {}",
                 request.getUserId(), request.getPatientId());
 
-        // Validate basic requirements
-        if (request.getUserId() == null) {
-            return buildErrorResponse(request, "User ID is required");
-        }
+    // Validate basic requirements
+    if (request.getUserId() == null) {
+      return buildErrorResponse(request, "User ID is required");
+    }
 
-        if (request.getMessage() == null || request.getMessage().trim().isEmpty()) {
-            return buildErrorResponse(request, "Message is required");
-        }
+    if (request.getMessage() == null || request.getMessage().trim().isEmpty()) {
+      return buildErrorResponse(request, "Message is required");
+    }
 
-        // Get or create conversation
-        ChatConversation conversation = getOrCreateConversation(request);
+    // Get or create conversation
+    ChatConversation conversation = getOrCreateConversation(request);
 
-        // Save user message
-        ChatMessage userMessage = ChatMessage.builder()
+    // Save user message
+    ChatMessage userMessage = ChatMessage.builder()
                 .conversation(conversation)
                 .messageType(ChatMessage.MessageType.USER)
                 .content(request.getMessage())
                 .build();
-        chatMessageRepository.save(userMessage);
+    chatMessageRepository.save(userMessage);
 
-        // Generate mock AI response
-        String mockResponse = generateMockResponse(request.getMessage());
+    // Generate mock AI response
+    String mockResponse = generateMockResponse(request.getMessage());
 
-        // Save AI message
-        ChatMessage aiMessage = ChatMessage.builder()
+    // Save AI message
+    ChatMessage aiMessage = ChatMessage.builder()
                 .conversation(conversation)
                 .messageType(ChatMessage.MessageType.ASSISTANT)
                 .content(mockResponse)
@@ -82,92 +82,92 @@ public class MockAIChatService implements AIChatService {
                 .processingTimeMs(100L)
                 .aiModelUsed("mock-model")
                 .build();
-        chatMessageRepository.save(aiMessage);
+    chatMessageRepository.save(aiMessage);
 
-        // Build response
-        ChatResponse response = new ChatResponse();
-        response.setConversationId(conversation.getConversationId());
-        response.setMessage(request.getMessage());
-        response.setAiResponse(mockResponse);
-        response.setMessageId(aiMessage.getId());
-        response.setAiProvider("MOCK");
-        response.setModelUsed("mock-model");
-        response.setTokensUsed(0);
-        response.setProcessingTimeMs(100L);
-        response.setTemperatureUsed(0.0);
-        response.setContextIncluded(List.of());
-        response.setIsNewConversation(conversation.getCreatedAt().isAfter(LocalDateTime.now().minusMinutes(1)));
-        response.setTimestamp(LocalDateTime.now());
-        response.setConversationTitle(conversation.getTitle());
-        response.setTotalMessagesInConversation(chatMessageRepository.countByConversation(conversation));
-        response.setTotalTokensUsedInConversation(0);
-        response.setApproachingTokenLimit(false);
-        response.setSuccess(true);
+    // Build response
+    ChatResponse response = new ChatResponse();
+    response.setConversationId(conversation.getConversationId());
+    response.setMessage(request.getMessage());
+    response.setAiResponse(mockResponse);
+    response.setMessageId(aiMessage.getId());
+    response.setAiProvider("MOCK");
+    response.setModelUsed("mock-model");
+    response.setTokensUsed(0);
+    response.setProcessingTimeMs(100L);
+    response.setTemperatureUsed(0.0);
+    response.setContextIncluded(List.of());
+    response.setIsNewConversation(conversation.getCreatedAt().isAfter(LocalDateTime.now().minusMinutes(1)));
+    response.setTimestamp(LocalDateTime.now());
+    response.setConversationTitle(conversation.getTitle());
+    response.setTotalMessagesInConversation(chatMessageRepository.countByConversation(conversation));
+    response.setTotalTokensUsedInConversation(0);
+    response.setApproachingTokenLimit(false);
+    response.setSuccess(true);
 
-        return response;
-    }
+    return response;
+  }
 
-    @Override
+  @Override
     public List<ChatConversationSummary> getPatientConversations(Long patientId) {
-        List<ChatConversation> conversations = chatConversationRepository
+    List<ChatConversation> conversations = chatConversationRepository
                 .findByPatientIdAndIsActiveTrueOrderByUpdatedAtDesc(patientId);
-        return conversations.stream()
+    return conversations.stream()
                 .map(this::convertToConversationSummary)
                 .collect(Collectors.toList());
-    }
+  }
 
-    @Override
+  @Override
     public List<ChatMessageSummary> getConversationMessages(String conversationId) {
-        ChatConversation conversation = chatConversationRepository
+    ChatConversation conversation = chatConversationRepository
                 .findByConversationIdAndIsActiveTrue(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found"));
-        List<ChatMessage> messages = chatMessageRepository
+    List<ChatMessage> messages = chatMessageRepository
                 .findByConversationOrderByCreatedAtAsc(conversation);
-        return messages.stream()
+    return messages.stream()
                 .map(this::convertToMessageSummary)
                 .collect(Collectors.toList());
-    }
+  }
 
-    @Override
+  @Override
     public List<ChatMessageSummary> getRecentMessagesForUser(Long userId, int limit) {
-        List<ChatConversation> conversations = chatConversationRepository
+    List<ChatConversation> conversations = chatConversationRepository
                 .findByUserIdAndIsActiveTrueOrderByUpdatedAtDesc(userId);
 
-        if (conversations.isEmpty()) {
-            return new ArrayList<>();
-        }
+    if (conversations.isEmpty()) {
+      return new ArrayList<>();
+    }
 
-        ChatConversation mostRecentConversation = conversations.get(0);
-        List<ChatMessage> messages = chatMessageRepository
+    ChatConversation mostRecentConversation = conversations.get(0);
+    List<ChatMessage> messages = chatMessageRepository
                 .findTopNByConversationOrderByCreatedAtAsc(mostRecentConversation, limit);
 
-        return messages.stream()
+    return messages.stream()
                 .map(this::convertToMessageSummary)
                 .collect(Collectors.toList());
-    }
+  }
 
-    @Override
-    @Transactional
+  @Override
+  @Transactional
     public void deactivateConversation(String conversationId) {
-        ChatConversation conversation = chatConversationRepository
+    ChatConversation conversation = chatConversationRepository
                 .findByConversationIdAndIsActiveTrue(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found"));
-        conversation.setIsActive(false);
-        chatConversationRepository.save(conversation);
+    conversation.setIsActive(false);
+    chatConversationRepository.save(conversation);
+  }
+
+  // Helper methods
+
+  private ChatConversation getOrCreateConversation(ChatRequest request) {
+    if (request.getConversationId() != null) {
+      Optional<ChatConversation> existing = chatConversationRepository
+                    .findByConversationIdAndIsActiveTrue(request.getConversationId());
+      if (existing.isPresent()) {
+        return existing.get();
+      }
     }
 
-    // Helper methods
-
-    private ChatConversation getOrCreateConversation(ChatRequest request) {
-        if (request.getConversationId() != null) {
-            Optional<ChatConversation> existing = chatConversationRepository
-                    .findByConversationIdAndIsActiveTrue(request.getConversationId());
-            if (existing.isPresent()) {
-                return existing.get();
-            }
-        }
-
-        ChatConversation newConversation = ChatConversation.builder()
+    ChatConversation newConversation = ChatConversation.builder()
                 .conversationId(UUID.randomUUID().toString())
                 .patientId(request.getPatientId())
                 .userId(request.getUserId())
@@ -177,68 +177,68 @@ public class MockAIChatService implements AIChatService {
                 .aiModelUsed("mock-model")
                 .isActive(true)
                 .build();
-        return chatConversationRepository.save(newConversation);
+    return chatConversationRepository.save(newConversation);
+  }
+
+  private String generateTitle(String message) {
+    if (message.length() > 50) {
+      return message.substring(0, 47) + "...";
     }
+    return message;
+  }
 
-    private String generateTitle(String message) {
-        if (message.length() > 50) {
-            return message.substring(0, 47) + "...";
-        }
-        return message;
-    }
+  private String generateMockResponse(String userMessage) {
+    String lowerMessage = userMessage.toLowerCase();
 
-    private String generateMockResponse(String userMessage) {
-        String lowerMessage = userMessage.toLowerCase();
-
-        if (lowerMessage.contains("hello") || lowerMessage.contains("hi")) {
-            return "Hello! This is a mock AI response. I'm running in development mode with AI features disabled. How can I help you today?";
-        } else if (lowerMessage.contains("medication") || lowerMessage.contains("medicine")) {
-            return "I'm a mock AI assistant. In production, I would provide information about medications, but I'm currently in development mode. Please enable DeepSeek integration for full AI capabilities.";
-        } else if (lowerMessage.contains("symptom") || lowerMessage.contains("pain")) {
-            return "This is a mock response. In production mode, I would help analyze symptoms and provide relevant information. To enable full AI features, configure the DeepSeek API.";
-        } else {
-            return "Thank you for your message. This is a mock AI response for development/testing purposes. " +
+    if (lowerMessage.contains("hello") || lowerMessage.contains("hi")) {
+      return "Hello! This is a mock AI response. I'm running in development mode with AI features disabled. How can I help you today?";
+    } else if (lowerMessage.contains("medication") || lowerMessage.contains("medicine")) {
+      return "I'm a mock AI assistant. In production, I would provide information about medications, but I'm currently in development mode. Please enable DeepSeek integration for full AI capabilities.";
+    } else if (lowerMessage.contains("symptom") || lowerMessage.contains("pain")) {
+      return "This is a mock response. In production mode, I would help analyze symptoms and provide relevant information. To enable full AI features, configure the DeepSeek API.";
+    } else {
+      return "Thank you for your message. This is a mock AI response for development/testing purposes. " +
                    "The AI chat feature is currently disabled. To enable it, set careconnect.deepseek.enabled=true " +
                    "and configure your DeepSeek API key.";
-        }
     }
+  }
 
-    private ChatResponse buildErrorResponse(ChatRequest request, String errorMessage) {
-        ChatResponse response = new ChatResponse();
-        response.setConversationId(request.getConversationId());
-        response.setMessage(request.getMessage());
-        response.setSuccess(false);
-        response.setErrorMessage(errorMessage);
-        response.setErrorCode("VALIDATION_ERROR");
-        response.setTimestamp(LocalDateTime.now());
-        return response;
-    }
+  private ChatResponse buildErrorResponse(ChatRequest request, String errorMessage) {
+    ChatResponse response = new ChatResponse();
+    response.setConversationId(request.getConversationId());
+    response.setMessage(request.getMessage());
+    response.setSuccess(false);
+    response.setErrorMessage(errorMessage);
+    response.setErrorCode("VALIDATION_ERROR");
+    response.setTimestamp(LocalDateTime.now());
+    return response;
+  }
 
-    private ChatConversationSummary convertToConversationSummary(ChatConversation conversation) {
-        int messageCount = chatMessageRepository.countByConversation(conversation);
-        ChatConversationSummary summary = new ChatConversationSummary();
-        summary.setConversationId(conversation.getConversationId());
-        summary.setTitle(conversation.getTitle());
-        summary.setChatType(conversation.getChatType());
-        summary.setAiProvider(conversation.getAiProviderUsed() != null ? conversation.getAiProviderUsed().name() : null);
-        summary.setAiModel(conversation.getAiModelUsed());
-        summary.setTotalMessages(messageCount);
-        summary.setTotalTokensUsed(conversation.getTotalTokensUsed());
-        summary.setLastMessageAt(conversation.getUpdatedAt());
-        summary.setCreatedAt(conversation.getCreatedAt());
-        summary.setIsActive(conversation.getIsActive());
-        return summary;
-    }
+  private ChatConversationSummary convertToConversationSummary(ChatConversation conversation) {
+    int messageCount = chatMessageRepository.countByConversation(conversation);
+    ChatConversationSummary summary = new ChatConversationSummary();
+    summary.setConversationId(conversation.getConversationId());
+    summary.setTitle(conversation.getTitle());
+    summary.setChatType(conversation.getChatType());
+    summary.setAiProvider(conversation.getAiProviderUsed() != null ? conversation.getAiProviderUsed().name() : null);
+    summary.setAiModel(conversation.getAiModelUsed());
+    summary.setTotalMessages(messageCount);
+    summary.setTotalTokensUsed(conversation.getTotalTokensUsed());
+    summary.setLastMessageAt(conversation.getUpdatedAt());
+    summary.setCreatedAt(conversation.getCreatedAt());
+    summary.setIsActive(conversation.getIsActive());
+    return summary;
+  }
 
-    private ChatMessageSummary convertToMessageSummary(ChatMessage message) {
-        ChatMessageSummary summary = new ChatMessageSummary();
-        summary.setMessageId(message.getId());
-        summary.setMessageType(message.getMessageType());
-        summary.setContent(message.getContent());
-        summary.setTokensUsed(message.getTokensUsed());
-        summary.setProcessingTimeMs(message.getProcessingTimeMs());
-        summary.setAiModelUsed(message.getAiModelUsed());
-        summary.setCreatedAt(message.getCreatedAt());
-        return summary;
-    }
+  private ChatMessageSummary convertToMessageSummary(ChatMessage message) {
+    ChatMessageSummary summary = new ChatMessageSummary();
+    summary.setMessageId(message.getId());
+    summary.setMessageType(message.getMessageType());
+    summary.setContent(message.getContent());
+    summary.setTokensUsed(message.getTokensUsed());
+    summary.setProcessingTimeMs(message.getProcessingTimeMs());
+    summary.setAiModelUsed(message.getAiModelUsed());
+    summary.setCreatedAt(message.getCreatedAt());
+    return summary;
+  }
 }

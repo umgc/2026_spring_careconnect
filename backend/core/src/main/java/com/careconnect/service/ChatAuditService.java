@@ -32,11 +32,11 @@ import java.util.UUID;
 @Slf4j
 public class ChatAuditService {
     
-    /**
+  /**
      * Log chat session start
      */
-    public void logChatSessionStart(Long userId, String sessionId, String userAgent, String ipAddress) {
-        AuditLogEntry entry = AuditLogEntry.builder()
+  public void logChatSessionStart(Long userId, String sessionId, String userAgent, String ipAddress) {
+    AuditLogEntry entry = AuditLogEntry.builder()
             .logId(UUID.randomUUID().toString())
             .timestamp(LocalDateTime.now())
             .userId(hashUserId(userId))
@@ -49,14 +49,14 @@ public class ChatAuditService {
             ))
             .build();
         
-        logAuditEntry(entry);
-    }
+    logAuditEntry(entry);
+  }
     
-    /**
+  /**
      * Log message sent (metadata only)
      */
-    public void logMessageSent(Long userId, String sessionId, int messageLength, long responseTimeMs) {
-        AuditLogEntry entry = AuditLogEntry.builder()
+  public void logMessageSent(Long userId, String sessionId, int messageLength, long responseTimeMs) {
+    AuditLogEntry entry = AuditLogEntry.builder()
             .logId(UUID.randomUUID().toString())
             .timestamp(LocalDateTime.now())
             .userId(hashUserId(userId))
@@ -69,14 +69,14 @@ public class ChatAuditService {
             ))
             .build();
         
-        logAuditEntry(entry);
-    }
+    logAuditEntry(entry);
+  }
     
-    /**
+  /**
      * Log AI response (metadata only)
      */
-    public void logAiResponse(Long userId, String sessionId, int responseLength, long processingTimeMs) {
-        AuditLogEntry entry = AuditLogEntry.builder()
+  public void logAiResponse(Long userId, String sessionId, int responseLength, long processingTimeMs) {
+    AuditLogEntry entry = AuditLogEntry.builder()
             .logId(UUID.randomUUID().toString())
             .timestamp(LocalDateTime.now())
             .userId(hashUserId(userId))
@@ -89,14 +89,14 @@ public class ChatAuditService {
             ))
             .build();
         
-        logAuditEntry(entry);
-    }
+    logAuditEntry(entry);
+  }
     
-    /**
+  /**
      * Log conversation deletion
      */
-    public void logConversationDeleted(Long userId, String sessionId, String deletionReason) {
-        AuditLogEntry entry = AuditLogEntry.builder()
+  public void logConversationDeleted(Long userId, String sessionId, String deletionReason) {
+    AuditLogEntry entry = AuditLogEntry.builder()
             .logId(UUID.randomUUID().toString())
             .timestamp(LocalDateTime.now())
             .userId(hashUserId(userId))
@@ -108,14 +108,14 @@ public class ChatAuditService {
             ))
             .build();
         
-        logAuditEntry(entry);
-    }
+    logAuditEntry(entry);
+  }
     
-    /**
+  /**
      * Log conversation shared with provider
      */
-    public void logConversationShared(Long userId, String sessionId, Long providerId) {
-        AuditLogEntry entry = AuditLogEntry.builder()
+  public void logConversationShared(Long userId, String sessionId, Long providerId) {
+    AuditLogEntry entry = AuditLogEntry.builder()
             .logId(UUID.randomUUID().toString())
             .timestamp(LocalDateTime.now())
             .userId(hashUserId(userId))
@@ -127,14 +127,14 @@ public class ChatAuditService {
             ))
             .build();
         
-        logAuditEntry(entry);
-    }
+    logAuditEntry(entry);
+  }
     
-    /**
+  /**
      * Log session timeout
      */
-    public void logSessionTimeout(Long userId, String sessionId, int sessionDurationMinutes) {
-        AuditLogEntry entry = AuditLogEntry.builder()
+  public void logSessionTimeout(Long userId, String sessionId, int sessionDurationMinutes) {
+    AuditLogEntry entry = AuditLogEntry.builder()
             .logId(UUID.randomUUID().toString())
             .timestamp(LocalDateTime.now())
             .userId(hashUserId(userId))
@@ -146,14 +146,14 @@ public class ChatAuditService {
             ))
             .build();
         
-        logAuditEntry(entry);
-    }
+    logAuditEntry(entry);
+  }
     
-    /**
+  /**
      * Log system error
      */
-    public void logSystemError(Long userId, String sessionId, String errorCode, String errorType) {
-        AuditLogEntry entry = AuditLogEntry.builder()
+  public void logSystemError(Long userId, String sessionId, String errorCode, String errorType) {
+    AuditLogEntry entry = AuditLogEntry.builder()
             .logId(UUID.randomUUID().toString())
             .timestamp(LocalDateTime.now())
             .userId(hashUserId(userId))
@@ -166,87 +166,87 @@ public class ChatAuditService {
             ))
             .build();
         
-        logAuditEntry(entry);
-    }
+    logAuditEntry(entry);
+  }
     
-    // Salt for user ID hashing - in production, this should be loaded from secure configuration
-    private static final String USER_ID_SALT = "CareConnect_UserAudit_Salt_2024";
+  // Salt for user ID hashing - in production, this should be loaded from secure configuration
+  private static final String USER_ID_SALT = "CareConnect_UserAudit_Salt_2024";
 
-    /**
+  /**
      * Hash user ID for privacy using SHA-256 with salt
      */
-    private String hashUserId(Long userId) {
-        if (userId == null) return "anonymous";
+  private String hashUserId(Long userId) {
+    if (userId == null) return "anonymous";
 
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
 
-            // Combine userId with salt
-            String input = userId.toString() + USER_ID_SALT;
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+      // Combine userId with salt
+      String input = userId.toString() + USER_ID_SALT;
+      byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
 
-            // Convert to base64 for storage
-            String hashedId = Base64.getEncoder().encodeToString(hash);
+      // Convert to base64 for storage
+      String hashedId = Base64.getEncoder().encodeToString(hash);
 
-            // Take first 12 characters for readability while maintaining uniqueness
-            return "user_" + hashedId.substring(0, 12);
+      // Take first 12 characters for readability while maintaining uniqueness
+      return "user_" + hashedId.substring(0, 12);
 
-        } catch (Exception e) {
-            log.error("Error hashing user ID: {}", e.getMessage());
-            // Fallback to secure random prefix if hashing fails
-            return "user_" + UUID.randomUUID().toString().substring(0, 8);
-        }
+    } catch (Exception e) {
+      log.error("Error hashing user ID: {}", e.getMessage());
+      // Fallback to secure random prefix if hashing fails
+      return "user_" + UUID.randomUUID().toString().substring(0, 8);
     }
+  }
     
-    /**
+  /**
      * Sanitize user agent string
      */
-    private String sanitizeUserAgent(String userAgent) {
-        if (userAgent == null) return "unknown";
-        // Remove potentially identifying information
-        return userAgent.length() > 100 ? userAgent.substring(0, 100) : userAgent;
-    }
+  private String sanitizeUserAgent(String userAgent) {
+    if (userAgent == null) return "unknown";
+    // Remove potentially identifying information
+    return userAgent.length() > 100 ? userAgent.substring(0, 100) : userAgent;
+  }
     
-    /**
+  /**
      * Anonymize IP address
      */
-    private String anonymizeIpAddress(String ipAddress) {
-        if (ipAddress == null) return "unknown";
-        // Remove last octet for IPv4 or last segment for IPv6
-        if (ipAddress.contains(".")) {
-            String[] parts = ipAddress.split("\\.");
-            if (parts.length == 4) {
-                return parts[0] + "." + parts[1] + "." + parts[2] + ".xxx";
-            }
-        }
-        return "anonymized";
+  private String anonymizeIpAddress(String ipAddress) {
+    if (ipAddress == null) return "unknown";
+    // Remove last octet for IPv4 or last segment for IPv6
+    if (ipAddress.contains(".")) {
+      String[] parts = ipAddress.split("\\.");
+      if (parts.length == 4) {
+        return parts[0] + "." + parts[1] + "." + parts[2] + ".xxx";
+      }
     }
+    return "anonymized";
+  }
     
-    /**
+  /**
      * Log audit entry (in production, this would write to secure audit log)
      */
-    private void logAuditEntry(AuditLogEntry entry) {
-        // In production, this would write to a secure, tamper-proof audit log
-        // For now, using structured logging
-        log.info("AUDIT: {} | User: {} | Session: {} | Action: {} | Metadata: {}", 
+  private void logAuditEntry(AuditLogEntry entry) {
+    // In production, this would write to a secure, tamper-proof audit log
+    // For now, using structured logging
+    log.info("AUDIT: {} | User: {} | Session: {} | Action: {} | Metadata: {}", 
             entry.getTimestamp(),
             entry.getUserId(),
             entry.getSessionId(),
             entry.getAction(),
             entry.getMetadata());
-    }
+  }
     
-    /**
+  /**
      * Audit log entry model
      */
-    @lombok.Builder
-    @lombok.Data
-    public static class AuditLogEntry {
-        private String logId;
-        private LocalDateTime timestamp;
-        private String userId; // Hashed/anonymized
-        private String sessionId;
-        private String action;
-        private Map<String, Object> metadata;
-    }
+  @lombok.Builder
+  @lombok.Data
+  public static class AuditLogEntry {
+    private String logId;
+    private LocalDateTime timestamp;
+    private String userId; // Hashed/anonymized
+    private String sessionId;
+    private String action;
+    private Map<String, Object> metadata;
+  }
 }

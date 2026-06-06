@@ -15,22 +15,22 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class IncidentAction {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "incident_report_id", nullable = false)
-    @JsonIgnore
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "incident_report_id", nullable = false)
+  @JsonIgnore
     private IncidentReport incidentReport;
 
-    @Column(name = "action_taken", nullable = false, columnDefinition = "TEXT")
+  @Column(name = "action_taken", nullable = false, columnDefinition = "TEXT")
     private String actionTaken;
 
-    @PreUpdate
-    @PreRemove
+  @PreUpdate
+  @PreRemove
     private void preventUpdateOrDelete() {
-        throw new UnsupportedOperationException("IncidentAction records are immutable; updates and deletes are not allowed.");
-    }
+    throw new UnsupportedOperationException("IncidentAction records are immutable; updates and deletes are not allowed.");
+  }
 }
 

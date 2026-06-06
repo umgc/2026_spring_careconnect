@@ -24,7 +24,7 @@ import com.careconnect.model.User;
  */
 public interface TaskRepository extends JpaRepository<Task, Long> {
 
-    /**
+  /**
      * Finds all tasks assigned to a given patient.
      *
      * <p>
@@ -36,9 +36,9 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
      * @return an {@link Optional} containing a list of tasks for the patient,
      *         or empty if no tasks exist
      */
-    Optional<List<Task>> findByPatient(User user);
+  Optional<List<Task>> findByPatient(User user);
 
-    /**
+  /**
      * Finds all tasks for a patient by their unique patient ID.
      *
      * <p>
@@ -50,11 +50,11 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
      * @return an {@link Optional} containing a list of tasks for the patient,
      *         or empty if no tasks exist
      */
-    Optional<List<Task>> findByPatientId(Long patientId);
+  Optional<List<Task>> findByPatientId(Long patientId);
 
-    /**
+  /**
      * Finds all tasks that belong to a recurring series,
-     * identified by the parent task’s ID.
+     * identified by the parent taskÃ¢â‚¬â„¢s ID.
      *
      * <p>
      * Example usage: retrieving all child tasks generated
@@ -64,6 +64,6 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
      * @param parentTaskId the ID of the parent task
      * @return list of tasks that reference the given parent task ID
      */
-    List<Task> findByParentTaskId(Long parentTaskId);
+  List<Task> findByParentTaskId(Long parentTaskId);
 
 }

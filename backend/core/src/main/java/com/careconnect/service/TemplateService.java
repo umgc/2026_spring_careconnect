@@ -18,60 +18,60 @@ import com.careconnect.exception.AppException;
 @Transactional
 public class TemplateService {
 
-    @Autowired
+  @Autowired
     private TemplateRepository templateRepository;
 
-    public Template getTemplateById(Long templateId) {
-        return templateRepository.findById(templateId)
+  public Template getTemplateById(Long templateId) {
+    return templateRepository.findById(templateId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Template not found"));
-    }
+  }
 
     // public List<Template> getTemplatesByPatientId(Long patientId) {
-    //     Optional<List<Template>> templatesOpt = templateRepository.findByPatientId(patientId);
-    //     if (templatesOpt.isPresent()) {
-    //         return templatesOpt.get();
-    //     } else {
-    //         throw new AppException(HttpStatus.NOT_FOUND, "Templates not found for patient");
-    //     }
-    // }
+  //     Optional<List<Template>> templatesOpt = templateRepository.findByPatientId(patientId);
+  //     if (templatesOpt.isPresent()) {
+  //         return templatesOpt.get();
+  //     } else {
+  //         throw new AppException(HttpStatus.NOT_FOUND, "Templates not found for patient");
+  //     }
+  // }
 
-    public List<Template> getAllTemplates() {
-        List<Template> templatesOpt = templateRepository.findAll();
-        if (!templatesOpt.isEmpty()) {
-            return templatesOpt;
-        } else {
-            throw new AppException(HttpStatus.NOT_FOUND, "No templates found");
-        }
+  public List<Template> getAllTemplates() {
+    List<Template> templatesOpt = templateRepository.findAll();
+    if (!templatesOpt.isEmpty()) {
+      return templatesOpt;
+    } else {
+      throw new AppException(HttpStatus.NOT_FOUND, "No templates found");
     }
+  }
 
-    public Template updateTemplate(Long templateId, TemplateDto templateDto) {
-        Template templateOpt = templateRepository.findById(templateId)
+  public Template updateTemplate(Long templateId, TemplateDto templateDto) {
+    Template templateOpt = templateRepository.findById(templateId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Template not found"));
-        // Update template fields with values from templateDto
-        templateOpt.setName(templateDto.getName());
-        templateOpt.setDescription(templateDto.getDescription());
-        templateOpt.setFrequency(templateDto.getFrequency());
-        templateOpt.setTaskInterval(templateDto.getInterval());
-        templateOpt.setDoCount(templateDto.getCount());
-        templateOpt.setDaysOfWeek(templateDto.getDaysOfWeek());
-        templateOpt.setTimeOfDay(templateDto.getTimeOfDay());
-        templateOpt.setIcon(templateDto.getIcon());
-        templateOpt.setNotifications(templateDto.getNotifications());
-        return templateRepository.save(templateOpt);
-    }
+    // Update template fields with values from templateDto
+    templateOpt.setName(templateDto.getName());
+    templateOpt.setDescription(templateDto.getDescription());
+    templateOpt.setFrequency(templateDto.getFrequency());
+    templateOpt.setTaskInterval(templateDto.getInterval());
+    templateOpt.setDoCount(templateDto.getCount());
+    templateOpt.setDaysOfWeek(templateDto.getDaysOfWeek());
+    templateOpt.setTimeOfDay(templateDto.getTimeOfDay());
+    templateOpt.setIcon(templateDto.getIcon());
+    templateOpt.setNotifications(templateDto.getNotifications());
+    return templateRepository.save(templateOpt);
+  }
 
-    public boolean deleteTemplate(Long templateId) {
-        Optional<Template> templateOpt = templateRepository.findById(templateId);
-        if (templateOpt.isPresent()) {
-            templateRepository.delete(templateOpt.get());
-            return true;
-        } else {
-            throw new AppException(HttpStatus.NOT_FOUND, "Template not found");
-        }
+  public boolean deleteTemplate(Long templateId) {
+    Optional<Template> templateOpt = templateRepository.findById(templateId);
+    if (templateOpt.isPresent()) {
+      templateRepository.delete(templateOpt.get());
+      return true;
+    } else {
+      throw new AppException(HttpStatus.NOT_FOUND, "Template not found");
     }
+  }
 
-    public Template createTemplate(TemplateDto templateDto) {
-        Template newTemplate = Template.builder()
+  public Template createTemplate(TemplateDto templateDto) {
+    Template newTemplate = Template.builder()
                 .name(templateDto.getName())
                 .description(templateDto.getDescription())
                 .frequency(templateDto.getFrequency())
@@ -82,6 +82,6 @@ public class TemplateService {
                 .icon(templateDto.getIcon())
                 .notifications(templateDto.getNotifications())
                 .build();
-        return templateRepository.save(newTemplate);
-    }
+    return templateRepository.save(newTemplate);
+  }
 }

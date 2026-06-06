@@ -8,11 +8,11 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 
 public class PostWithCommentCountDto {
-    private Long id;
-    private Long userId;
-    private String content;
-    private String imageUrl;
-    private LocalDateTime createdAt;
-    private int commentCount;
-    private String username;
+  private Long id;
+  private Long userId;
+  private String content;
+  private String imageUrl;
+  private LocalDateTime createdAt;
+  private int commentCount;
+  private String username;
 }

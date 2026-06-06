@@ -18,32 +18,32 @@ package com.careconnect.security;
  */
 public class UnauthorizedException extends Exception {
 
-    /**
+  /**
      * Constructs a new UnauthorizedException with the specified detail message.
      * 
      * @param message The detail message explaining why authorization was denied
      * 
      * @example
-     * throw new UnauthorizedException("User does not have CREATE_TASKS permission");
+    * throw new UnauthorizedException("User does not have CREATE_TASKS permission");
      */
-    public UnauthorizedException(String message) {
-        super(message);
-    }
+  public UnauthorizedException(String message) {
+    super(message);
+  }
 
-    /**
+  /**
      * Constructs a new UnauthorizedException with the specified detail message and cause.
      * 
      * @param message The detail message
      * @param cause The cause of this exception
      * 
      * @example
-     * throw new UnauthorizedException("Authorization check failed", originalException);
+    * throw new UnauthorizedException("Authorization check failed", originalException);
      */
-    public UnauthorizedException(String message, Throwable cause) {
-        super(message, cause);
-    }
+  public UnauthorizedException(String message, Throwable cause) {
+    super(message, cause);
+  }
 
-    /**
+  /**
      * Constructs a new UnauthorizedException for a specific user and permission.
      * Convenience method for common use case.
      * 
@@ -52,18 +52,18 @@ public class UnauthorizedException extends Exception {
      * @return A new UnauthorizedException with formatted message
      * 
      * @example
-     * throw UnauthorizedException.forPermission("user@example.com", Permission.CREATE_TASKS);
+    * throw UnauthorizedException.forPermission("user@example.com", Permission.CREATE_TASKS);
      */
-    public static UnauthorizedException forPermission(String userEmail, Permission permission) {
-        return new UnauthorizedException(
+  public static UnauthorizedException forPermission(String userEmail, Permission permission) {
+    return new UnauthorizedException(
             String.format("User '%s' does not have permission: %s (%s)",
                 userEmail,
                 permission.name(),
                 permission.getDescription())
         );
-    }
+  }
 
-    /**
+  /**
      * Constructs a new UnauthorizedException for a specific role requirement.
      * 
      * @param userEmail The email of the user who was denied
@@ -72,14 +72,14 @@ public class UnauthorizedException extends Exception {
      * @return A new UnauthorizedException with formatted message
      * 
      * @example
-     * throw UnauthorizedException.forRole("user@example.com", Role.ADMIN, user.getRole());
+    * throw UnauthorizedException.forRole("user@example.com", Role.ADMIN, user.getRole());
      */
-    public static UnauthorizedException forRole(String userEmail, Role requiredRole, Role actualRole) {
-        return new UnauthorizedException(
+  public static UnauthorizedException forRole(String userEmail, Role requiredRole, Role actualRole) {
+    return new UnauthorizedException(
             String.format("User '%s' requires role '%s' but has role '%s'",
                 userEmail,
                 requiredRole.getDisplayName(),
                 actualRole.getDisplayName())
         );
-    }
+  }
 }

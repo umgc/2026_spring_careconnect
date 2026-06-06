@@ -32,81 +32,81 @@ import java.util.*;
 @RequestMapping("/v1/api/messages")
 public class MessageController {
 
-    @Autowired
+  @Autowired
     private MessageRepository messageRepo;
 
-    @Autowired
+  @Autowired
     private UserRepository userRepo;
 
-    @Autowired
+  @Autowired
     private PatientRepository patientRepo;
 
-    @Autowired
+  @Autowired
     private CaregiverRepository caregiverRepo;
 
-    @Autowired
+  @Autowired
     private CaregiverPatientLinkService linkService;
 
-    @Autowired
+  @Autowired
     private FileManagementService fileManagementService;
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    // ✅ Send a new message
-    @RequirePermission(Permission.SEND_MESSAGES)
+  // Ã¢Å“â€¦ Send a new message
+  @RequirePermission(Permission.SEND_MESSAGES)
 
-    @PostMapping("/send")
+  @PostMapping("/send")
     public ResponseEntity<Message> sendMessage(@RequestBody Message message) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, message.getSenderId());
-        message.setTimestamp(LocalDateTime.now());
-        message.setRead(false);
-        Message saved = messageRepo.save(message);
-        return ResponseEntity.ok(saved);
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, message.getSenderId());
+    message.setTimestamp(LocalDateTime.now());
+    message.setRead(false);
+    Message saved = messageRepo.save(message);
+    return ResponseEntity.ok(saved);
+  }
 
-    // ✅ Fetch full conversation between two users
-    @RequirePermission(Permission.VIEW_MESSAGES)
+  // Ã¢Å“â€¦ Fetch full conversation between two users
+  @RequirePermission(Permission.VIEW_MESSAGES)
 
-    @GetMapping("/conversation")
+  @GetMapping("/conversation")
     public ResponseEntity<List<Message>> getConversation(
             @RequestParam Long user1,
             @RequestParam Long user2
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        Long currentUserId = currentUser.getId();
-        if (!currentUserId.equals(user1) && !currentUserId.equals(user2) && !currentUser.isAdmin()) {
-            throw new UnauthorizedException("You can only view conversations you are a participant in");
-        }
-        List<Message> conversation = messageRepo.findConversation(user1, user2);
-        return ResponseEntity.ok(conversation);
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    Long currentUserId = currentUser.getId();
+    if (!currentUserId.equals(user1) && !currentUserId.equals(user2) && !currentUser.isAdmin()) {
+      throw new UnauthorizedException("You can only view conversations you are a participant in");
     }
+    List<Message> conversation = messageRepo.findConversation(user1, user2);
+    return ResponseEntity.ok(conversation);
+  }
 
-    // ✅ Inbox view: list all recent conversations with peer info
-    @RequirePermission(Permission.VIEW_MESSAGES)
+  // Ã¢Å“â€¦ Inbox view: list all recent conversations with peer info
+  @RequirePermission(Permission.VIEW_MESSAGES)
 
-    @GetMapping("/inbox/{userId}")
+  @GetMapping("/inbox/{userId}")
     public ResponseEntity<List<InboxMessageDto>> getInbox(@PathVariable Long userId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, userId);
-        List<Message> messages = messageRepo.findAllUserMessages(userId);
-        Map<Long, InboxMessageDto> map = new LinkedHashMap<>(); // keep order
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, userId);
+    List<Message> messages = messageRepo.findAllUserMessages(userId);
+    Map<Long, InboxMessageDto> map = new LinkedHashMap<>(); // keep order
 
-        for (Message m : messages) {
-            Long peerId = m.getSenderId().equals(userId) ? m.getReceiverId() : m.getSenderId();
-            if (map.containsKey(peerId)) continue; // already got latest from this peer
+    for (Message m : messages) {
+      Long peerId = m.getSenderId().equals(userId) ? m.getReceiverId() : m.getSenderId();
+      if (map.containsKey(peerId)) continue; // already got latest from this peer
 
-            Optional<User> peer = userRepo.findById(peerId);
-            if (peer.isPresent()) {
-                User u = peer.get();
-                String peerName = resolveDisplayName(u);
-                String peerRole = u.getRole() != null ? u.getRole().name() : "UNKNOWN";
-                boolean hasUnread = m.getReceiverId().equals(userId) && !m.isRead();
-                InboxMessageDto dto = new InboxMessageDto(
+      Optional<User> peer = userRepo.findById(peerId);
+      if (peer.isPresent()) {
+        User u = peer.get();
+        String peerName = resolveDisplayName(u);
+        String peerRole = u.getRole() != null ? u.getRole().name() : "UNKNOWN";
+        boolean hasUnread = m.getReceiverId().equals(userId) && !m.isRead();
+        InboxMessageDto dto = new InboxMessageDto(
                         m.getId(),
                         peerId,
                         peerName,
@@ -116,85 +116,85 @@ public class MessageController {
                         m.getTimestamp(),
                         hasUnread
                 );
-                map.put(peerId, dto);
-            }
-        }
-
-        return ResponseEntity.ok(new ArrayList<>(map.values()));
+        map.put(peerId, dto);
+      }
     }
 
-    // ✅ Send a message with a file attachment (multipart)
-    @RequirePermission(Permission.SEND_MESSAGES)
-    @PostMapping("/send-attachment")
+    return ResponseEntity.ok(new ArrayList<>(map.values()));
+  }
+
+  // Ã¢Å“â€¦ Send a message with a file attachment (multipart)
+  @RequirePermission(Permission.SEND_MESSAGES)
+  @PostMapping("/send-attachment")
     public ResponseEntity<?> sendAttachment(
             @RequestParam("file") MultipartFile file,
             @RequestParam Long senderId,
             @RequestParam Long receiverId
-    ) {
-        boolean allowed = linkService.isPatientMessagingEnabled(senderId, receiverId)
+  ) {
+    boolean allowed = linkService.isPatientMessagingEnabled(senderId, receiverId)
                 || linkService.isPatientMessagingEnabled(receiverId, senderId);
-        if (!allowed) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+    if (!allowed) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body("Messaging is not enabled for this caregiver-patient link.");
-        }
+    }
 
-        try {
-            User sender = userRepo.findById(senderId).orElse(null);
-            String userType = sender != null ? sender.getRole().name() : "PATIENT";
+    try {
+      User sender = userRepo.findById(senderId).orElse(null);
+      String userType = sender != null ? sender.getRole().name() : "PATIENT";
 
-            FileUploadResponse uploaded = fileManagementService.uploadFile(
+      FileUploadResponse uploaded = fileManagementService.uploadFile(
                     file, senderId, userType, "CHAT_ATTACHMENT", "Chat attachment", null);
 
-            Message message = new Message();
-            message.setSenderId(senderId);
-            message.setReceiverId(receiverId);
-            message.setContent("");
-            message.setTimestamp(LocalDateTime.now());
-            message.setRead(false);
-            message.setAttachmentId(uploaded.getFileId());
-            message.setAttachmentName(uploaded.getOriginalFilename());
-            message.setAttachmentContentType(uploaded.getContentType());
-            message.setAttachmentSize(file.getSize());
+      Message message = new Message();
+      message.setSenderId(senderId);
+      message.setReceiverId(receiverId);
+      message.setContent("");
+      message.setTimestamp(LocalDateTime.now());
+      message.setRead(false);
+      message.setAttachmentId(uploaded.getFileId());
+      message.setAttachmentName(uploaded.getOriginalFilename());
+      message.setAttachmentContentType(uploaded.getContentType());
+      message.setAttachmentSize(file.getSize());
 
-            Message saved = messageRepo.save(message);
-            return ResponseEntity.ok(Map.of(
+      Message saved = messageRepo.save(message);
+      return ResponseEntity.ok(Map.of(
                     "message", saved,
                     "downloadUrl", "/v1/api/files/" + uploaded.getFileId() + "/download"
             ));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+    } catch (Exception e) {
+      return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to upload attachment: " + e.getMessage());
-        }
     }
+  }
 
-    private String resolveDisplayName(User u) {
-        Role role = u.getRole();
-        if (role == Role.PATIENT) {
-            String profileName = patientRepo.findByUserId(u.getId())
+  private String resolveDisplayName(User u) {
+    Role role = u.getRole();
+    if (role == Role.PATIENT) {
+      String profileName = patientRepo.findByUserId(u.getId())
                     .map(p -> fullName(p.getFirstName(), p.getLastName()))
                     .filter(s -> !s.isBlank())
                     .orElse(null);
-            if (profileName != null) return profileName;
-        }
-        if (role == Role.CAREGIVER) {
-            String profileName = caregiverRepo.findByUserId(u.getId())
+      if (profileName != null) return profileName;
+    }
+    if (role == Role.CAREGIVER) {
+      String profileName = caregiverRepo.findByUserId(u.getId())
                     .map(c -> fullName(c.getFirstName(), c.getLastName()))
                     .filter(s -> !s.isBlank())
                     .orElse(null);
-            if (profileName != null) return profileName;
-        }
-        if (u.getName() != null && !u.getName().isBlank()) return u.getName().trim();
-        String email = u.getEmail();
-        if (email != null && !email.isBlank()) {
-            int at = email.indexOf('@');
-            return at > 0 ? email.substring(0, at) : email;
-        }
-        return "Unknown";
+      if (profileName != null) return profileName;
     }
+    if (u.getName() != null && !u.getName().isBlank()) return u.getName().trim();
+    String email = u.getEmail();
+    if (email != null && !email.isBlank()) {
+      int at = email.indexOf('@');
+      return at > 0 ? email.substring(0, at) : email;
+    }
+    return "Unknown";
+  }
 
-    private static String fullName(String first, String last) {
-        String f = (first != null) ? first.trim() : "";
-        String l = (last  != null) ? last.trim()  : "";
-        return (f + " " + l).trim();
-    }
+  private static String fullName(String first, String last) {
+    String f = (first != null) ? first.trim() : "";
+    String l = (last  != null) ? last.trim()  : "";
+    return (f + " " + l).trim();
+  }
 }

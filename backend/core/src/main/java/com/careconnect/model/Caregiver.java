@@ -6,38 +6,38 @@ import lombok.*;
 @Entity
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Caregiver {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String firstName;
-    private String lastName;
-    private String dob;
+  private String firstName;
+  private String lastName;
+  private String dob;
     
-    @Column(name = "gender")
-    @Enumerated(EnumType.STRING)
+  @Column(name = "gender")
+  @Enumerated(EnumType.STRING)
     private Gender gender;
 
-    private String email;
-    private String phone;
+  private String email;
+  private String phone;
 
-    @Embedded
+  @Embedded
     private ProfessionalInfo professional;
 
-    @Embedded
+  @Embedded
     private Address address;
 
-    private String caregiverType; 
+  private String caregiverType; 
 
-    @OneToOne(cascade = CascadeType.ALL)
-    @JoinColumn(name = "user_id")
+  @OneToOne(cascade = CascadeType.ALL)
+  @JoinColumn(name = "user_id")
     private User user;
 
-    public String getCaregiverType() {
-        return caregiverType;
-    }
+  public String getCaregiverType() {
+    return caregiverType;
+  }
 
-    public void setCaregiverType(String caregiverType) {
-        this.caregiverType = caregiverType;
-    }
+  public void setCaregiverType(String caregiverType) {
+    this.caregiverType = caregiverType;
+  }
 }

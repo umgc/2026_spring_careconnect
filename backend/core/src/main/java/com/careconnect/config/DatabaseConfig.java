@@ -21,54 +21,54 @@ import javax.sql.DataSource;
 @ConditionalOnProperty(name = "careconnect.database.use-aws-config", havingValue = "true", matchIfMissing = false)
 public class DatabaseConfig {
 
-    @Value("${careconnect.db.url}")
+  @Value("${careconnect.db.url}")
     private String jdbcUrl;
 
-    @Value("${careconnect.db.username}")
+  @Value("${careconnect.db.username}")
     private String userParameter;
 
-    @Value("${careconnect.db.password}")
+  @Value("${careconnect.db.password}")
     private String passwordParameter;
 
-    private final ParameterStoreService parameterService;
+  private final ParameterStoreService parameterService;
 
-    @Autowired(required = false)
+  @Autowired(required = false)
     public DatabaseConfig(ParameterStoreService parameterService) {
-        this.parameterService = parameterService;
-    }
+    this.parameterService = parameterService;
+  }
 
-    /**
+  /**
      * Will get the sensitive value/properties for database connection from SSM Parameter Store
      *
      * @return DataSourceProperties
      */
-    @Bean
-    @DependsOn("ssmClient")
-    @Primary
+  @Bean
+  @DependsOn("ssmClient")
+  @Primary
     public DataSourceProperties dataSourceProperties() {
-        DataSourceProperties properties = new DataSourceProperties();
-        String url = parameterService.getSecureParameter(jdbcUrl);
-        String username = parameterService.getSecureParameter(userParameter);
-        String password = parameterService.getSecureParameter(passwordParameter);
+    DataSourceProperties properties = new DataSourceProperties();
+    String url = parameterService.getSecureParameter(jdbcUrl);
+    String username = parameterService.getSecureParameter(userParameter);
+    String password = parameterService.getSecureParameter(passwordParameter);
 
-        properties.setUrl(url);
-        properties.setUsername(username);
-        properties.setPassword(password);
+    properties.setUrl(url);
+    properties.setUsername(username);
+    properties.setPassword(password);
 
-        return properties;
-    }
+    return properties;
+  }
 
-    @Bean
-    @Primary
-    @DependsOn("dataSourceProperties")
+  @Bean
+  @Primary
+  @DependsOn("dataSourceProperties")
     public DataSource dataSource(DataSourceProperties dataSourceProperties, ConfigurableEnvironment env) {
-        HikariDataSource dataSource = dataSourceProperties.initializeDataSourceBuilder()
+    HikariDataSource dataSource = dataSourceProperties.initializeDataSourceBuilder()
                 .type(HikariDataSource.class)
                 .build();
 
-        Binder.get(env).bind("spring.datasource.hikari", Bindable.ofInstance(dataSource));
+    Binder.get(env).bind("spring.datasource.hikari", Bindable.ofInstance(dataSource));
 
-        return dataSource;
-    }
+    return dataSource;
+  }
 
 }

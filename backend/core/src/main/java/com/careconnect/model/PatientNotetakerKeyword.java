@@ -12,16 +12,16 @@ import lombok.*;
 @Builder
 public class PatientNotetakerKeyword {
     
-    @JsonProperty("keyword")
+  @JsonProperty("keyword")
     private String keyword;
    
-    @JsonProperty("event_type")
+  @JsonProperty("event_type")
     private EventType eventType;
    
-    public enum EventType {
+  public enum EventType {
         ALERT,
         TASK
-    }
+  }
 }
 
 

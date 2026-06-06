@@ -8,7 +8,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class UploadedFileDTO {
-    private String filename;
-    private String content; // Base64 or plain text, depending on frontend
-    private String contentType;
+  private String filename;
+  private String content; // Base64 or plain text, depending on frontend
+  private String contentType;
 }

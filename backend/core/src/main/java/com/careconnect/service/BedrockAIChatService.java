@@ -35,14 +35,14 @@ public class BedrockAIChatService implements AIService {
         this.client = BedrockRuntimeClient.builder()
                 .region(Region.US_EAST_1)
                 .build();
-    }
+  }
 
-    @Override
+  @Override
     public ChatResponse processChat(ChatRequest request) {
 
-        log.info("Using Bedrock AI provider");
+    log.info("Using Bedrock AI provider");
 
-        String payload = """
+    String payload = """
         {
           "messages": [
             {
@@ -74,7 +74,7 @@ public class BedrockAIChatService implements AIService {
                 .body(SdkBytes.fromString(payload, StandardCharsets.UTF_8))
                 .build();
 
-        InvokeModelResponse response = client.invokeModel(invokeRequest);
+    InvokeModelResponse response = client.invokeModel(invokeRequest);
 
         ObjectMapper mapper = new ObjectMapper();
 
@@ -101,8 +101,8 @@ public class BedrockAIChatService implements AIService {
         chatResponse.setSuccess(true);
         chatResponse.setTimestamp(LocalDateTime.now());
 
-        return chatResponse;
-    }
+    return chatResponse;
+  }
 
     // ===== Stubbed methods =====
 
@@ -111,17 +111,17 @@ public class BedrockAIChatService implements AIService {
         throw new UnsupportedOperationException();
     }
 
-    @Override
+  @Override
     public List<ChatMessageSummary> getConversationMessages(String conversationId) {
         throw new UnsupportedOperationException();
     }
 
-    @Override
+  @Override
     public List<ChatMessageSummary> getRecentMessagesForUser(Long userId, int limit) {
         throw new UnsupportedOperationException();
     }
 
-    @Override
+  @Override
     public void deactivateConversation(String conversationId) {
         throw new UnsupportedOperationException();
     }

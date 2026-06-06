@@ -16,23 +16,23 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AllergyService {
     
-    private final AllergyRepository allergyRepository;
-    private final PatientRepository patientRepository;
+  private final AllergyRepository allergyRepository;
+  private final PatientRepository patientRepository;
     
-    /**
+  /**
      * Create a new allergy for a patient
      */
-    @Transactional
+  @Transactional
     public AllergyDTO createAllergy(AllergyDTO dto) {
-        Patient patient = patientRepository.findById(dto.patientId())
+    Patient patient = patientRepository.findById(dto.patientId())
             .orElseThrow(() -> new IllegalArgumentException("Patient not found with id: " + dto.patientId()));
         
-        // Check if allergy already exists for this patient
-        if (allergyRepository.existsByPatientAndAllergenIgnoreCaseAndIsActiveTrue(patient, dto.allergen())) {
-            throw new IllegalArgumentException("Active allergy for '" + dto.allergen() + "' already exists for this patient");
-        }
+    // Check if allergy already exists for this patient
+    if (allergyRepository.existsByPatientAndAllergenIgnoreCaseAndIsActiveTrue(patient, dto.allergen())) {
+      throw new IllegalArgumentException("Active allergy for '" + dto.allergen() + "' already exists for this patient");
+    }
         
-        Allergy allergy = Allergy.builder()
+    Allergy allergy = Allergy.builder()
             .patient(patient)
             .allergen(dto.allergen())
             .allergyType(dto.allergyType())
@@ -43,101 +43,101 @@ public class AllergyService {
             .isActive(dto.isActive() != null ? dto.isActive() : true)
             .build();
         
-        Allergy saved = allergyRepository.save(allergy);
-        return mapToDTO(saved);
-    }
+    Allergy saved = allergyRepository.save(allergy);
+    return mapToDTO(saved);
+  }
     
-    /**
+  /**
      * Update an existing allergy
      */
-    @Transactional
+  @Transactional
     public AllergyDTO updateAllergy(Long id, AllergyDTO dto) {
-        Allergy existing = allergyRepository.findById(id)
+    Allergy existing = allergyRepository.findById(id)
             .orElseThrow(() -> new IllegalArgumentException("Allergy not found with id: " + id));
         
-        // Update only non-null fields
-        if (dto.allergen() != null) {
-            existing.setAllergen(dto.allergen());
-        }
-        if (dto.allergyType() != null) {
-            existing.setAllergyType(dto.allergyType());
-        }
-        if (dto.severity() != null) {
-            existing.setSeverity(dto.severity());
-        }
-        if (dto.reaction() != null) {
-            existing.setReaction(dto.reaction());
-        }
-        if (dto.notes() != null) {
-            existing.setNotes(dto.notes());
-        }
-        if (dto.diagnosedDate() != null) {
-            existing.setDiagnosedDate(dto.diagnosedDate());
-        }
-        if (dto.isActive() != null) {
-            existing.setIsActive(dto.isActive());
-        }
-        
-        Allergy updated = allergyRepository.save(existing);
-        return mapToDTO(updated);
+    // Update only non-null fields
+    if (dto.allergen() != null) {
+      existing.setAllergen(dto.allergen());
     }
+    if (dto.allergyType() != null) {
+      existing.setAllergyType(dto.allergyType());
+    }
+    if (dto.severity() != null) {
+      existing.setSeverity(dto.severity());
+    }
+    if (dto.reaction() != null) {
+      existing.setReaction(dto.reaction());
+    }
+    if (dto.notes() != null) {
+      existing.setNotes(dto.notes());
+    }
+    if (dto.diagnosedDate() != null) {
+      existing.setDiagnosedDate(dto.diagnosedDate());
+    }
+    if (dto.isActive() != null) {
+      existing.setIsActive(dto.isActive());
+    }
+        
+    Allergy updated = allergyRepository.save(existing);
+    return mapToDTO(updated);
+  }
     
-    /**
+  /**
      * Get all allergies for a patient
      */
-    public List<AllergyDTO> getAllergiesForPatient(Long patientId) {
-        return allergyRepository.findByPatientId(patientId)
+  public List<AllergyDTO> getAllergiesForPatient(Long patientId) {
+    return allergyRepository.findByPatientId(patientId)
             .stream()
             .map(this::mapToDTO)
             .toList();
-    }
+  }
     
-    /**
+  /**
      * Get active allergies for a patient
      */
-    public List<AllergyDTO> getActiveAllergiesForPatient(Long patientId) {
-        return allergyRepository.findActiveAllergiesByPatientId(patientId)
+  public List<AllergyDTO> getActiveAllergiesForPatient(Long patientId) {
+    return allergyRepository.findActiveAllergiesByPatientId(patientId)
             .stream()
             .map(this::mapToDTO)
             .toList();
-    }
+  }
     
-    /**
+  /**
      * Get a specific allergy by ID
      */
-    public Optional<AllergyDTO> getAllergy(Long id) {
-        return allergyRepository.findById(id)
+  public Optional<AllergyDTO> getAllergy(Long id) {
+    return allergyRepository.findById(id)
             .map(this::mapToDTO);
-    }
+  }
     
-    /**
+  /**
      * Deactivate an allergy (soft delete)
      */
-    @Transactional
+  @Transactional
     public void deactivateAllergy(Long id) {
-        Allergy allergy = allergyRepository.findById(id)
+    Allergy allergy = allergyRepository.findById(id)
             .orElseThrow(() -> new IllegalArgumentException("Allergy not found with id: " + id));
         
-        allergy.setIsActive(false);
-        allergyRepository.save(allergy);
-    }
+    allergy.setIsActive(false);
+    allergyRepository.save(allergy);
+  }
     
-    /**
+  /**
      * Permanently delete an allergy
      */
-    @Transactional
+  @Transactional
     public void deleteAllergy(Long id) {
-        if (!allergyRepository.existsById(id)) {
-            throw new IllegalArgumentException("Allergy not found with id: " + id);
-        }
-        allergyRepository.deleteById(id);
+    if (!allergyRepository.existsById(id)) {
+      throw new IllegalArgumentException("Allergy not found with id: " + id);
     }
+    allergyRepository.deleteById(id);
+  }
     
-    /**
+  /**
      * Map Allergy entity to DTO
      */
-    private AllergyDTO mapToDTO(Allergy allergy) {
-        return AllergyDTO.builder()
+  private AllergyDTO mapToDTO(Allergy allergy) {
+    return AllergyDTO.builder()
             .id(allergy.getId())
             .patientId(allergy.getPatient().getId())
             .allergen(allergy.getAllergen())
@@ -148,5 +148,5 @@ public class AllergyService {
             .diagnosedDate(allergy.getDiagnosedDate())
             .isActive(allergy.getIsActive())
             .build();
-    }
+  }
 }

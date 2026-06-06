@@ -21,54 +21,54 @@ import java.util.Map;
 @RequestMapping("/v3/api/tasks")
 public class TaskController {
 
-    private final TaskService taskService;
+  private final TaskService taskService;
 
-    public TaskController(TaskService taskService) {
-        this.taskService = taskService;
-    }
+  public TaskController(TaskService taskService) {
+    this.taskService = taskService;
+  }
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    @GetMapping
+  @GetMapping
     public ResponseEntity<List<Map<String, Object>>> getAllTasks() throws UnauthorizedException {
-        // RBAC: Only admins and caregivers can view all tasks
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        return ResponseEntity.ok(taskService.getAllTasks().stream().map(this::toResponse).toList());
-    }
+    // RBAC: Only admins and caregivers can view all tasks
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    return ResponseEntity.ok(taskService.getAllTasks().stream().map(this::toResponse).toList());
+  }
 
-    @GetMapping("/{id}")
+  @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getTaskById(@PathVariable Long id) throws UnauthorizedException {
-        // RBAC: Only admins and caregivers can view individual tasks
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        Task task = taskService.getTaskById(id);
-        if (task != null) {
-            return ResponseEntity.ok(toResponse(task));
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+    // RBAC: Only admins and caregivers can view individual tasks
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    Task task = taskService.getTaskById(id);
+    if (task != null) {
+      return ResponseEntity.ok(toResponse(task));
+    } else {
+      return ResponseEntity.notFound().build();
     }
+  }
 
-    @GetMapping("/patient/{patientId}")
+  @GetMapping("/patient/{patientId}")
     public ResponseEntity<List<Map<String, Object>>> getTasksByPatient(@PathVariable Long patientId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requirePatientAccess(currentUser, patientId);
-        List<Map<String, Object>> tasks = taskService.getTasksByPatient(patientId).stream().map(this::toResponse).toList();
-        return ResponseEntity.ok(tasks);
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requirePatientAccess(currentUser, patientId);
+    List<Map<String, Object>> tasks = taskService.getTasksByPatient(patientId).stream().map(this::toResponse).toList();
+    return ResponseEntity.ok(tasks);
+  }
 
-    @PostMapping("/patient/{patientId}")
+  @PostMapping("/patient/{patientId}")
     public ResponseEntity<Map<String, Object>> createTask(@PathVariable Long patientId, @RequestBody TaskDto task) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requirePatientAccess(currentUser, patientId);
-        Task created = taskService.createTask(patientId, task);
-        return ResponseEntity.ok(toResponse(created));
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requirePatientAccess(currentUser, patientId);
+    Task created = taskService.createTask(patientId, task);
+    return ResponseEntity.ok(toResponse(created));
+  }
 
     @PostMapping("/patient/{patientId}/preview-notification")
     public ResponseEntity<Map<String, Object>> previewTaskNotification(@PathVariable Long patientId, @RequestBody TaskDto task) throws UnauthorizedException {
@@ -79,43 +79,43 @@ public class TaskController {
 
     @PutMapping("/{id}")
     public ResponseEntity<Map<String, Object>> updateTask(@PathVariable Long id, @RequestBody TaskDto task) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        Task updated = taskService.updateTask(id, task);
-        if (updated != null) {
-            return ResponseEntity.ok(toResponse(updated));
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    Task updated = taskService.updateTask(id, task);
+    if (updated != null) {
+      return ResponseEntity.ok(toResponse(updated));
+    } else {
+      return ResponseEntity.notFound().build();
     }
+  }
 
-    @DeleteMapping("/{id}")
+  @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTask(@PathVariable Long id) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        if (taskService.deleteTask(id)) {
-            return ResponseEntity.noContent().build();
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    if (taskService.deleteTask(id)) {
+      return ResponseEntity.noContent().build();
+    } else {
+      return ResponseEntity.notFound().build();
     }
+  }
 
-    private Map<String, Object> toResponse(Task task) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("id", task.getId());
-        response.put("patientId", task.getPatient() != null ? task.getPatient().getId() : null);
-        response.put("name", task.getName());
-        response.put("description", task.getDescription());
-        response.put("date", task.getDate());
-        response.put("timeOfDay", task.getTimeOfDay());
-        response.put("isCompleted", task.isCompleted());
-        response.put("frequency", task.getFrequency());
-        response.put("interval", task.getTaskInterval());
-        response.put("count", task.getDoCount());
-        response.put("daysOfWeek", task.getDaysOfWeek());
-        response.put("taskType", task.getTaskType());
-        response.put("createdAt", task.getCreatedAt());
-        response.put("parentTaskId", task.getParentTaskId());
-        return response;
-    }
+  private Map<String, Object> toResponse(Task task) {
+    Map<String, Object> response = new HashMap<>();
+    response.put("id", task.getId());
+    response.put("patientId", task.getPatient() != null ? task.getPatient().getId() : null);
+    response.put("name", task.getName());
+    response.put("description", task.getDescription());
+    response.put("date", task.getDate());
+    response.put("timeOfDay", task.getTimeOfDay());
+    response.put("isCompleted", task.isCompleted());
+    response.put("frequency", task.getFrequency());
+    response.put("interval", task.getTaskInterval());
+    response.put("count", task.getDoCount());
+    response.put("daysOfWeek", task.getDaysOfWeek());
+    response.put("taskType", task.getTaskType());
+    response.put("createdAt", task.getCreatedAt());
+    response.put("parentTaskId", task.getParentTaskId());
+    return response;
+  }
 }

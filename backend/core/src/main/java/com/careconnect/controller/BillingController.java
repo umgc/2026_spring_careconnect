@@ -26,7 +26,7 @@ public class BillingController {
     private final PlanRepository planRepository;
     private final JwtTokenProvider jwtTokenProvider;
 
-    @Autowired
+  @Autowired
     public BillingController(AppleBillingService appleBillingService,
                              GoogleBillingService googleBillingService,
                              com.careconnect.service.PaymentService paymentService,
@@ -143,6 +143,10 @@ public class BillingController {
     @PostMapping("/verify/apple")
     public ResponseEntity<?> verifyApple(@RequestBody BillingVerifyRequest request,
                                          @RequestHeader(value = "Authorization", required = false) String authHeader) {
+    try {
+      com.careconnect.model.User resolvedUser = null;
+      if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        String token = authHeader.substring(7);
         try {
             BillingVerifyResponse resp = appleBillingService.verifyReceipt(request);
             com.careconnect.model.Payment p = buildPayment(com.careconnect.model.BillingPlatform.APPLE, request, resp);
@@ -153,11 +157,32 @@ public class BillingController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
         }
-    }
+        if (sub == null) sub = new com.careconnect.model.Subscription();
+        sub.setUser(user);
+        sub.setPlatform(com.careconnect.model.BillingPlatform.APPLE);
+        sub.setExternalSubscriptionId(resp.getExternalSubscriptionId());
+        sub.setStatus(resp.getStatus());
+        sub.setStartedAt(resp.getPurchaseDate());
+        sub.setCurrentPeriodEnd(resp.getExpiryDate());
+        sub.setLastValidatedAt(java.time.Instant.now());
+        subscriptionRepository.save(sub);
+        p.setSubscription(sub);
+        paymentService.savePayment(p);
+      }
 
-    @PostMapping("/verify/google")
+      return ResponseEntity.ok(resp);
+    } catch (Exception e) {
+      return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
+    }
+  }
+
+  @PostMapping("/verify/google")
     public ResponseEntity<?> verifyGoogle(@RequestBody BillingVerifyRequest request,
                                           @RequestHeader(value = "Authorization", required = false) String authHeader) {
+    try {
+      com.careconnect.model.User resolvedUser = null;
+      if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        String token = authHeader.substring(7);
         try {
             BillingVerifyResponse resp = googleBillingService.verifyReceipt(request);
             com.careconnect.model.Payment p = buildPayment(com.careconnect.model.BillingPlatform.GOOGLE, request, resp);
@@ -168,14 +193,25 @@ public class BillingController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
         }
-    }
+        if (sub == null) sub = new com.careconnect.model.Subscription();
+        sub.setUser(user);
+        sub.setPlatform(com.careconnect.model.BillingPlatform.GOOGLE);
+        sub.setExternalSubscriptionId(resp.getExternalSubscriptionId());
+        sub.setStatus(resp.getStatus());
+        sub.setStartedAt(resp.getPurchaseDate());
+        sub.setCurrentPeriodEnd(resp.getExpiryDate());
+        sub.setLastValidatedAt(java.time.Instant.now());
+        subscriptionRepository.save(sub);
+        p.setSubscription(sub);
+        paymentService.savePayment(p);
+      }
 
     @PostMapping("/webhook/apple")
     public ResponseEntity<?> appleWebhook(@RequestBody String body, @RequestHeader(value = "Authorization", required = false) String auth) {
         return ResponseEntity.ok(java.util.Map.of("message", "apple webhook received"));
     }
 
-    @PostMapping("/webhook/google")
+  @PostMapping("/webhook/google")
     public ResponseEntity<?> googleWebhook(@RequestBody String body, @RequestHeader(value = "Authorization", required = false) String auth) {
         return ResponseEntity.ok(java.util.Map.of("message", "google webhook received"));
     }

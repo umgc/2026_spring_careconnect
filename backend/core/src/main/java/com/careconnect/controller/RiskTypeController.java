@@ -20,16 +20,16 @@ import java.util.List;
 @SecurityRequirement(name = "Bearer Authentication")
 public class RiskTypeController {
 
-    private final PatientRiskService patientRiskService;
+  private final PatientRiskService patientRiskService;
 
-    public RiskTypeController(PatientRiskService patientRiskService) {
-        this.patientRiskService = patientRiskService;
-    }
+  public RiskTypeController(PatientRiskService patientRiskService) {
+    this.patientRiskService = patientRiskService;
+  }
 
-    @GetMapping
-    @Operation(summary = "Get all risk types", description = "Returns the full predefined list of risk types (e.g. Aspiration Pneumonia, Elopement, Fall with Injury, Self-Harm, Seizures)")
-    @ApiResponses({ @ApiResponse(responseCode = "200", description = "List of risk types") })
+  @GetMapping
+  @Operation(summary = "Get all risk types", description = "Returns the full predefined list of risk types (e.g. Aspiration Pneumonia, Elopement, Fall with Injury, Self-Harm, Seizures)")
+  @ApiResponses({ @ApiResponse(responseCode = "200", description = "List of risk types") })
     public ResponseEntity<List<RiskType>> getAllRiskTypes() {
-        return ResponseEntity.ok(patientRiskService.getAllRiskTypes());
-    }
+    return ResponseEntity.ok(patientRiskService.getAllRiskTypes());
+  }
 }

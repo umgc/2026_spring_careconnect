@@ -11,16 +11,16 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(name = "careconnect.stripe.enabled", havingValue = "true", matchIfMissing = true)
 public class StripeConfig {
 
-    @Value("${stripe.secret-key:}")   
+  @Value("${stripe.secret-key:}")   
     private String secretKey;
 
-    @PostConstruct
+  @PostConstruct
     public void init() {
-        if (secretKey.isBlank()) {
-            // System.out.println("Stripe secret key not set – payments disabled");
-        } else {
-            Stripe.apiKey = secretKey;
-            // System.out.println("Stripe key loaded");
-        }
+    if (secretKey.isBlank()) {
+            // System.out.println("Stripe secret key not set Ã¢â‚¬â€œ payments disabled");
+    } else {
+      Stripe.apiKey = secretKey;
+      // System.out.println("Stripe key loaded");
     }
+  }
 }

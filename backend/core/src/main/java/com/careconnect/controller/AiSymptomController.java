@@ -32,35 +32,35 @@ import java.util.Map;
 @RequestMapping({"/api/ai", "/v1/api/ai"})
 public class AiSymptomController {
 
-    private final AiSymptomService aiSymptomService;
-    private final AllergyRepository allergyRepository;
-    private final SymptomEntryRepository symptomEntryRepository;
-    private final SecurityUtil securityUtil;
-    private final AuthorizationService authorizationService;
+  private final AiSymptomService aiSymptomService;
+  private final AllergyRepository allergyRepository;
+  private final SymptomEntryRepository symptomEntryRepository;
+  private final SecurityUtil securityUtil;
+  private final AuthorizationService authorizationService;
 
-    @RequirePermission(Permission.CREATE_TASKS)
+  @RequirePermission(Permission.CREATE_TASKS)
 
 
-    @PostMapping(
+  @PostMapping(
             value = "/analyze/symptom",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE
     )
     public ResponseEntity<?> analyze(@Valid @RequestBody AiSymptomDTO.Request body) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        if (currentUser.isFamilyMember()) {
-            throw new UnauthorizedException("This feature requires ADMIN, CAREGIVER, or PATIENT role");
-        }
-        Long pid = body.getPatientId();
-        if (pid != null) {
-            authorizationService.requirePatientAccess(currentUser, pid);
-        }
-        try {
-            List<Allergy> allergies = (pid == null)
+    User currentUser = securityUtil.resolveCurrentUser();
+    if (currentUser.isFamilyMember()) {
+      throw new UnauthorizedException("This feature requires ADMIN, CAREGIVER, or PATIENT role");
+    }
+    Long pid = body.getPatientId();
+    if (pid != null) {
+      authorizationService.requirePatientAccess(currentUser, pid);
+    }
+    try {
+      List<Allergy> allergies = (pid == null)
                     ? List.of()
                     : allergyRepository.findActiveAllergiesByPatientId(pid);
 
-            List<SymptomEntry> recentSymptoms = (pid == null)
+      List<SymptomEntry> recentSymptoms = (pid == null)
                     ? List.of()
                     : symptomEntryRepository
                     .findByPatientIdOrderByTakenAtDesc(pid)
@@ -68,9 +68,9 @@ public class AiSymptomController {
                     .limit(5)
                     .toList();
 
-            AiSymptomDTO.Result result = aiSymptomService.analyze(body, allergies, recentSymptoms);
+      AiSymptomDTO.Result result = aiSymptomService.analyze(body, allergies, recentSymptoms);
 
-            return ResponseEntity.ok(Map.of(
+      return ResponseEntity.ok(Map.of(
                     "data", Map.of(
                             "symptomKey",   result.getSymptomKey(),
                             "symptomValue", result.getSymptomValue(),
@@ -78,12 +78,12 @@ public class AiSymptomController {
                             "notes",        result.getNotes()
                     )
             ));
-        } catch (Exception e) {
-            log.error("AI symptom analyze failed", e);
-            return ResponseEntity.badRequest().body(Map.of(
+    } catch (Exception e) {
+      log.error("AI symptom analyze failed", e);
+      return ResponseEntity.badRequest().body(Map.of(
                     "error", "AI_ANALYZE_FAILED",
                     "message", e.getMessage()
             ));
-        }
     }
+  }
 }

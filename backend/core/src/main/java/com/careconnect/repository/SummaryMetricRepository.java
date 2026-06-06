@@ -9,7 +9,7 @@ import java.time.Instant;
 
 @Repository
 public interface SummaryMetricRepository extends JpaRepository<SummaryMetric, Long> {
-    SummaryMetric findTopByPatientUserIdAndPeriodStartAndPeriodEndOrderByCreatedAtDesc(
+  SummaryMetric findTopByPatientUserIdAndPeriodStartAndPeriodEndOrderByCreatedAtDesc(
         Long patientId, Instant periodStart, Instant periodEnd
     );
 }

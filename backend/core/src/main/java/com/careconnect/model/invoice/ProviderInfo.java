@@ -9,8 +9,8 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class ProviderInfo {
-    private String name;
-    private String address;
-    private String phone;
-    private String email;
+  private String name;
+  private String address;
+  private String phone;
+  private String email;
 }

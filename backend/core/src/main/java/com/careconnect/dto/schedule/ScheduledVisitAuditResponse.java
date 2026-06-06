@@ -10,12 +10,12 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ScheduledVisitAuditResponse {
-    private Long id;
-    private Long visitId;
-    private String action;
-    private String changedField;
-    private String oldValue;
-    private String newValue;
-    private LocalDateTime changedAt;
-    private String changedBy;
+  private Long id;
+  private Long visitId;
+  private String action;
+  private String changedField;
+  private String oldValue;
+  private String newValue;
+  private LocalDateTime changedAt;
+  private String changedBy;
 }

@@ -14,23 +14,23 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TaskDto {
-    @NotNull(message = "Task name is required")
+  @NotNull(message = "Task name is required")
     private String name;
-    @Nullable
+  @Nullable
     private String description;
-    @NotNull(message = "Date is required")
+  @NotNull(message = "Date is required")
     private String date;
-    @Nullable
+  @Nullable
     private String timeOfDay; // Assuming timeOfDay is a string representation
-    @NotNull(message = "Completion state is required")
+  @NotNull(message = "Completion state is required")
     private boolean isCompleted;
-    @Nullable
+  @Nullable
     private String frequency;
-    @Nullable
+  @Nullable
     private int interval;
-    @Nullable
+  @Nullable
     private int count;
-    @Nullable
+  @Nullable
     private String daysOfWeek;
-    private String taskType;
+  private String taskType;
 }

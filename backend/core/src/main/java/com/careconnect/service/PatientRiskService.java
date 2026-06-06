@@ -19,58 +19,58 @@ import java.util.List;
 @Service
 public class PatientRiskService {
 
-    private final PatientRiskRepository patientRiskRepository;
-    private final RiskTypeRepository riskTypeRepository;
-    private final PatientRepository patientRepository;
-    private final UserRepository userRepository;
+  private final PatientRiskRepository patientRiskRepository;
+  private final RiskTypeRepository riskTypeRepository;
+  private final PatientRepository patientRepository;
+  private final UserRepository userRepository;
 
-    public PatientRiskService(PatientRiskRepository patientRiskRepository,
+  public PatientRiskService(PatientRiskRepository patientRiskRepository,
                               RiskTypeRepository riskTypeRepository,
                               PatientRepository patientRepository,
                               UserRepository userRepository) {
-        this.patientRiskRepository = patientRiskRepository;
-        this.riskTypeRepository = riskTypeRepository;
-        this.patientRepository = patientRepository;
-        this.userRepository = userRepository;
-    }
+    this.patientRiskRepository = patientRiskRepository;
+    this.riskTypeRepository = riskTypeRepository;
+    this.patientRepository = patientRepository;
+    this.userRepository = userRepository;
+  }
 
-    public List<RiskType> getAllRiskTypes() {
-        return riskTypeRepository.findAllByOrderByNameAsc();
-    }
+  public List<RiskType> getAllRiskTypes() {
+    return riskTypeRepository.findAllByOrderByNameAsc();
+  }
 
-    public List<PatientRisk> getFlaggedRisksForPatient(Long patientId) {
-        return patientRiskRepository.findByPatientIdOrderByFlaggedAtDesc(patientId);
-    }
+  public List<PatientRisk> getFlaggedRisksForPatient(Long patientId) {
+    return patientRiskRepository.findByPatientIdOrderByFlaggedAtDesc(patientId);
+  }
 
-    @Transactional
+  @Transactional
     public PatientRisk flagRisk(Long patientId, Long riskTypeId, Long flaggedByUserId) {
-        Patient patient = patientRepository.findById(patientId)
+    Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Patient not found"));
-        RiskType riskType = riskTypeRepository.findById(riskTypeId)
+    RiskType riskType = riskTypeRepository.findById(riskTypeId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Risk type not found"));
-        User user = userRepository.findById(flaggedByUserId)
+    User user = userRepository.findById(flaggedByUserId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "User not found"));
 
-        if (patientRiskRepository.existsByPatientIdAndRiskTypeId(patientId, riskTypeId)) {
-            throw new AppException(HttpStatus.CONFLICT, "Risk already flagged for this patient");
-        }
+    if (patientRiskRepository.existsByPatientIdAndRiskTypeId(patientId, riskTypeId)) {
+      throw new AppException(HttpStatus.CONFLICT, "Risk already flagged for this patient");
+    }
 
-        PatientRisk risk = PatientRisk.builder()
+    PatientRisk risk = PatientRisk.builder()
                 .patient(patient)
                 .riskType(riskType)
                 .flaggedBy(user)
                 .flaggedAt(Instant.now())
                 .build();
-        return patientRiskRepository.save(risk);
-    }
+    return patientRiskRepository.save(risk);
+  }
 
-    @Transactional
+  @Transactional
     public void unflagRisk(Long patientId, Long riskId, Long currentUserId) {
-        PatientRisk risk = patientRiskRepository.findById(riskId)
+    PatientRisk risk = patientRiskRepository.findById(riskId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Risk flag not found"));
-        if (!risk.getPatient().getId().equals(patientId)) {
-            throw new AppException(HttpStatus.NOT_FOUND, "Risk flag not found for this patient");
-        }
-        patientRiskRepository.delete(risk);
+    if (!risk.getPatient().getId().equals(patientId)) {
+      throw new AppException(HttpStatus.NOT_FOUND, "Risk flag not found for this patient");
     }
+    patientRiskRepository.delete(risk);
+  }
 }

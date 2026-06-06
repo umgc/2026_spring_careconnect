@@ -30,18 +30,18 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ChatAnalyticsService {
     
-    private final ChatConversationRepository chatConversationRepository;
-    private final ChatMessageRepository chatMessageRepository;
+  private final ChatConversationRepository chatConversationRepository;
+  private final ChatMessageRepository chatMessageRepository;
     
-    /**
+  /**
      * Collect anonymized analytics from a conversation before it's deleted
      * This is called during the cleanup process to extract insights
      */
-    @Transactional
+  @Transactional
     public void collectAnalytics(ChatConversation conversation, List<ChatMessage> messages) {
-        try {
-            // Create anonymized analytics record
-            ChatAnalytics analytics = ChatAnalytics.builder()
+    try {
+      // Create anonymized analytics record
+      ChatAnalytics analytics = ChatAnalytics.builder()
                 .sessionId(UUID.randomUUID().toString()) // Anonymized session ID
                 .sessionDate(conversation.getCreatedAt().toLocalDate())
                 .sessionHour(conversation.getCreatedAt().getHour())
@@ -56,22 +56,22 @@ public class ChatAnalyticsService {
                 .createdAt(LocalDateTime.now())
                 .build();
             
-            // Store analytics (this would be a separate table in real implementation)
-            logAnalytics(analytics);
+      // Store analytics (this would be a separate table in real implementation)
+      logAnalytics(analytics);
             
-        } catch (Exception e) {
-            log.error("Error collecting analytics for conversation: {}", 
+    } catch (Exception e) {
+      log.error("Error collecting analytics for conversation: {}", 
                 conversation.getConversationId(), e);
-        }
     }
+  }
     
-    /**
+  /**
      * Get aggregated analytics for reporting (no individual data)
      */
-    public Map<String, Object> getAggregatedAnalytics(LocalDateTime from, LocalDateTime to) {
-        // In a real implementation, this would query the analytics table
-        // For now, return sample aggregated data
-        return Map.of(
+  public Map<String, Object> getAggregatedAnalytics(LocalDateTime from, LocalDateTime to) {
+    // In a real implementation, this would query the analytics table
+    // For now, return sample aggregated data
+    return Map.of(
             "totalSessions", 0,
             "averageSessionDuration", 0,
             "mostCommonTopics", List.of(),
@@ -82,113 +82,113 @@ public class ChatAnalyticsService {
                 "errorRate", 0.0
             )
         );
-    }
+  }
     
-    /**
+  /**
      * Extract topic categories from messages (anonymized)
      */
-    private List<String> extractTopicCategories(List<ChatMessage> messages) {
-        Set<String> topics = new HashSet<>();
+  private List<String> extractTopicCategories(List<ChatMessage> messages) {
+    Set<String> topics = new HashSet<>();
         
-        for (ChatMessage message : messages) {
-            if (message.getMessageType() == ChatMessage.MessageType.USER) {
-                String content = message.getContent().toLowerCase();
+    for (ChatMessage message : messages) {
+      if (message.getMessageType() == ChatMessage.MessageType.USER) {
+        String content = message.getContent().toLowerCase();
                 
-                // Categorize based on keywords (anonymized)
-                if (containsKeywords(content, Arrays.asList("medication", "drug", "pill", "prescription"))) {
-                    topics.add("MEDICATION_INQUIRY");
-                }
-                if (containsKeywords(content, Arrays.asList("symptom", "pain", "ache", "hurt"))) {
-                    topics.add("SYMPTOM_TRACKING");
-                }
-                if (containsKeywords(content, Arrays.asList("appointment", "visit", "doctor", "schedule"))) {
-                    topics.add("APPOINTMENT_MANAGEMENT");
-                }
-                if (containsKeywords(content, Arrays.asList("allergy", "reaction", "intolerance"))) {
-                    topics.add("ALLERGY_INQUIRY");
-                }
-                if (containsKeywords(content, Arrays.asList("vital", "blood pressure", "temperature", "heart rate"))) {
-                    topics.add("VITALS_INQUIRY");
-                }
-                if (containsKeywords(content, Arrays.asList("mood", "mental", "anxiety", "depression"))) {
-                    topics.add("MENTAL_HEALTH");
-                }
-                if (topics.isEmpty()) {
-                    topics.add("GENERAL_INQUIRY");
-                }
-            }
+        // Categorize based on keywords (anonymized)
+        if (containsKeywords(content, Arrays.asList("medication", "drug", "pill", "prescription"))) {
+          topics.add("MEDICATION_INQUIRY");
         }
+        if (containsKeywords(content, Arrays.asList("symptom", "pain", "ache", "hurt"))) {
+          topics.add("SYMPTOM_TRACKING");
+        }
+        if (containsKeywords(content, Arrays.asList("appointment", "visit", "doctor", "schedule"))) {
+          topics.add("APPOINTMENT_MANAGEMENT");
+        }
+        if (containsKeywords(content, Arrays.asList("allergy", "reaction", "intolerance"))) {
+          topics.add("ALLERGY_INQUIRY");
+        }
+        if (containsKeywords(content, Arrays.asList("vital", "blood pressure", "temperature", "heart rate"))) {
+          topics.add("VITALS_INQUIRY");
+        }
+        if (containsKeywords(content, Arrays.asList("mood", "mental", "anxiety", "depression"))) {
+          topics.add("MENTAL_HEALTH");
+        }
+        if (topics.isEmpty()) {
+          topics.add("GENERAL_INQUIRY");
+        }
+      }
+    }
         
-        return new ArrayList<>(topics);
-    }
+    return new ArrayList<>(topics);
+  }
     
-    private boolean containsKeywords(String content, List<String> keywords) {
-        return keywords.stream().anyMatch(content::contains);
-    }
+  private boolean containsKeywords(String content, List<String> keywords) {
+    return keywords.stream().anyMatch(content::contains);
+  }
     
-    private int calculateSessionDuration(ChatConversation conversation) {
-        if (conversation.getUpdatedAt() != null && conversation.getCreatedAt() != null) {
-            return (int) java.time.Duration.between(
+  private int calculateSessionDuration(ChatConversation conversation) {
+    if (conversation.getUpdatedAt() != null && conversation.getCreatedAt() != null) {
+      return (int) java.time.Duration.between(
                 conversation.getCreatedAt(), 
                 conversation.getUpdatedAt()
             ).toMinutes();
-        }
-        return 0;
     }
+    return 0;
+  }
     
-    private int countUserMessages(List<ChatMessage> messages) {
-        return (int) messages.stream()
+  private int countUserMessages(List<ChatMessage> messages) {
+    return (int) messages.stream()
             .filter(msg -> msg.getMessageType() == ChatMessage.MessageType.USER)
             .count();
-    }
+  }
     
-    private int countAiMessages(List<ChatMessage> messages) {
-        return (int) messages.stream()
+  private int countAiMessages(List<ChatMessage> messages) {
+    return (int) messages.stream()
             .filter(msg -> msg.getMessageType() == ChatMessage.MessageType.ASSISTANT)
             .count();
-    }
+  }
     
-    private long calculateAverageResponseTime(List<ChatMessage> messages) {
-        List<Long> responseTimes = messages.stream()
+  private long calculateAverageResponseTime(List<ChatMessage> messages) {
+    List<Long> responseTimes = messages.stream()
             .filter(msg -> msg.getMessageType() == ChatMessage.MessageType.ASSISTANT)
             .filter(msg -> msg.getProcessingTimeMs() != null)
             .map(ChatMessage::getProcessingTimeMs)
             .collect(Collectors.toList());
         
-        if (responseTimes.isEmpty()) return 0;
+    if (responseTimes.isEmpty()) return 0;
         
-        return responseTimes.stream()
+    return responseTimes.stream()
             .mapToLong(Long::longValue)
             .sum() / responseTimes.size();
-    }
+  }
     
-    private void logAnalytics(ChatAnalytics analytics) {
-        // In a real implementation, this would save to an analytics table
-        log.info("Analytics collected: Session={}, Date={}, Duration={}min, Messages={}, Topics={}", 
+  private void logAnalytics(ChatAnalytics analytics) {
+    // In a real implementation, this would save to an analytics table
+    log.info("Analytics collected: Session={}, Date={}, Duration={}min, Messages={}, Topics={}", 
             analytics.getSessionId(),
             analytics.getSessionDate(),
             analytics.getSessionDurationMinutes(),
             analytics.getMessageCount(),
             analytics.getTopicCategories());
-    }
+  }
     
-    /**
+  /**
      * Analytics data model (anonymized)
      */
-    @lombok.Builder
-    @lombok.Data
-    public static class ChatAnalytics {
-        private String sessionId; // Anonymized UUID
-        private java.time.LocalDate sessionDate;
-        private int sessionHour;
-        private int sessionDurationMinutes;
-        private int messageCount;
-        private int userMessageCount;
-        private int aiMessageCount;
-        private List<String> topicCategories;
-        private long averageResponseTimeMs;
-        private String conversationType;
-        private boolean isSharedWithProvider;
-        private LocalDateTime createdAt;
-    }
+  @lombok.Builder
+  @lombok.Data
+  public static class ChatAnalytics {
+    private String sessionId; // Anonymized UUID
+    private java.time.LocalDate sessionDate;
+    private int sessionHour;
+    private int sessionDurationMinutes;
+    private int messageCount;
+    private int userMessageCount;
+    private int aiMessageCount;
+    private List<String> topicCategories;
+    private long averageResponseTimeMs;
+    private String conversationType;
+    private boolean isSharedWithProvider;
+    private LocalDateTime createdAt;
+  }
 }

@@ -28,17 +28,17 @@ import java.util.UUID;
 @ConditionalOnProperty(name = "careconnect.aws.enabled", havingValue = "true", matchIfMissing = true)
 public class S3StorageService implements StorageService {
 
-    private static final Logger log = LoggerFactory.getLogger(S3StorageService.class);
-    private final S3Client s3;
-    private final S3Props props;
+  private static final Logger log = LoggerFactory.getLogger(S3StorageService.class);
+  private final S3Client s3;
+  private final S3Props props;
 
-    @Override
+  @Override
     public String upload(String path, byte[] content, String mimeType) {
-        try {
-            log.info("DEBUG: Uploading to S3 - Bucket: {}, Key: {}, ContentType: {}",
+    try {
+      log.info("DEBUG: Uploading to S3 - Bucket: {}, Key: {}, ContentType: {}",
                     props.getBucket(), path, mimeType);
 
-            PutObjectResponse resp = s3.putObject(
+      PutObjectResponse resp = s3.putObject(
                     PutObjectRequest.builder()
                             .bucket(props.getBucket())
                             .key(path)
@@ -48,33 +48,33 @@ public class S3StorageService implements StorageService {
                     RequestBody.fromBytes(content)
             );
 
-            log.info("File uploaded successfully to S3: {}", path);
-            return props.getBaseUrl() + "/" + path;
-        } catch (Exception e) {
-            log.error("Failed to upload file to S3: {}", path, e);
-            throw new RuntimeException("Failed to upload file to S3", e);
-        }
+      log.info("File uploaded successfully to S3: {}", path);
+      return props.getBaseUrl() + "/" + path;
+    } catch (Exception e) {
+      log.error("Failed to upload file to S3: {}", path, e);
+      throw new RuntimeException("Failed to upload file to S3", e);
     }
+  }
 
-    @Override
+  @Override
     public String uploadFile(MultipartFile file, Long userId, String userType, String category) {
-        try {
-            log.info("DEBUG: Starting file upload for user: {}, type: {}, category: {}",
+    try {
+      log.info("DEBUG: Starting file upload for user: {}, type: {}, category: {}",
                     userId, userType, category);
-            log.info("DEBUG: Original filename: {}, size: {} bytes, content-type: {}",
+      log.info("DEBUG: Original filename: {}, size: {} bytes, content-type: {}",
                     file.getOriginalFilename(), file.getSize(), file.getContentType());
-            log.info("DEBUG: S3 Config - Bucket: {}, Region: {}, BaseURL: {}",
+      log.info("DEBUG: S3 Config - Bucket: {}, Region: {}, BaseURL: {}",
                     props.getBucket(), props.getRegion(), props.getBaseUrl());
-            log.info("DEBUG: Access Key starts with: {}...",
+      log.info("DEBUG: Access Key starts with: {}...",
                     props.getAccessKey() != null ? props.getAccessKey().substring(0, 8) : "NULL");
 
-//            String fileName = generateFileName(file.getOriginalFilename(), userId, userType, category);
-            String fullPath = buildFilePath(userId, userType, category, file.getOriginalFilename());
+      //            String fileName = generateFileName(file.getOriginalFilename(), userId, userType, category);
+      String fullPath = buildFilePath(userId, userType, category, file.getOriginalFilename());
 
-            log.info("DEBUG: Generated filename: {}", file.getOriginalFilename());
-            log.info("DEBUG: Full S3 path: {}", fullPath);
+      log.info("DEBUG: Generated filename: {}", file.getOriginalFilename());
+      log.info("DEBUG: Full S3 path: {}", fullPath);
 
-            PutObjectResponse resp = s3.putObject(
+      PutObjectResponse resp = s3.putObject(
                     PutObjectRequest.builder()
                             .bucket(props.getBucket())
                             .key(fullPath)
@@ -85,29 +85,29 @@ public class S3StorageService implements StorageService {
                     RequestBody.fromInputStream(file.getInputStream(), file.getSize())
             );
 
-            log.info("DEBUG: S3 Response - ETag: {}, VersionId: {}",
+      log.info("DEBUG: S3 Response - ETag: {}, VersionId: {}",
                     resp.eTag(), resp.versionId());
-            log.info("File uploaded successfully: {} for user: {}", fullPath, userId);
+      log.info("File uploaded successfully: {} for user: {}", fullPath, userId);
 
-            String fileUrl = getFileUrl(fullPath);
-            log.info("DEBUG: Generated file URL: {}", fileUrl);
+      String fileUrl = getFileUrl(fullPath);
+      log.info("DEBUG: Generated file URL: {}", fileUrl);
 
-            return fullPath;
-        } catch (IOException e) {
-            log.error("IOException during file upload for user: {}", userId, e);
-            throw new RuntimeException("Failed to upload file - IO Error", e);
-        } catch (Exception e) {
-            log.error("Failed to upload file for user: {} - Error: {}", userId, e.getMessage(), e);
-            throw new RuntimeException("Failed to upload file: " + e.getMessage(), e);
-        }
+      return fullPath;
+    } catch (IOException e) {
+      log.error("IOException during file upload for user: {}", userId, e);
+      throw new RuntimeException("Failed to upload file - IO Error", e);
+    } catch (Exception e) {
+      log.error("Failed to upload file for user: {} - Error: {}", userId, e.getMessage(), e);
+      throw new RuntimeException("Failed to upload file: " + e.getMessage(), e);
     }
+  }
 
-    @Override
+  @Override
     public byte[] download(String path) {
-        try {
-            log.info("DEBUG: Downloading from S3 - Bucket: {}, Key: {}", props.getBucket(), path);
+    try {
+      log.info("DEBUG: Downloading from S3 - Bucket: {}, Key: {}", props.getBucket(), path);
 
-            ResponseBytes<GetObjectResponse> respBytes = s3.getObject(
+      ResponseBytes<GetObjectResponse> respBytes = s3.getObject(
                     GetObjectRequest.builder()
                             .bucket(props.getBucket())
                             .key(path)
@@ -115,79 +115,79 @@ public class S3StorageService implements StorageService {
                     ResponseTransformer.toBytes()
             );
 
-            log.info("File downloaded successfully: {}, size: {} bytes", path, respBytes.asByteArray().length);
-            return respBytes.asByteArray();
-        } catch (NoSuchKeyException e) {
-            log.error("File not found in S3: {}", path);
-            throw new RuntimeException("File not found: " + path, e);
-        } catch (Exception e) {
-            log.error("Failed to download file from S3: {}", path, e);
-            throw new RuntimeException("Failed to download file", e);
-        }
+      log.info("File downloaded successfully: {}, size: {} bytes", path, respBytes.asByteArray().length);
+      return respBytes.asByteArray();
+    } catch (NoSuchKeyException e) {
+      log.error("File not found in S3: {}", path);
+      throw new RuntimeException("File not found: " + path, e);
+    } catch (Exception e) {
+      log.error("Failed to download file from S3: {}", path, e);
+      throw new RuntimeException("Failed to download file", e);
     }
+  }
 
-    @Override
+  @Override
     public String getFileUrl(String path) {
-        String url = props.getBaseUrl() + "/" + path;
-        log.debug("DEBUG: Generated file URL: {} for path: {}", url, path);
-        return url;
-    }
+    String url = props.getBaseUrl() + "/" + path;
+    log.debug("DEBUG: Generated file URL: {} for path: {}", url, path);
+    return url;
+  }
 
-    @Override
+  @Override
     public void deleteFile(String path) {
-        try {
-            log.info("DEBUG: Deleting from S3 - Bucket: {}, Key: {}", props.getBucket(), path);
+    try {
+      log.info("DEBUG: Deleting from S3 - Bucket: {}, Key: {}", props.getBucket(), path);
 
-            s3.deleteObject(DeleteObjectRequest.builder()
+      s3.deleteObject(DeleteObjectRequest.builder()
                     .bucket(props.getBucket())
                     .key(path)
                     .build());
 
-            log.info("File deleted successfully: {}", path);
-        } catch (Exception e) {
-            log.error("Failed to delete file from S3: {}", path, e);
-            throw new RuntimeException("Failed to delete file", e);
-        }
+      log.info("File deleted successfully: {}", path);
+    } catch (Exception e) {
+      log.error("Failed to delete file from S3: {}", path, e);
+      throw new RuntimeException("Failed to delete file", e);
     }
+  }
 
-    @Override
+  @Override
     public List<String> listUserFiles(Long userId, String userType) {
-        try {
-            String prefix = userType.toLowerCase() + "_" + userId + "/";
-            log.info("DEBUG: Listing files for user - Bucket: {}, Prefix: {}", props.getBucket(), prefix);
+    try {
+      String prefix = userType.toLowerCase() + "_" + userId + "/";
+      log.info("DEBUG: Listing files for user - Bucket: {}, Prefix: {}", props.getBucket(), prefix);
 
-            ListObjectsV2Response response = s3.listObjectsV2(
+      ListObjectsV2Response response = s3.listObjectsV2(
                     ListObjectsV2Request.builder()
                             .bucket(props.getBucket())
                             .prefix(prefix)
                             .build()
             );
 
-            List<String> files = response.contents().stream()
+      List<String> files = response.contents().stream()
                     .map(S3Object::key)
                     .toList();
 
-            log.info("DEBUG: Found {} files for user {}", files.size(), userId);
-            return files;
-        } catch (Exception e) {
-            log.error("Failed to list files for user: {}", userId, e);
-            throw new RuntimeException("Failed to list user files", e);
-        }
+      log.info("DEBUG: Found {} files for user {}", files.size(), userId);
+      return files;
+    } catch (Exception e) {
+      log.error("Failed to list files for user: {}", userId, e);
+      throw new RuntimeException("Failed to list user files", e);
     }
+  }
 
-    public List<UserFileDTO> listUserFilesDto(Long userId, String userType) {
-        try {
-            String prefix = userType.toLowerCase() + "_" + userId + "/";
-            log.info("DEBUG: Listing files for user DTO - Bucket: {}, Prefix: {}", props.getBucket(), prefix);
+  public List<UserFileDTO> listUserFilesDto(Long userId, String userType) {
+    try {
+      String prefix = userType.toLowerCase() + "_" + userId + "/";
+      log.info("DEBUG: Listing files for user DTO - Bucket: {}, Prefix: {}", props.getBucket(), prefix);
 
-            ListObjectsV2Response response = s3.listObjectsV2(
+      ListObjectsV2Response response = s3.listObjectsV2(
                     ListObjectsV2Request.builder()
                             .bucket(props.getBucket())
                             .prefix(prefix)
                             .build()
             );
 
-            List<UserFileDTO> files = response.contents().stream()
+      List<UserFileDTO> files = response.contents().stream()
                     .map(
                             object -> UserFileDTO.builder()
                                     .s3FullKey(object.key())
@@ -200,37 +200,37 @@ public class S3StorageService implements StorageService {
                     )
                     .toList();
 
-            log.info("DEBUG: Found {} files for user {}", files.size(), userId);
-            return files;
-        } catch (Exception e) {
-            log.error("Failed to list files for user: {}", userId, e);
-            throw new RuntimeException("Failed to list user files", e);
-        }
+      log.info("DEBUG: Found {} files for user {}", files.size(), userId);
+      return files;
+    } catch (Exception e) {
+      log.error("Failed to list files for user: {}", userId, e);
+      throw new RuntimeException("Failed to list user files", e);
     }
+  }
 
-    private String generateFileName(String originalFileName, Long userId, String userType, String category) {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String uuid = UUID.randomUUID().toString().substring(0, 8);
-        String extension = getFileExtension(originalFileName);
+  private String generateFileName(String originalFileName, Long userId, String userType, String category) {
+    String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+    String uuid = UUID.randomUUID().toString().substring(0, 8);
+    String extension = getFileExtension(originalFileName);
 
-        String fileName = String.format("%s_%s_%s_%s%s",
+    String fileName = String.format("%s_%s_%s_%s%s",
                 userType.toLowerCase(), userId, timestamp, uuid, extension);
 
-        log.debug("DEBUG: Generated filename: {} from original: {}", fileName, originalFileName);
-        return fileName;
-    }
+    log.debug("DEBUG: Generated filename: {} from original: {}", fileName, originalFileName);
+    return fileName;
+  }
 
-    private String buildFilePath(Long userId, String userType, String category, String fileName) {
-        String path = String.format("%s_%s/%s/%s",
+  private String buildFilePath(Long userId, String userType, String category, String fileName) {
+    String path = String.format("%s_%s/%s/%s",
                 userType.toLowerCase(), userId, category.toLowerCase(), fileName);
-        log.debug("DEBUG: Built file path: {}", path);
-        return path;
-    }
+    log.debug("DEBUG: Built file path: {}", path);
+    return path;
+  }
 
-    private String getFileExtension(String filename) {
-        if (filename == null || !filename.contains(".")) {
-            return "";
-        }
-        return filename.substring(filename.lastIndexOf("."));
+  private String getFileExtension(String filename) {
+    if (filename == null || !filename.contains(".")) {
+      return "";
     }
+    return filename.substring(filename.lastIndexOf("."));
+  }
 }

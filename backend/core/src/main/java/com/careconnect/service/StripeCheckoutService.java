@@ -13,19 +13,19 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class StripeCheckoutService {
-    private final PlanRepository planRepository;
+  private final PlanRepository planRepository;
 
-    public List<Plan> getAvailablePlans() {
-        return planRepository.findByIsActiveTrue();
-    }
+  public List<Plan> getAvailablePlans() {
+    return planRepository.findByIsActiveTrue();
+  }
 
-    public Plan createPlan(String code, String name, Integer priceCents, String billingPeriod, Boolean isActive) {
-        Plan plan = new Plan();
-        plan.setCode(code);
-        plan.setName(name);
-        plan.setPriceCents(priceCents);
-        plan.setBillingPeriod(billingPeriod);
-        plan.setIsActive(isActive != null ? isActive : true);
-        return planRepository.save(plan);
-    }
+  public Plan createPlan(String code, String name, Integer priceCents, String billingPeriod, Boolean isActive) {
+    Plan plan = new Plan();
+    plan.setCode(code);
+    plan.setName(name);
+    plan.setPriceCents(priceCents);
+    plan.setBillingPeriod(billingPeriod);
+    plan.setIsActive(isActive != null ? isActive : true);
+    return planRepository.save(plan);
+  }
 }

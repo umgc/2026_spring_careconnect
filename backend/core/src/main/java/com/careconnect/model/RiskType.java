@@ -11,10 +11,10 @@ import lombok.*;
 @Entity
 @Table(name = "risk_types")
 public class RiskType {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 100)
+  @Column(nullable = false, unique = true, length = 100)
     private String name;
 }

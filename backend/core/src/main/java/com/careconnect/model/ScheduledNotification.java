@@ -54,32 +54,32 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ScheduledNotification {
 
-    /**
+  /**
      * Primary key (auto-generated).
      */
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
+  /**
      * The ID of the user who should receive this notification.
      * <p>
      * <b>Required.</b>
      * </p>
      */
-    @Column(nullable = false)
+  @Column(nullable = false)
     private Long receiverId;
 
-    /**
+  /**
      * Short title of the notification.
      * <p>
      * Maximum length: 255 characters. <b>Required.</b>
      * </p>
      */
-    @Column(nullable = false, length = 255)
+  @Column(nullable = false, length = 255)
     private String title;
 
-    /**
+  /**
      * Body text of the notification (detailed message).
      * <p>
      * Stored as {@code TEXT} in the database to allow larger content.
@@ -88,10 +88,10 @@ public class ScheduledNotification {
      * <b>Required.</b>
      * </p>
      */
-    @Column(nullable = false, columnDefinition = "TEXT")
+  @Column(nullable = false, columnDefinition = "TEXT")
     private String body;
 
-    /**
+  /**
      * Type of notification.
      * <p>
      * Examples: {@code REMINDER}, {@code ALERT}, {@code EMERGENCY}.
@@ -100,35 +100,35 @@ public class ScheduledNotification {
      * Optional.
      * </p>
      */
-    private String notificationType;
+  private String notificationType;
 
-    /**
+  /**
      * Date and time when the notification is scheduled to be sent.
      * <p>
      * <b>Required.</b>
      * </p>
      */
-    @Column(nullable = false)
+  @Column(nullable = false)
     private LocalDateTime scheduledTime;
 
-    /**
+  /**
      * The date and time when the notification was actually sent.
      * <p>
      * Remains null until delivery occurs.
      * </p>
      */
-    private LocalDateTime sentTime;
+  private LocalDateTime sentTime;
 
-    /**
+  /**
      * Current status of the notification.
      *
      * <p>
      * Possible values:
      * <ul>
-     * <li>{@code PENDING} – waiting to be sent</li>
-     * <li>{@code SENT} – successfully delivered</li>
-     * <li>{@code FAILED} – delivery attempt failed</li>
-     * <li>{@code CANCELLED} – cancelled before sending</li>
+     * <li>{@code PENDING} Ã¢â‚¬â€œ waiting to be sent</li>
+     * <li>{@code SENT} Ã¢â‚¬â€œ successfully delivered</li>
+     * <li>{@code FAILED} Ã¢â‚¬â€œ delivery attempt failed</li>
+     * <li>{@code CANCELLED} Ã¢â‚¬â€œ cancelled before sending</li>
      * </ul>
      * </p>
      *
@@ -136,53 +136,53 @@ public class ScheduledNotification {
      * Defaults to {@code PENDING}.
      * </p>
      */
-    @Builder.Default
-    @Column(nullable = false)
+  @Builder.Default
+  @Column(nullable = false)
     private String status = "PENDING";
 
-    /**
+  /**
      * External message ID returned by the notification service provider
      * (e.g., FCM/APNs ID). Useful for tracking delivery.
      */
-    private String messageId;
+  private String messageId;
 
-    /**
+  /**
      * Error details in case sending fails.
      */
-    private String errorMessage;
+  private String errorMessage;
 
-    /**
+  /**
      * Timestamp when the notification record was created.
      * <p>
      * Immutable after creation.
      * </p>
      */
-    @Builder.Default
-    @Column(nullable = false, updatable = false)
+  @Builder.Default
+  @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    /**
+  /**
      * Timestamp of the last update.
      * <p>
      * Automatically refreshed on every update via {@link #setLastUpdate()}.
      * </p>
      */
-    @Builder.Default
-    @Column(nullable = false)
+  @Builder.Default
+  @Column(nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    /**
+  /**
      * Callback executed before each entity update.
      * <p>
      * Updates the {@code updatedAt} field to the current timestamp.
      * </p>
      */
-    @PreUpdate
+  @PreUpdate
     public void setLastUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
+    this.updatedAt = LocalDateTime.now();
+  }
 
-    /**
+  /**
      * Task that this notification is associated with.
      *
      * <p>
@@ -199,8 +199,8 @@ public class ScheduledNotification {
      * </ul>
      * </p>
      */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "task_id", nullable = false)
-    @JsonBackReference
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "task_id", nullable = false)
+  @JsonBackReference
     private Task task;
 }

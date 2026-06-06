@@ -185,6 +185,11 @@ public class CallRecordingService {
       return Map.of(
           "status", "DISABLED", "message", "Recording is not enabled in this environment");
     }
+    log.info("Recording enabled â€” provisioning AWS prerequisites at startupâ€¦");
+    // SLR first â€” bucket policy setup can proceed in parallel but SLR needs time to propagate
+    ensureChimeMediaPipelinesServiceLinkedRole();
+    resolveOrCreateRecordingBucket();
+  }
 
     final String meetingId = chimeService.getMeetingId(callId);
     if (meetingId == null) {

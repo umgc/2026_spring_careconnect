@@ -34,70 +34,70 @@ public class ScheduledVisitController {
     private final AuthorizationService authorizationService;
     private final PatientRepository patientRepository;
     
-    /**
+  /**
      * Create a new scheduled visit
      */
-    @RequirePermission(Permission.CREATE_TASKS)
+  @RequirePermission(Permission.CREATE_TASKS)
 
-    @PostMapping("/caregiver/{caregiverId}")
+  @PostMapping("/caregiver/{caregiverId}")
     public ResponseEntity<ScheduledVisitResponse> createScheduledVisit(
         @PathVariable Long caregiverId,
         @Valid @RequestBody ScheduledVisitRequest request
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        ScheduledVisitResponse response = scheduledVisitService.createScheduledVisit(caregiverId, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    ScheduledVisitResponse response = scheduledVisitService.createScheduledVisit(caregiverId, request);
+    return ResponseEntity.status(HttpStatus.CREATED).body(response);
+  }
     
-    /**
+  /**
      * Get all scheduled visits for a caregiver
      */
     @RequirePermission(Permission.VIEW_TASKS)
 
-    @GetMapping("/caregiver/{caregiverId}")
+  @GetMapping("/caregiver/{caregiverId}")
     public ResponseEntity<List<ScheduledVisitResponse>> getScheduledVisits(
         @PathVariable Long caregiverId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        List<ScheduledVisitResponse> visits = scheduledVisitService.getScheduledVisits(caregiverId);
-        return ResponseEntity.ok(visits);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    List<ScheduledVisitResponse> visits = scheduledVisitService.getScheduledVisits(caregiverId);
+    return ResponseEntity.ok(visits);
+  }
     
-    /**
+  /**
      * Get scheduled visits for a specific date
      */
     @RequirePermission(Permission.VIEW_TASKS)
 
-    @GetMapping("/caregiver/{caregiverId}/date/{date}")
+  @GetMapping("/caregiver/{caregiverId}/date/{date}")
     public ResponseEntity<List<ScheduledVisitResponse>> getScheduledVisitsByDate(
         @PathVariable Long caregiverId,
         @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        List<ScheduledVisitResponse> visits = scheduledVisitService.getScheduledVisitsByDate(caregiverId, date);
-        return ResponseEntity.ok(visits);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    List<ScheduledVisitResponse> visits = scheduledVisitService.getScheduledVisitsByDate(caregiverId, date);
+    return ResponseEntity.ok(visits);
+  }
     
-    /**
+  /**
      * Get scheduled visits between dates
      */
     @RequirePermission(Permission.VIEW_TASKS)
 
-    @GetMapping("/caregiver/{caregiverId}/range")
+  @GetMapping("/caregiver/{caregiverId}/range")
     public ResponseEntity<List<ScheduledVisitResponse>> getScheduledVisitsBetweenDates(
         @PathVariable Long caregiverId,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        List<ScheduledVisitResponse> visits = scheduledVisitService
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    List<ScheduledVisitResponse> visits = scheduledVisitService
             .getScheduledVisitsBetweenDates(caregiverId, startDate, endDate);
-        return ResponseEntity.ok(visits);
-    }
+    return ResponseEntity.ok(visits);
+  }
     
     /**
      * Get scheduled visits between dates for a patient (patient self-service)
@@ -126,138 +126,138 @@ public class ScheduledVisitController {
     /**
      * Get visit summary statistics
      */
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/caregiver/{caregiverId}/summary")
+  @GetMapping("/caregiver/{caregiverId}/summary")
     public ResponseEntity<ScheduledVisitSummary> getVisitSummary(
         @PathVariable Long caregiverId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        ScheduledVisitSummary summary = scheduledVisitService.getVisitSummary(caregiverId);
-        return ResponseEntity.ok(summary);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    ScheduledVisitSummary summary = scheduledVisitService.getVisitSummary(caregiverId);
+    return ResponseEntity.ok(summary);
+  }
     
-    /**
+  /**
      * Get overdue visits
      */
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/caregiver/{caregiverId}/overdue")
+  @GetMapping("/caregiver/{caregiverId}/overdue")
     public ResponseEntity<List<ScheduledVisitResponse>> getOverdueVisits(
         @PathVariable Long caregiverId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        List<ScheduledVisitResponse> visits = scheduledVisitService.getOverdueVisits(caregiverId);
-        return ResponseEntity.ok(visits);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    List<ScheduledVisitResponse> visits = scheduledVisitService.getOverdueVisits(caregiverId);
+    return ResponseEntity.ok(visits);
+  }
     
-    /**
+  /**
      * Get ready visits
      */
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/caregiver/{caregiverId}/ready")
+  @GetMapping("/caregiver/{caregiverId}/ready")
     public ResponseEntity<List<ScheduledVisitResponse>> getReadyVisits(
         @PathVariable Long caregiverId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        List<ScheduledVisitResponse> visits = scheduledVisitService.getReadyVisits(caregiverId);
-        return ResponseEntity.ok(visits);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    List<ScheduledVisitResponse> visits = scheduledVisitService.getReadyVisits(caregiverId);
+    return ResponseEntity.ok(visits);
+  }
     
-    /**
+  /**
      * Get upcoming visits
      */
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/caregiver/{caregiverId}/upcoming")
+  @GetMapping("/caregiver/{caregiverId}/upcoming")
     public ResponseEntity<List<ScheduledVisitResponse>> getUpcomingVisits(
         @PathVariable Long caregiverId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        List<ScheduledVisitResponse> visits = scheduledVisitService.getUpcomingVisits(caregiverId);
-        return ResponseEntity.ok(visits);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    List<ScheduledVisitResponse> visits = scheduledVisitService.getUpcomingVisits(caregiverId);
+    return ResponseEntity.ok(visits);
+  }
     
-    /**
+  /**
      * Get a specific scheduled visit
      */
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/{visitId}")
+  @GetMapping("/{visitId}")
     public ResponseEntity<ScheduledVisitResponse> getScheduledVisit(
         @PathVariable Long visitId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        ScheduledVisitResponse visit = scheduledVisitService.getScheduledVisit(visitId);
-        return ResponseEntity.ok(visit);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    ScheduledVisitResponse visit = scheduledVisitService.getScheduledVisit(visitId);
+    return ResponseEntity.ok(visit);
+  }
     
-    /**
+  /**
      * Update a scheduled visit
      */
-    @RequirePermission(Permission.UPDATE_TASKS)
+  @RequirePermission(Permission.UPDATE_TASKS)
 
-    @PutMapping("/{visitId}")
+  @PutMapping("/{visitId}")
     public ResponseEntity<ScheduledVisitResponse> updateScheduledVisit(
         @PathVariable Long visitId,
         @Valid @RequestBody ScheduledVisitRequest request
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        ScheduledVisitResponse response = scheduledVisitService.updateScheduledVisit(visitId, request);
-        return ResponseEntity.ok(response);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    ScheduledVisitResponse response = scheduledVisitService.updateScheduledVisit(visitId, request);
+    return ResponseEntity.ok(response);
+  }
     
-    /**
+  /**
      * Cancel a scheduled visit
      */
-    @RequirePermission(Permission.UPDATE_TASKS)
+  @RequirePermission(Permission.UPDATE_TASKS)
 
-    @PutMapping("/{visitId}/cancel")
+  @PutMapping("/{visitId}/cancel")
     public ResponseEntity<Void> cancelScheduledVisit(
         @PathVariable Long visitId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        scheduledVisitService.cancelScheduledVisit(visitId);
-        return ResponseEntity.noContent().build();
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    scheduledVisitService.cancelScheduledVisit(visitId);
+    return ResponseEntity.noContent().build();
+  }
     
-    /**
+  /**
      * Update visit status
      */
-    @RequirePermission(Permission.UPDATE_TASKS)
+  @RequirePermission(Permission.UPDATE_TASKS)
 
-    @PutMapping("/{visitId}/status")
+  @PutMapping("/{visitId}/status")
     public ResponseEntity<ScheduledVisitResponse> updateVisitStatus(
         @PathVariable Long visitId,
         @RequestParam String status
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        ScheduledVisitResponse response = scheduledVisitService.updateVisitStatus(visitId, status);
-        return ResponseEntity.ok(response);
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    ScheduledVisitResponse response = scheduledVisitService.updateVisitStatus(visitId, status);
+    return ResponseEntity.ok(response);
+  }
     
-    /**
+  /**
      * Delete a scheduled visit
      */
-    @RequirePermission(Permission.DELETE_PATIENTS)
+  @RequirePermission(Permission.DELETE_PATIENTS)
 
-    @DeleteMapping("/{visitId}")
+  @DeleteMapping("/{visitId}")
     public ResponseEntity<Void> deleteScheduledVisit(
         @PathVariable Long visitId
-    ) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        scheduledVisitService.deleteScheduledVisit(visitId);
-        return ResponseEntity.noContent().build();
-    }
+  ) throws UnauthorizedException {
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    scheduledVisitService.deleteScheduledVisit(visitId);
+    return ResponseEntity.noContent().build();
+  }
 }
 

@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 @Table(
         name = "system_config",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_system_config_key", columnNames = "config_key")
+          @UniqueConstraint(name = "uk_system_config_key", columnNames = "config_key")
         }
 )
 @Data
@@ -21,30 +21,30 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class SystemConfig {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "config_key", nullable = false, length = 255)
+  @Column(name = "config_key", nullable = false, length = 255)
     private String configKey;
 
-    @Column(name = "config_value", nullable = false, columnDefinition = "TEXT")
+  @Column(name = "config_value", nullable = false, columnDefinition = "TEXT")
     private String configValue;
 
-    @Column(name = "updated_at", nullable = false)
+  @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @Column(name = "updated_by")
+  @Column(name = "updated_by")
     private Long updatedBy;
 
-    @PrePersist
+  @PrePersist
     public void onCreate() {
-        if (updatedAt == null) updatedAt = LocalDateTime.now();
-    }
+    if (updatedAt == null) updatedAt = LocalDateTime.now();
+  }
 
-    @PreUpdate
+  @PreUpdate
     public void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
+    updatedAt = LocalDateTime.now();
+  }
 }
 

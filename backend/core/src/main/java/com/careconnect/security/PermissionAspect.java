@@ -18,36 +18,36 @@ import org.springframework.stereotype.Component;
 @Component
 public class PermissionAspect {
     
-    private static final Logger log = LoggerFactory.getLogger(PermissionAspect.class);
+  private static final Logger log = LoggerFactory.getLogger(PermissionAspect.class);
     
-    @Autowired
-    private AuthorizationService authorizationService;  // ✅ This should now be found
+  @Autowired
+    private AuthorizationService authorizationService;  // Ã¢Å“â€¦ This should now be found
     
-    @Autowired
+  @Autowired
     private UserRepository userRepository;
     
-    /**
+  /**
      * Before any method annotated with @RequirePermission runs,
      * check if the current user has the required permission
      */
-    @Before("@annotation(requirePermission)")
+  @Before("@annotation(requirePermission)")
     public void checkPermission(RequirePermission requirePermission) throws UnauthorizedException {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         
-        if (authentication == null || !authentication.isAuthenticated()) {
-    log.warn("Unauthenticated access attempt");
-    throw new UnauthorizedException("User not authenticated");
-}
+    if (authentication == null || !authentication.isAuthenticated()) {
+      log.warn("Unauthenticated access attempt");
+      throw new UnauthorizedException("User not authenticated");
+    }
         
-        String userEmail = authentication.getName();
-        log.debug("Checking permission {} for user {}", requirePermission.value(), userEmail);
+    String userEmail = authentication.getName();
+    log.debug("Checking permission {} for user {}", requirePermission.value(), userEmail);
         
-        User currentUser = userRepository.findByEmail(userEmail)
+    User currentUser = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User not found: " + userEmail));
         
-        // This will throw UnauthorizedException if permission is denied
-        authorizationService.requirePermission(currentUser, requirePermission.value());
+    // This will throw UnauthorizedException if permission is denied
+    authorizationService.requirePermission(currentUser, requirePermission.value());
         
-        log.debug("Permission {} granted for user {}", requirePermission.value(), userEmail);
-    }
+    log.debug("Permission {} granted for user {}", requirePermission.value(), userEmail);
+  }
 }

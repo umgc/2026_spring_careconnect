@@ -17,86 +17,86 @@ import java.util.List;
 @Service
 public class SesService {
 
-    private final SesClient sesClient;
-    private final String fromAddress;
+  private final SesClient sesClient;
+  private final String fromAddress;
 
-    @Autowired
+  @Autowired
     public SesService(@Value("${aws.region:us-east-1}") String awsRegion,
                       @Value("${aws.ses.from:no-reply@careconnect.com}") String fromAddress) {
-        Region region = Region.of(awsRegion);
-        this.sesClient = SesClient.builder().region(region).build();
-        this.fromAddress = fromAddress;
-    }
+    Region region = Region.of(awsRegion);
+    this.sesClient = SesClient.builder().region(region).build();
+    this.fromAddress = fromAddress;
+  }
 
-    // Package-visible constructor for tests or alternate client injection
-    SesService(SesClient sesClient, String fromAddress) {
-        this.sesClient = sesClient;
-        this.fromAddress = fromAddress;
-    }
+  // Package-visible constructor for tests or alternate client injection
+  SesService(SesClient sesClient, String fromAddress) {
+    this.sesClient = sesClient;
+    this.fromAddress = fromAddress;
+  }
 
-    /**
+  /**
      * Send a basic email with HTML and text content
      */
-    public String sendEmail(String toAddress, String subject, String htmlBody, String textBody) {
-        Destination destination = Destination.builder().toAddresses(toAddress).build();
+  public String sendEmail(String toAddress, String subject, String htmlBody, String textBody) {
+    Destination destination = Destination.builder().toAddresses(toAddress).build();
 
-        Content subj = Content.builder().data(subject).build();
-        Body body = Body.builder()
+    Content subj = Content.builder().data(subject).build();
+    Body body = Body.builder()
                 .html(Content.builder().data(htmlBody == null ? "" : htmlBody).build())
                 .text(Content.builder().data(textBody == null ? "" : textBody).build())
                 .build();
-        Message message = Message.builder().subject(subj).body(body).build();
+    Message message = Message.builder().subject(subj).body(body).build();
 
-        SendEmailRequest request = SendEmailRequest.builder()
+    SendEmailRequest request = SendEmailRequest.builder()
                 .destination(destination)
                 .message(message)
                 .source(fromAddress)
                 .build();
 
-        SendEmailResponse resp = sesClient.sendEmail(request);
-        return resp.messageId();
-    }
+    SendEmailResponse resp = sesClient.sendEmail(request);
+    return resp.messageId();
+  }
 
-    /**
+  /**
      * Send email to multiple recipients
      */
-    public String sendEmailToMultiple(List<String> toAddresses, String subject, String htmlBody, String textBody) {
-        Destination destination = Destination.builder().toAddresses(toAddresses).build();
+  public String sendEmailToMultiple(List<String> toAddresses, String subject, String htmlBody, String textBody) {
+    Destination destination = Destination.builder().toAddresses(toAddresses).build();
 
-        Content subj = Content.builder().data(subject).build();
-        Body body = Body.builder()
+    Content subj = Content.builder().data(subject).build();
+    Body body = Body.builder()
                 .html(Content.builder().data(htmlBody == null ? "" : htmlBody).build())
                 .text(Content.builder().data(textBody == null ? "" : textBody).build())
                 .build();
-        Message message = Message.builder().subject(subj).body(body).build();
+    Message message = Message.builder().subject(subj).body(body).build();
 
-        SendEmailRequest request = SendEmailRequest.builder()
+    SendEmailRequest request = SendEmailRequest.builder()
                 .destination(destination)
                 .message(message)
                 .source(fromAddress)
                 .build();
 
-        SendEmailResponse resp = sesClient.sendEmail(request);
-        return resp.messageId();
-    }
+    SendEmailResponse resp = sesClient.sendEmail(request);
+    return resp.messageId();
+  }
 
-    /**
+  /**
      * Send templated email (future enhancement - SES templates)
      * For now, this is a placeholder for when SES email templates are implemented
      */
-    public String sendTemplatedEmail(String toAddress, String templateName, java.util.Map<String, String> templateData) {
-        // TODO: Implement SES email templates for more complex email formatting
-        // This would use SendTemplatedEmailRequest
-        throw new UnsupportedOperationException("Templated emails not yet implemented. Use sendEmail() instead.");
-    }
+  public String sendTemplatedEmail(String toAddress, String templateName, java.util.Map<String, String> templateData) {
+    // TODO: Implement SES email templates for more complex email formatting
+    // This would use SendTemplatedEmailRequest
+    throw new UnsupportedOperationException("Templated emails not yet implemented. Use sendEmail() instead.");
+  }
 
-    /**
+  /**
      * Send payment confirmation email
      */
-    public String sendPaymentConfirmation(String toEmail, String recipientName, String amount, String transactionId) {
-        String subject = "Payment Confirmation - CareConnect";
+  public String sendPaymentConfirmation(String toEmail, String recipientName, String amount, String transactionId) {
+    String subject = "Payment Confirmation - CareConnect";
 
-        String htmlBody = String.format("""
+    String htmlBody = String.format("""
             <!DOCTYPE html>
             <html>
             <head>
@@ -125,21 +125,21 @@ public class SesService {
             </html>
             """, recipientName, amount, transactionId);
 
-        String textBody = String.format(
+    String textBody = String.format(
             "Dear %s,\n\nThank you for your payment. We have successfully received your payment of $%s.\n\nTransaction ID: %s\n\nIf you have any questions, please contact support.\n\nBest regards,\nThe CareConnect Team",
             recipientName, amount, transactionId
         );
 
-        return sendEmail(toEmail, subject, htmlBody, textBody);
-    }
+    return sendEmail(toEmail, subject, htmlBody, textBody);
+  }
 
-    /**
+  /**
      * Send medication reminder email
      */
-    public String sendMedicationReminder(String toEmail, String patientName, String medicationName, String dosage, String scheduledTime) {
-        String subject = "Medication Reminder - " + medicationName;
+  public String sendMedicationReminder(String toEmail, String patientName, String medicationName, String dosage, String scheduledTime) {
+    String subject = "Medication Reminder - " + medicationName;
 
-        String htmlBody = String.format("""
+    String htmlBody = String.format("""
             <!DOCTYPE html>
             <html>
             <head>
@@ -173,15 +173,15 @@ public class SesService {
             </html>
             """, patientName, medicationName, dosage, scheduledTime);
 
-        String textBody = String.format(
+    String textBody = String.format(
             "Dear %s,\n\nThis is a reminder to take your medication.\n\nMedication: %s\nDosage: %s\nScheduled Time: %s\n\nPlease take as prescribed.\n\nBest regards,\nThe CareConnect Team",
             patientName, medicationName, dosage, scheduledTime
         );
 
-        return sendEmail(toEmail, subject, htmlBody, textBody);
-    }
+    return sendEmail(toEmail, subject, htmlBody, textBody);
+  }
 
-    /**
+  /**
      * Send appointment reminder email
      */
     public String sendAppointmentReminder(String toEmail, String patientName, String appointmentType, String dateTime, String location) {
@@ -226,13 +226,13 @@ public class SesService {
         );
     }
 
-    /**
+  /**
      * Send caregiver communication email
      */
-    public String sendCaregiverMessage(String toEmail, String fromName, String toName, String message, String priority) {
-        String subject = "Message from " + fromName + (priority.equals("urgent") ? " [URGENT]" : "");
+  public String sendCaregiverMessage(String toEmail, String fromName, String toName, String message, String priority) {
+    String subject = "Message from " + fromName + (priority.equals("urgent") ? " [URGENT]" : "");
 
-        String htmlBody = String.format("""
+    String htmlBody = String.format("""
             <!DOCTYPE html>
             <html>
             <head>
@@ -269,11 +269,11 @@ public class SesService {
             priority.equals("urgent") ? "#F44336" : "#4CAF50",
             fromName, toName, fromName, message.replace("\n", "<br>"));
 
-        String textBody = String.format(
+    String textBody = String.format(
             "Dear %s,\n\nYou have received a new message from %s in CareConnect.\n\nMessage:\n%s\n\nPlease log in to respond.\n\nBest regards,\nThe CareConnect Team",
             toName, fromName, message
         );
 
-        return sendEmail(toEmail, subject, htmlBody, textBody);
-    }
+    return sendEmail(toEmail, subject, htmlBody, textBody);
+  }
 }

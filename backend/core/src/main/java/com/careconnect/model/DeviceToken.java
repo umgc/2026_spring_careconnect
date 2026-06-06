@@ -16,46 +16,46 @@ import java.time.Instant;
 @AllArgsConstructor
 public class DeviceToken {
     
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "user_id", nullable = false)
     private User user;
     
-    @Column(name = "fcm_token", nullable = false, length = 500)
+  @Column(name = "fcm_token", nullable = false, length = 500)
     private String fcmToken;
     
-    @Column(name = "device_type", nullable = false)
-    @Enumerated(EnumType.STRING)
+  @Column(name = "device_type", nullable = false)
+  @Enumerated(EnumType.STRING)
     private DeviceType deviceType;
     
-    @Column(name = "device_id", nullable = false)
+  @Column(name = "device_id", nullable = false)
     private String deviceId;
     
-    @Column(name = "is_active", nullable = false)
-    @Builder.Default
+  @Column(name = "is_active", nullable = false)
+  @Builder.Default
     private Boolean isActive = true;
     
-    @Column(name = "created_at", nullable = false)
-    @Builder.Default
+  @Column(name = "created_at", nullable = false)
+  @Builder.Default
     private Instant createdAt = Instant.now();
     
-    @Column(name = "updated_at")
+  @Column(name = "updated_at")
     private Instant updatedAt;
     
-    @Column(name = "last_used_at")
+  @Column(name = "last_used_at")
     private Instant lastUsedAt;
     
-    public enum DeviceType {
+  public enum DeviceType {
         ANDROID,
         IOS,
         WEB
-    }
+  }
     
-    @PreUpdate
+  @PreUpdate
     public void preUpdate() {
-        this.updatedAt = Instant.now();
-    }
+    this.updatedAt = Instant.now();
+  }
 }

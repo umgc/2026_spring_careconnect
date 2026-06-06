@@ -10,15 +10,15 @@ import java.util.List;
 @Service
 public class MoodService {
 
-    @Autowired
+  @Autowired
     private MoodRepository moodRepository;
 
-    public Mood saveMood(Long userId, int score, String label) {
-        Mood mood = new Mood(userId, score, label);
-        return moodRepository.save(mood);
-    }
+  public Mood saveMood(Long userId, int score, String label) {
+    Mood mood = new Mood(userId, score, label);
+    return moodRepository.save(mood);
+  }
 
-    public List<Mood> getMoods(Long userId) {
-        return moodRepository.findByUserIdOrderByCreatedAtDesc(userId);
-    }
+  public List<Mood> getMoods(Long userId) {
+    return moodRepository.findByUserIdOrderByCreatedAtDesc(userId);
+  }
 }

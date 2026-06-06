@@ -24,11 +24,11 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * ChimeService — manages AWS Chime SDK video call meetings.
+ * ChimeService ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â manages AWS Chime SDK video call meetings.
  *
  * Flow:
  *   1. Caller sends call invitation via WebSocket (CallNotificationHandler)
- *   2. Recipient accepts — frontend calls POST /api/v3/calls/{callId}/meeting
+ *   2. Recipient accepts ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â frontend calls POST /api/v3/calls/{callId}/meeting
  *   3. This service creates a Chime meeting and adds both users as attendees
  *   4. Both users receive meeting credentials and join via Jitsi/Chime SDK in Flutter
  *   5. When call ends, DELETE /api/v3/calls/{callId}/meeting cleans up
@@ -118,7 +118,7 @@ public class ChimeService {
     // Called when a call is accepted — creates the Chime meeting room
     // ================================================================
 
-    /**
+  /**
      * Creates a new Chime meeting for the given callId.
      * Returns the meeting details needed by both parties to join.
      *
@@ -128,11 +128,11 @@ public class ChimeService {
     public final Map<String, Object> createMeeting(final String callId) {
         log.info("Creating Chime meeting for callId: {}", callId);
 
-        // Check if meeting already exists (e.g. both parties called this simultaneously)
-        if (activeMeetings.containsKey(callId)) {
-            log.info("Meeting already exists for callId: {}", callId);
-            return buildMeetingResponse(activeMeetings.get(callId));
-        }
+    // Check if meeting already exists (e.g. both parties called this simultaneously)
+    if (activeMeetings.containsKey(callId)) {
+      log.info("Meeting already exists for callId: {}", callId);
+      return buildMeetingResponse(activeMeetings.get(callId));
+    }
 
         if (!isAwsChimeAvailable()) {
             final Meeting localMeeting = Meeting.builder()
@@ -156,11 +156,11 @@ public class ChimeService {
             final CreateMeetingResponse response = chimeSdkMeetingsClient.createMeeting(request);
             final Meeting meeting = response.meeting();
 
-            // Store for later attendee creation and cleanup
-            activeMeetings.put(callId, meeting);
-            transcriptionLastMeetingId.put(callId, meeting.meetingId());
+      // Store for later attendee creation and cleanup
+      activeMeetings.put(callId, meeting);
+      transcriptionLastMeetingId.put(callId, meeting.meetingId());
 
-            ensureMeetingTranscriptionStarted(callId, meeting, "createMeeting");
+      ensureMeetingTranscriptionStarted(callId, meeting, "createMeeting");
 
             if (log.isInfoEnabled()) {
                 log.info("Chime meeting created: {} for callId: {}", meeting.meetingId(), callId);
@@ -172,13 +172,14 @@ public class ChimeService {
             throw new RuntimeException("Failed to create video call meeting: " + e.getMessage(), e);
         }
     }
+  }
 
-    // ================================================================
-    // CREATE ATTENDEE
-    // Called for each user joining the meeting — returns join credentials
-    // ================================================================
+  // ================================================================
+  // CREATE ATTENDEE
+  // Called for each user joining the meeting ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â returns join credentials
+  // ================================================================
 
-    /**
+  /**
      * Adds a user to an existing Chime meeting.
      * Must be called for both the caller and the recipient.
      * Returns the attendee credentials the Flutter app needs to join.
@@ -194,7 +195,7 @@ public class ChimeService {
         if (meeting == null) {
             throw new RuntimeException("No active meeting found for callId: " + callId
                 + ". Create the meeting first.");
-        }
+    }
 
         if (!isAwsChimeAvailable()) {
             final String externalUserId = toChimeExternalUserId(userId, role, displayName);
@@ -218,7 +219,7 @@ public class ChimeService {
                 "externalUserId",  externalUserId,
                 "joinToken",       "local-join-token-" + UUID.randomUUID()
             );
-        }
+    }
 
         try {
             final String externalUserId = toChimeExternalUserId(userId, role, displayName);
@@ -234,9 +235,9 @@ public class ChimeService {
                 log.info("Chime attendee created: {} for userId: {}", attendee.attendeeId(), userId);
             }
 
-            // Retry transcription startup after attendee creation in case createMeeting
-            // happened before media signaling was fully ready.
-            ensureMeetingTranscriptionStarted(callId, meeting, "createAttendee");
+      // Retry transcription startup after attendee creation in case createMeeting
+      // happened before media signaling was fully ready.
+      ensureMeetingTranscriptionStarted(callId, meeting, "createAttendee");
 
             final String eventIngestionUrl = meeting.mediaPlacement().eventIngestionUrl() != null
                     ? meeting.mediaPlacement().eventIngestionUrl() : "";
@@ -266,14 +267,15 @@ public class ChimeService {
             throw new RuntimeException("Failed to join video call: " + e.getMessage(), e);
         }
     }
+  }
 
-    // ================================================================
-    // JOIN MEETING (convenience method)
-    // Creates meeting if needed, then creates attendee — one call from Flutter
-    // ================================================================
+  // ================================================================
+  // JOIN MEETING (convenience method)
+  // Creates meeting if needed, then creates attendee ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â one call from Flutter
+  // ================================================================
 
-    /**
-     * Convenience method — creates the meeting (if not already created)
+  /**
+     * Convenience method ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â creates the meeting (if not already created)
      * and immediately adds the user as an attendee.
      *
      * Flutter calls this once per user when a call is accepted.
@@ -290,13 +292,16 @@ public class ChimeService {
         // Add user as attendee and return join credentials
         return createAttendee(callId, userId, role, displayName);
     }
+    // Add user as attendee and return join credentials
+    return createAttendee(callId, userId);
+  }
 
-    // ================================================================
-    // END MEETING
-    // Called when either party hangs up
-    // ================================================================
+  // ================================================================
+  // END MEETING
+  // Called when either party hangs up
+  // ================================================================
 
-    /**
+  /**
      * Deletes the Chime meeting and cleans up local state.
      * Called automatically when either party sends end-call via WebSocket.
      *
@@ -316,10 +321,10 @@ public class ChimeService {
         recordTranscriptionAttempt(
                 callId, "endMeeting", "MEETING_ENDED", "meetingId=" + meeting.meetingId());
 
-        if (!isAwsChimeAvailable()) {
-            log.info("Ended local mock meeting for callId: {}", callId);
-            return;
-        }
+    if (!isAwsChimeAvailable()) {
+      log.info("Ended local mock meeting for callId: {}", callId);
+      return;
+    }
 
         try {
             final DeleteMeetingRequest request = DeleteMeetingRequest.builder()
@@ -340,10 +345,8 @@ public class ChimeService {
         }
     }
 
-    // ================================================================
-    // GET MEETING INFO
-    // Used by sentiment service to confirm meeting is still active
-    // ================================================================
+    return out;
+  }
 
     /**
      * Returns whether a meeting is currently active for the given callId.
@@ -415,7 +418,7 @@ public class ChimeService {
             "externalMeetingId", meeting.externalMeetingId(),
             "mediaRegion",       meeting.mediaRegion()
         );
-    }
+  }
 
     private String toChimeExternalUserId(final String userId, final String role, final String displayName) {
         // Sanitize the numeric/string user-id portion
@@ -475,10 +478,15 @@ public class ChimeService {
         final String lastName = parts[parts.length - 1].replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
         return lastName.isEmpty() ? firstCased : firstCased + "-" + lastName;
     }
-
-    private boolean isAwsChimeAvailable() {
-        return awsEnabled && chimeSdkMeetingsClient != null;
+    normalized = normalized.replaceAll("[^A-Za-z0-9_-]", "_");
+    if (normalized.length() < 2) {
+      normalized = "u" + normalized;
     }
+    if (normalized.length() > 64) {
+      normalized = normalized.substring(0, 64);
+    }
+    return normalized;
+  }
 
     private void ensureMeetingTranscriptionStarted(
             final String callId, final Meeting meeting, final String source) {
@@ -489,11 +497,11 @@ public class ChimeService {
             return;
         }
 
-        if (Boolean.TRUE.equals(transcriptionStarted.get(callId))) {
-            recordTranscriptionAttempt(callId, source, "ALREADY_STARTED", null);
-            logMeetingTranscriptionStatus(callId, meeting.meetingId(), source + ":already-started");
-            return;
-        }
+    if (Boolean.TRUE.equals(transcriptionStarted.get(callId))) {
+      recordTranscriptionAttempt(callId, source, "ALREADY_STARTED", null);
+      logMeetingTranscriptionStatus(callId, meeting.meetingId(), source + ":already-started");
+      return;
+    }
 
         try {
             final StartMeetingTranscriptionRequest request =
@@ -584,7 +592,7 @@ public class ChimeService {
                 meetingId,
                 source,
                 summary);
-    }
+  }
 
     private String queryMeetingTranscriptionStatusSummary(final String meetingId) {
         try {
@@ -605,12 +613,12 @@ public class ChimeService {
                     .getMethod("getMeetingTranscription", requestClass)
                     .invoke(chimeSdkMeetingsClient, request);
 
-            return String.valueOf(statusResponse);
-        } catch (ClassNotFoundException notSupportedBySdk) {
-            return "STATUS_API_UNAVAILABLE_IN_SDK";
-        } catch (Exception statusErr) {
-            return "STATUS_QUERY_FAILED: " + statusErr.getMessage();
-        }
+      return String.valueOf(statusResponse);
+    } catch (ClassNotFoundException notSupportedBySdk) {
+      return "STATUS_API_UNAVAILABLE_IN_SDK";
+    } catch (Exception statusErr) {
+      return "STATUS_QUERY_FAILED: " + statusErr.getMessage();
     }
+  }
 
 }

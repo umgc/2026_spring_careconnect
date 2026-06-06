@@ -15,22 +15,22 @@ import java.time.LocalDateTime;
 @Setter
 public abstract class Auditable {
 
-    @CreatedDate
-    @Column(name = "created_at", updatable = false)
+  @CreatedDate
+  @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+  @LastModifiedDate
+  @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @PrePersist
+  @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
+    createdAt = LocalDateTime.now();
+    updatedAt = LocalDateTime.now();
+  }
 
-    @PreUpdate
+  @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
+    updatedAt = LocalDateTime.now();
+  }
 }

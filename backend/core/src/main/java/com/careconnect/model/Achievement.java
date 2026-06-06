@@ -14,19 +14,19 @@ import lombok.AllArgsConstructor;
 @Table(name = "achievement")
 public class Achievement {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private String title;
-    private String description;
-    private String icon;  // Optional: URL or icon name
+  private String title;
+  private String description;
+  private String icon;  // Optional: URL or icon name
 
-    // Explicit getters to ensure compilation works if Lombok isn't processing
-    public Long getId() { return id; }
-    public String getTitle() { return title; }
-    public String getDescription() { return description; }
-    public String getIcon() { return icon; }
-    public void setTitle(String title) { this.title = title; }
-    public void setDescription(String description) { this.description = description; }
-    public void setIcon(String icon) { this.icon = icon; }
+  // Explicit getters to ensure compilation works if Lombok isn't processing
+  public Long getId() { return id; }
+  public String getTitle() { return title; }
+  public String getDescription() { return description; }
+  public String getIcon() { return icon; }
+  public void setTitle(String title) { this.title = title; }
+  public void setDescription(String description) { this.description = description; }
+  public void setIcon(String icon) { this.icon = icon; }
 }

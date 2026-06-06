@@ -11,20 +11,20 @@ import java.util.List;
 @Service
 public class CommentService {
 
-    @Autowired
+  @Autowired
     private CommentRepository commentRepository;
 
-    public List<Comment> getCommentsForPost(Long postId) {
-        return commentRepository.findByPostIdOrderByCreatedAtAsc(postId);
-    }
+  public List<Comment> getCommentsForPost(Long postId) {
+    return commentRepository.findByPostIdOrderByCreatedAtAsc(postId);
+  }
 
-    public Comment addComment(Long postId, Long userId, String username, String content) {
-        Comment comment = new Comment();
-        comment.setPostId(postId);
-        comment.setUserId(userId);
-        comment.setUsername(username);
-        comment.setContent(content);
-        comment.setCreatedAt(LocalDateTime.now());
-        return commentRepository.save(comment);
-    }
+  public Comment addComment(Long postId, Long userId, String username, String content) {
+    Comment comment = new Comment();
+    comment.setPostId(postId);
+    comment.setUserId(userId);
+    comment.setUsername(username);
+    comment.setContent(content);
+    comment.setCreatedAt(LocalDateTime.now());
+    return commentRepository.save(comment);
+  }
 }

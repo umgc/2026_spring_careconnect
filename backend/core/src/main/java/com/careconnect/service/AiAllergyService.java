@@ -22,22 +22,22 @@ import static com.careconnect.service.DeepSeekService.DeepSeekResponse;
 @ConditionalOnProperty(name = "careconnect.deepseek.enabled", havingValue = "true", matchIfMissing = true)
 public class AiAllergyService {
 
-    private final DeepSeekService deepSeekService;
-    private final DeepSeekContextBuilder contextBuilder;
-    private final ObjectMapper objectMapper; // let Spring inject the shared mapper
+  private final DeepSeekService deepSeekService;
+  private final DeepSeekContextBuilder contextBuilder;
+  private final ObjectMapper objectMapper; // let Spring inject the shared mapper
 
-    public AiAllergyDTO.Result analyze(AiAllergyDTO.Request req, List<Allergy> history) {
-        // 1) System prompt
-        String system = "You are a medical assistant. Extract structured allergy info from the user's sentence.\n" +
+  public AiAllergyDTO.Result analyze(AiAllergyDTO.Request req, List<Allergy> history) {
+    // 1) System prompt
+    String system = "You are a medical assistant. Extract structured allergy info from the user's sentence.\n" +
             "Return ONLY a compact JSON object:\n" +
             "{\"allergen\":\"...\", \"reaction\":\"...\", \"severity\":\"MILD|MODERATE|SEVERE\"}.\n" +
             "If something is missing, leave it as an empty string. Do NOT add extra keys or text.\n";
 
-        String historyBlock = contextBuilder.buildAllergyContext(req.getPatientId(), history);
+    String historyBlock = contextBuilder.buildAllergyContext(req.getPatientId(), history);
 
-        // 2) User prompt
-        Map<String, Object> ctx = Optional.ofNullable(req.getContext()).orElse(Map.of());
-        String user = String.format(
+    // 2) User prompt
+    Map<String, Object> ctx = Optional.ofNullable(req.getContext()).orElse(Map.of());
+    String user = String.format(
             "Patient history:\n" +
             "%s\n\n" +
             "Current input (voice transcript):\n" +
@@ -46,36 +46,36 @@ public class AiAllergyService {
             "Output JSON only.\n",
             historyBlock, req.getText(), ctx);
 
-        // Build & call DeepSeek
-        DeepSeekChatRequest chat = deepSeekService.buildChatRequest(system, user);
-        DeepSeekResponse resp = deepSeekService.sendChatRequest(chat);
+    // Build & call DeepSeek
+    DeepSeekChatRequest chat = deepSeekService.buildChatRequest(system, user);
+    DeepSeekResponse resp = deepSeekService.sendChatRequest(chat);
 
-        // Share helper
-        String content = AiParsingUtils.extractContent(resp);
+    // Share helper
+    String content = AiParsingUtils.extractContent(resp);
 
-        AiAllergyDTO.Result out = new AiAllergyDTO.Result();
-        out.setAllergen("");
-        out.setReaction("");
-        out.setSeverity("");
+    AiAllergyDTO.Result out = new AiAllergyDTO.Result();
+    out.setAllergen("");
+    out.setReaction("");
+    out.setSeverity("");
 
-        JsonNode node = AiParsingUtils.tryParseJson(objectMapper, content);
-        if (node != null) {
-            out.setAllergen(AiParsingUtils.asText(node, "allergen"));
-            out.setReaction(AiParsingUtils.asText(node, "reaction"));
-            out.setSeverity(
+    JsonNode node = AiParsingUtils.tryParseJson(objectMapper, content);
+    if (node != null) {
+      out.setAllergen(AiParsingUtils.asText(node, "allergen"));
+      out.setReaction(AiParsingUtils.asText(node, "reaction"));
+      out.setSeverity(
                     AiParsingUtils.normalizeSeverity(
                             AiParsingUtils.asText(node, "severity")
                     )
-            );
-        } else if (!content.isBlank()) {
-            // content present but not strict JSON → fall back to transcript
-            log.warn("AI content was not strict JSON. Falling back. Content: {}", content);
-            out.setReaction(Optional.ofNullable(req.getText()).orElse(""));
-        } else {
-            // empty content → fall back to transcript
-            out.setReaction(Optional.ofNullable(req.getText()).orElse(""));
-        }
-
-        return out;
+      );
+    } else if (!content.isBlank()) {
+      // content present but not strict JSON Ã¢â€ â€™ fall back to transcript
+      log.warn("AI content was not strict JSON. Falling back. Content: {}", content);
+      out.setReaction(Optional.ofNullable(req.getText()).orElse(""));
+    } else {
+      // empty content Ã¢â€ â€™ fall back to transcript
+      out.setReaction(Optional.ofNullable(req.getText()).orElse(""));
     }
+
+    return out;
+  }
 }

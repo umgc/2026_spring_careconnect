@@ -11,33 +11,33 @@ import java.util.Map;
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(UnauthorizedException.class)
+  @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<?> handleUnauthorizedException(UnauthorizedException ex) {
-        return ResponseEntity
+    return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
                 .body(Map.of("error", ex.getMessage()));
-    }
+  }
 
-    @ExceptionHandler(RegistrationException.class)
+  @ExceptionHandler(RegistrationException.class)
     public ResponseEntity<?> handleRegistrationException(RegistrationException ex) {
-        return ResponseEntity
+    return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("error", ex.getMessage()));
-    }
+  }
 
-    @ExceptionHandler(AppException.class)
+  @ExceptionHandler(AppException.class)
     public ResponseEntity<?> handleAppException(AppException ex) {
-        return ResponseEntity
+    return ResponseEntity
                 .status(ex.getStatus())
                 .body(Map.of("error", ex.getMessage()));
-    }
+  }
 
-    @ExceptionHandler(Exception.class)
+  @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleOtherExceptions(Exception ex) {
-        org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class)
+    org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class)
                 .error("Unhandled exception", ex);
-        return ResponseEntity
+    return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "An unexpected error occurred"));
-    }
+  }
 }

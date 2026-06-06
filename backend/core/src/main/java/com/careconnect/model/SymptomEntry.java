@@ -10,28 +10,28 @@ import java.time.Instant;
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class SymptomEntry extends Auditable {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_id")
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "patient_id")
     private Patient patient;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "caregiver_id")
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "caregiver_id")
     private Caregiver caregiver;
 
-    @Builder.Default
-    @Column(name = "completed", nullable = false)
+  @Builder.Default
+  @Column(name = "completed", nullable = false)
     private Boolean completed = true;
 
-    private String symptomKey;      // headache, cough, etc.
-    private String symptomValue;    // “mild”, “severe”, “38.5 °C” …
-    private Integer severity;       // 1-5 (nullable)
+  private String symptomKey;      // headache, cough, etc.
+  private String symptomValue;    // Ã¢â‚¬Å“mildÃ¢â‚¬Â, Ã¢â‚¬Å“severeÃ¢â‚¬Â, Ã¢â‚¬Å“38.5 Ã‚Â°CÃ¢â‚¬Â Ã¢â‚¬Â¦
+  private Integer severity;       // 1-5 (nullable)
 
-    @Column(name = "taken_at", nullable = false)
+  @Column(name = "taken_at", nullable = false)
     private Instant takenAt;
 
-    @Column(name = "notes", columnDefinition = "TEXT")
+  @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;           //  Clinical notes
 }

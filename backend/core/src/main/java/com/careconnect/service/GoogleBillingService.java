@@ -19,10 +19,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 @Service
 public class GoogleBillingService implements BillingService {
 
-    @Value("${google.access-token:}")
+  @Value("${google.access-token:}")
     private String googleAccessToken;
 
-    @Value("${google.service-account-file:}")
+  @Value("${google.service-account-file:}")
     private String googleServiceAccountFile;
 
     @Value("${google.package-name:edu.umgc.careconnect}")
@@ -73,7 +73,7 @@ public class GoogleBillingService implements BillingService {
             throw new IllegalArgumentException("packageName, productId and receipt token are required for Google verification");
         }
 
-        String url = String.format(
+    String url = String.format(
             "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/%s/purchases/subscriptions/%s/tokens/%s",
             request.getPackageName(), request.getProductId(), request.getReceipt()
         );
@@ -119,4 +119,36 @@ public class GoogleBillingService implements BillingService {
         out.setStatus("FAILED");
         return out;
     }
+    if (accessToken != null && !accessToken.isEmpty()) headers.setBearerAuth(accessToken);
+
+    HttpEntity<String> entity = new HttpEntity<>(null, headers);
+    ResponseEntity<String> resp = rest.exchange(url, org.springframework.http.HttpMethod.GET, entity, String.class);
+    String body = resp != null ? resp.getBody() : null;
+
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode root = body != null ? mapper.readTree(body) : null;
+
+    BillingVerifyResponse out = new BillingVerifyResponse();
+    out.setPlatform("GOOGLE");
+
+    if (root != null) {
+      long purchaseTime = root.has("startTimeMillis") ? root.get("startTimeMillis").asLong() : (root.has("purchaseTimeMillis") ? root.get("purchaseTimeMillis").asLong() : Instant.now().toEpochMilli());
+      long expiryTime = root.has("expiryTimeMillis") ? root.get("expiryTimeMillis").asLong() : (purchaseTime + 30L * 24L * 3600L * 1000L);
+      String orderId = root.has("orderId") ? root.get("orderId").asText() : null;
+      String purchaseState = root.has("paymentState") ? String.valueOf(root.get("paymentState").asInt()) : "UNKNOWN";
+      out.setSuccess(true);
+      out.setExternalTransactionId(orderId != null ? orderId : request.getReceipt());
+      out.setExternalSubscriptionId(orderId != null ? orderId : request.getReceipt());
+      out.setPurchaseDate(Instant.ofEpochMilli(purchaseTime));
+      out.setExpiryDate(Instant.ofEpochMilli(expiryTime));
+      out.setStatus(expiryTime > Instant.now().toEpochMilli() ? "ACTIVE" : "EXPIRED");
+      out.setMessage("Verified with Google Play. purchaseState=" + purchaseState);
+      return out;
+    }
+
+    out.setSuccess(false);
+    out.setMessage(body != null ? body : "Google verification failed or returned no body");
+    out.setStatus("FAILED");
+    return out;
+  }
 }

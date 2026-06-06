@@ -40,27 +40,27 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 public class TaskDtoV2 {
-    /**
+  /**
      * Unique identifier of the task.
      */
-    private Long id;
+  private Long id;
 
-    /**
+  /**
      * Name of the task.
      * <p>
      * <b>Required.</b>
      * </p>
      */
-    @NotNull(message = "Task name is required")
+  @NotNull(message = "Task name is required")
     private String name;
 
-    /**
+  /**
      * Optional description providing more details about the task.
      */
-    @Nullable
+  @Nullable
     private String description;
 
-    /**
+  /**
      * Date of the task.
      * <p>
      * Stored as {@code varchar(255)} in the database. Should be in
@@ -70,29 +70,29 @@ public class TaskDtoV2 {
      * <b>Required.</b>
      * </p>
      */
-    @NotNull(message = "Date is required")
+  @NotNull(message = "Date is required")
     private String date; // Stored as varchar(255) in DB
 
-    /**
+  /**
      * Optional time of day for the task.
      * <p>
      * Stored as {@code varchar(255)} in the database
      * (e.g., "08:30 AM").
      * </p>
      */
-    @Nullable
+  @Nullable
     private String timeOfDay; // Stored as varchar(255) in DB
 
-    /**
+  /**
      * Completion state of the task.
      * <p>
      * <b>Required.</b>
      * </p>
      */
-    @NotNull(message = "Completion state is required")
+  @NotNull(message = "Completion state is required")
     private boolean isCompleted;
 
-    /**
+  /**
      * Frequency of recurrence.
      * <p>
      * Examples: {@code "daily"}, {@code "weekly"}, {@code "monthly"}.
@@ -101,35 +101,35 @@ public class TaskDtoV2 {
      * Optional.
      * </p>
      */
-    @Nullable
+  @Nullable
     private String frequency;
 
-    /**
+  /**
      * Interval for the recurrence.
      * <p>
      * Examples:
      * <ul>
-     * <li>1 → every day/week</li>
-     * <li>2 → every 2 days/weeks</li>
+     * <li>1 Ã¢â€ â€™ every day/week</li>
+     * <li>2 Ã¢â€ â€™ every 2 days/weeks</li>
      * </ul>
      * </p>
      * <p>
      * Optional.
      * </p>
      */
-    @Nullable
+  @Nullable
     private Integer interval;
 
-    /**
+  /**
      * Number of occurrences for this task.
      * <p>
      * Optional.
      * </p>
      */
-    @Nullable
+  @Nullable
     private Integer count;
 
-    /**
+  /**
      * Days of the week this task applies to.
      *
      * <p>
@@ -141,10 +141,10 @@ public class TaskDtoV2 {
      * Optional.
      * </p>
      */
-    @Nullable
+  @Nullable
     private List<Boolean> daysOfWeek;
 
-    /**
+  /**
      * Type of task.
      * <p>
      * Examples: {@code "Medication"}, {@code "Appointment"},
@@ -155,10 +155,10 @@ public class TaskDtoV2 {
      * Optional.
      * </p>
      */
-    @Nullable
+  @Nullable
     private String taskType;
 
-    /**
+  /**
      * Flattened patient reference.
      *
      * <p>
@@ -169,10 +169,10 @@ public class TaskDtoV2 {
      * Optional.
      * </p>
      */
-    @Nullable
+  @Nullable
     private Long patientId;
 
-    /**
+  /**
      * Notifications associated with this task.
      *
      * <p>
@@ -182,29 +182,29 @@ public class TaskDtoV2 {
      * Optional.
      * </p>
      */
-    @Nullable
+  @Nullable
     private List<ScheduledNotificationDTO> notifications;
 
-    /**
+  /**
      * Flag indicating whether an update applies to only this task
      * or to the entire recurring series.
      *
      * <p>
      * Usage:
      * <ul>
-     * <li>{@code true} → update all tasks in the series</li>
-     * <li>{@code false/null} → update only this task</li>
+     * <li>{@code true} Ã¢â€ â€™ update all tasks in the series</li>
+     * <li>{@code false/null} Ã¢â€ â€™ update only this task</li>
      * </ul>
      * </p>
      */
-    private Boolean updateSeries;
+  private Boolean updateSeries;
 
-    /**
+  /**
      * Date of the task creation in miliseconds.
      * <p>
      * </p>
      * <p>
      * </p>
      */
-    private Long createdAt;
+  private Long createdAt;
 }

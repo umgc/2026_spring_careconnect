@@ -10,8 +10,8 @@ import java.util.Optional;
 
 @Repository
 public interface ConnectionRequestRepository extends JpaRepository<ConnectionRequest, Long> {
-    List<ConnectionRequest> findByCaregiverAndStatus(User caregiver, String status);
-    List<ConnectionRequest> findByPatientAndStatus(User patient, String status);
-    Optional<ConnectionRequest> findByToken(String token);
-    boolean existsByCaregiverAndPatientAndStatus(User caregiver, User patient, String status);
+  List<ConnectionRequest> findByCaregiverAndStatus(User caregiver, String status);
+  List<ConnectionRequest> findByPatientAndStatus(User patient, String status);
+  Optional<ConnectionRequest> findByToken(String token);
+  boolean existsByCaregiverAndPatientAndStatus(User caregiver, User patient, String status);
 }

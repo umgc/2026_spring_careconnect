@@ -13,20 +13,20 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TemplateDto {
-    private String name;
-    @Nullable
+  private String name;
+  @Nullable
     private String description;
-    @Nullable
+  @Nullable
     private String frequency;
-    @Nullable
+  @Nullable
     private int interval;
-    @Nullable
+  @Nullable
     private int count;
-    @Nullable
+  @Nullable
     private List<Boolean> daysOfWeek;
-    @Nullable
+  @Nullable
     private String timeOfDay;
-    private int icon;
-    @Nullable
+  private int icon;
+  @Nullable
     private List<String> notifications;
 }

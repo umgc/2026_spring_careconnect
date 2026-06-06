@@ -14,22 +14,22 @@ import java.time.Instant;
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
-	@Autowired
+  @Autowired
     private PaymentRepository paymentRepository;
-    @Autowired
+  @Autowired
     private SubscriptionRepository subscriptionRepository;
 
-    public void savePayment(Payment payment) {
-        if (payment.getSubscription() != null && payment.getSubscription().getId() != null) {
-            // ensure subscription exists
-            Subscription s = subscriptionRepository.findById(payment.getSubscription().getId()).orElse(null);
-            if (s != null) payment.setSubscription(s);
-        }
-        if (payment.getAttemptedAt() == null) payment.setAttemptedAt(Instant.now());
-        paymentRepository.save(payment);
+  public void savePayment(Payment payment) {
+    if (payment.getSubscription() != null && payment.getSubscription().getId() != null) {
+      // ensure subscription exists
+      Subscription s = subscriptionRepository.findById(payment.getSubscription().getId()).orElse(null);
+      if (s != null) payment.setSubscription(s);
     }
+    if (payment.getAttemptedAt() == null) payment.setAttemptedAt(Instant.now());
+    paymentRepository.save(payment);
+  }
 
-    public Payment getByStripeSessionId(String sessionId) {
-        return paymentRepository.findByStripeSessionId(sessionId);
-    }
+  public Payment getByStripeSessionId(String sessionId) {
+    return paymentRepository.findByStripeSessionId(sessionId);
+  }
 }

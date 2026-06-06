@@ -7,7 +7,7 @@ import lombok.*;
 @Embeddable
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ProfessionalInfo {
-	private String licenseNumber;
-	private String issuingState;
-	private Integer yearsExperience; 
+  private String licenseNumber;
+  private String issuingState;
+  private Integer yearsExperience; 
 }

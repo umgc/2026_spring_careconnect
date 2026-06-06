@@ -18,63 +18,63 @@ import java.util.*;
 @RequestMapping("v1/api/gamification")
 public class GamificationController {
 
-    private final GamificationService gamificationService;
-    private final SecurityUtil securityUtil;
-    private final AuthorizationService authorizationService;
+  private final GamificationService gamificationService;
+  private final SecurityUtil securityUtil;
+  private final AuthorizationService authorizationService;
 
-    @Autowired
+  @Autowired
     public GamificationController(GamificationService gamificationService,
                                   SecurityUtil securityUtil,
                                   AuthorizationService authorizationService) {
-        this.gamificationService = gamificationService;
-        this.securityUtil = securityUtil;
-        this.authorizationService = authorizationService;
-    }
+    this.gamificationService = gamificationService;
+    this.securityUtil = securityUtil;
+    this.authorizationService = authorizationService;
+  }
 
-    // 1. Award XP to user
-    @RequirePermission(Permission.CREATE_TASKS)
+  // 1. Award XP to user
+  @RequirePermission(Permission.CREATE_TASKS)
 
-    @PostMapping("/award-xp")
+  @PostMapping("/award-xp")
     public ResponseEntity<?> awardXp(@RequestBody Map<String, Object> body) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdmin(currentUser);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdmin(currentUser);
 
-        Long userId = Long.valueOf(body.get("userId").toString());
-        int amount = Integer.parseInt(body.get("amount").toString());
+    Long userId = Long.valueOf(body.get("userId").toString());
+    int amount = Integer.parseInt(body.get("amount").toString());
 
-        XPProgress updatedProgress = gamificationService.awardXp(userId, amount);
-        return ResponseEntity.ok(updatedProgress);
-    }
+    XPProgress updatedProgress = gamificationService.awardXp(userId, amount);
+    return ResponseEntity.ok(updatedProgress);
+  }
 
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
 
-    @GetMapping("/progress/{userId}")
+  @GetMapping("/progress/{userId}")
     public ResponseEntity<?> getXpProgress(@PathVariable Long userId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, userId);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, userId);
 
-        return gamificationService.getXpProgress(userId)
+    return gamificationService.getXpProgress(userId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.status(404).body(null));
-    }
+  }
 
-    // 3. Get earned achievements for a user
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  // 3. Get earned achievements for a user
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/achievements/{userId}")
+  @GetMapping("/achievements/{userId}")
     public ResponseEntity<List<UserAchievement>> getUserAchievements(@PathVariable Long userId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, userId);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, userId);
 
-        return ResponseEntity.ok(gamificationService.getUserAchievements(userId));
-    }
+    return ResponseEntity.ok(gamificationService.getUserAchievements(userId));
+  }
 
-    // 4. Get full list of all achievements (earned + unearned)
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  // 4. Get full list of all achievements (earned + unearned)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
-    @GetMapping("/all-achievements")
+  @GetMapping("/all-achievements")
     public ResponseEntity<List<Achievement>> getAllAchievements() {
-        return ResponseEntity.ok(gamificationService.getAllAchievements());
-    }
+    return ResponseEntity.ok(gamificationService.getAllAchievements());
+  }
 }

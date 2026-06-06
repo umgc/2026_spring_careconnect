@@ -57,9 +57,9 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     log.info("CareConnect WebSocket connection established: {}", session.getId());
     
     Map<String, Object> response = Map.of(
-      "type", "connection-established",
-      "message", "Connected to CareConnect real-time service",
-      "sessionId", session.getId()
+        "type", "connection-established",
+        "message", "Connected to CareConnect real-time service",
+        "sessionId", session.getId()
     );
     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
   }
@@ -68,7 +68,7 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
   protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
     try {
       Map<String, Object> payload = objectMapper.readValue(
-        message.getPayload(),
+          message.getPayload(),
         new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}
       );
       String type = (String) payload.get("type");
@@ -116,8 +116,8 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     
     if (token == null || !jwtTokenProvider.validateToken(token)) {
       Map<String, Object> response = Map.of(
-        "type", "authentication-failed",
-        "message", "Invalid or missing token"
+          "type", "authentication-failed",
+          "message", "Invalid or missing token"
       );
       session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
       session.close(CloseStatus.NOT_ACCEPTABLE.withReason("Authentication failed"));
@@ -129,8 +129,8 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     
     if (user == null) {
       Map<String, Object> response = Map.of(
-        "type", "authentication-failed",
-        "message", "User not found"
+          "type", "authentication-failed",
+          "message", "User not found"
       );
       session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
       session.close(CloseStatus.NOT_ACCEPTABLE.withReason("User not found"));
@@ -142,10 +142,10 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     sessionUsers.put(session.getId(), user);
     
     Map<String, Object> response = Map.of(
-      "type", "authentication-success",
-      "userId", user.getId(),
-      "userEmail", user.getEmail(),
-      "userRole", user.getRole().name()
+        "type", "authentication-success",
+        "userId", user.getId(),
+        "userEmail", user.getEmail(),
+        "userRole", user.getRole().name()
     );
     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
     
@@ -163,10 +163,10 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     java.util.List<String> updateTypes = (java.util.List<String>) payload.get("updateTypes");
     
     Map<String, Object> response = Map.of(
-      "type", "subscription-confirmed",
-      "userId", user.getId(),
-      "subscribedTo", updateTypes != null ? updateTypes : java.util.List.of("all"),
-      "timestamp", System.currentTimeMillis()
+        "type", "subscription-confirmed",
+        "userId", user.getId(),
+        "subscribedTo", updateTypes != null ? updateTypes : java.util.List.of("all"),
+        "timestamp", System.currentTimeMillis()
     );
     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
     
@@ -188,12 +188,12 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     WebSocketSession targetSession = userSessions.get(targetUserId);
     if (targetSession != null && targetSession.isOpen()) {
       Map<String, Object> notification = Map.of(
-        "type", "ai-chat-response",
-        "fromUserId", user.getId(),
-        "fromUserName", getUserDisplayName(user),
-        "conversationId", conversationId,
-        "message", chatMessage,
-        "timestamp", System.currentTimeMillis()
+          "type", "ai-chat-response",
+          "fromUserId", user.getId(),
+          "fromUserName", getUserDisplayName(user),
+          "conversationId", conversationId,
+          "message", chatMessage,
+          "timestamp", System.currentTimeMillis()
       );
       try {
         targetSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(notification)));
@@ -216,12 +216,12 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     // Notify caregivers and family members about mood/pain log updates
     // This would integrate with your existing family member and caregiver services
     Map<String, Object> notification = Map.of(
-      "type", "mood-pain-log-updated",
-      "patientId", user.getId(),
-      "patientName", getUserDisplayName(user),
-      "moodValue", payload.get("moodValue"),
-      "painValue", payload.get("painValue"),
-      "timestamp", System.currentTimeMillis()
+        "type", "mood-pain-log-updated",
+        "patientId", user.getId(),
+        "patientName", getUserDisplayName(user),
+        "moodValue", payload.get("moodValue"),
+        "painValue", payload.get("painValue"),
+        "timestamp", System.currentTimeMillis()
     );
     
     // Here you would get caregivers and family members and notify them
@@ -243,11 +243,11 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     WebSocketSession patientSession = userSessions.get(patientId);
     if (patientSession != null && patientSession.isOpen()) {
       Map<String, Object> reminder = Map.of(
-        "type", "medication-reminder",
-        "medicationName", medicationName,
-        "reminderTime", reminderTime,
-        "message", "Time to take your " + medicationName,
-        "timestamp", System.currentTimeMillis()
+          "type", "medication-reminder",
+          "medicationName", medicationName,
+          "reminderTime", reminderTime,
+          "message", "Time to take your " + medicationName,
+          "timestamp", System.currentTimeMillis()
       );
       
       patientSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(reminder)));
@@ -268,13 +268,13 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     
     // This would notify relevant healthcare providers
     Map<String, Object> alert = Map.of(
-      "type", "vital-signs-alert",
-      "patientId", user.getId(),
-      "patientName", getUserDisplayName(user),
-      "alertType", alertType,
-      "message", alertMessage,
-      "severity", severity,
-      "timestamp", System.currentTimeMillis()
+        "type", "vital-signs-alert",
+        "patientId", user.getId(),
+        "patientName", getUserDisplayName(user),
+        "alertType", alertType,
+        "message", alertMessage,
+        "severity", severity,
+        "timestamp", System.currentTimeMillis()
     );
     
     log.info("Vital signs alert from patient {}: {} - {}", user.getEmail(), alertType, severity);
@@ -294,12 +294,12 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     WebSocketSession patientSession = userSessions.get(targetPatientId);
     if (patientSession != null && patientSession.isOpen()) {
       Map<String, Object> request = Map.of(
-        "type", "family-member-request",
-        "fromUserId", user.getId(),
-        "fromUserName", getUserDisplayName(user),
-        "fromUserEmail", user.getEmail(),
-        "requestType", requestType,
-        "timestamp", System.currentTimeMillis()
+          "type", "family-member-request",
+          "fromUserId", user.getId(),
+          "fromUserName", getUserDisplayName(user),
+          "fromUserEmail", user.getEmail(),
+          "requestType", requestType,
+          "timestamp", System.currentTimeMillis()
       );
       try {
         patientSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(request)));
@@ -314,8 +314,8 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
 
   private void handleHeartbeat(WebSocketSession session, Map<String, Object> payload) throws Exception {
     Map<String, Object> response = Map.of(
-      "type", "heartbeat-response",
-      "timestamp", System.currentTimeMillis()
+        "type", "heartbeat-response",
+        "timestamp", System.currentTimeMillis()
     );
     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
   }
@@ -323,9 +323,9 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
   private void sendErrorMessage(WebSocketSession session, String errorMessage) {
     try {
       Map<String, Object> error = Map.of(
-        "type", "error",
-        "message", errorMessage,
-        "timestamp", System.currentTimeMillis()
+          "type", "error",
+          "message", errorMessage,
+          "timestamp", System.currentTimeMillis()
       );
       session.sendMessage(new TextMessage(objectMapper.writeValueAsString(error)));
     } catch (Exception e) {
@@ -408,10 +408,10 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     emailVerificationSessions.put(email.toLowerCase(), session);
 
     Map<String, Object> response = Map.of(
-      "type", "email-verification-subscription-confirmed",
-      "email", email,
-      "message", "Subscribed to email verification notifications",
-      "timestamp", System.currentTimeMillis()
+        "type", "email-verification-subscription-confirmed",
+        "email", email,
+        "message", "Subscribed to email verification notifications",
+        "timestamp", System.currentTimeMillis()
     );
     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
 
@@ -427,11 +427,11 @@ public class CareConnectWebSocketHandler extends TextWebSocketHandler {
     if (session != null && session.isOpen()) {
       try {
         Map<String, Object> notification = Map.of(
-          "type", "email-verified",
-          "email", email,
-          "verified", true,
-          "message", "Your email has been verified successfully!",
-          "timestamp", System.currentTimeMillis()
+            "type", "email-verified",
+            "email", email,
+            "verified", true,
+            "message", "Your email has been verified successfully!",
+            "timestamp", System.currentTimeMillis()
         );
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(notification)));
         log.info("Email verification notification sent to: {}", email);

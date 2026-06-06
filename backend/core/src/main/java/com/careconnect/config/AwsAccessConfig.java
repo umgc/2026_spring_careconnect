@@ -22,87 +22,87 @@ import org.springframework.beans.factory.annotation.Value;
 @ConditionalOnProperty(name = "careconnect.aws.enabled", havingValue = "true", matchIfMissing = false)
 public class AwsAccessConfig {
 
-    @Value("${aws.region:us-east-1}")
+  @Value("${aws.region:us-east-1}")
     private String awsRegion;
 
-    @Bean
+  @Bean
     public Region defaultAwsRegion() {
-        return Region.of(awsRegion);
-    }
+    return Region.of(awsRegion);
+  }
 
-    @Bean
+  @Bean
     public DefaultCredentialsProvider awsCredentialsProvider() {
-        return DefaultCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build();
-    }
+    return DefaultCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build();
+  }
 
-    @Bean
+  @Bean
     public S3Client s3Client() {
-        return S3Client.builder()
+    return S3Client.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(awsCredentialsProvider())
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public SsmClient ssmClient(DefaultCredentialsProvider credentialsProvider) {
-        return SsmClient.builder()
+    return SsmClient.builder()
                 .credentialsProvider(credentialsProvider)
                 .region(defaultAwsRegion())
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public TextractClient textractClient() {
-        return TextractClient.builder()
+    return TextractClient.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public ChimeSdkMeetingsClient chimeSdkMeetingsClient() {
-        return ChimeSdkMeetingsClient.builder()
+    return ChimeSdkMeetingsClient.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(awsCredentialsProvider())
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public BedrockRuntimeClient bedrockRuntimeClient() {
-        return BedrockRuntimeClient.builder()
+    return BedrockRuntimeClient.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(awsCredentialsProvider())
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public ChimeSdkMediaPipelinesClient chimeSdkMediaPipelinesClient() {
-        return ChimeSdkMediaPipelinesClient.builder()
+    return ChimeSdkMediaPipelinesClient.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(awsCredentialsProvider())
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public StsClient stsClient() {
-        return StsClient.builder()
+    return StsClient.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(awsCredentialsProvider())
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public S3Presigner s3Presigner() {
-        return S3Presigner.builder()
+    return S3Presigner.builder()
                 .region(defaultAwsRegion())
                 .credentialsProvider(awsCredentialsProvider())
                 .build();
-    }
+  }
 
-    @Bean
+  @Bean
     public IamClient iamClient() {
-        // IAM is a global service — must use us-east-1 regardless of deployment region
-        return IamClient.builder()
+    // IAM is a global service Ã¢â‚¬â€ must use us-east-1 regardless of deployment region
+    return IamClient.builder()
                 .region(Region.US_EAST_1)
                 .credentialsProvider(awsCredentialsProvider())
                 .build();

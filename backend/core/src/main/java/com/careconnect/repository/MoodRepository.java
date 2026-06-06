@@ -8,5 +8,5 @@ import java.util.List;
 
 @Repository
 public interface MoodRepository extends JpaRepository<Mood, Long> {
-    List<Mood> findByUserIdOrderByCreatedAtDesc(Long userId);
+  List<Mood> findByUserIdOrderByCreatedAtDesc(Long userId);
 }

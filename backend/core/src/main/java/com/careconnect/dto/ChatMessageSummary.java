@@ -11,11 +11,11 @@ import java.time.LocalDateTime;
 @Builder
 public class ChatMessageSummary {
     
-    private Long messageId;
-    private ChatMessage.MessageType messageType;
-    private String content;
-    private Integer tokensUsed;
-    private Long processingTimeMs;
-    private String aiModelUsed;
-    private LocalDateTime createdAt;
+  private Long messageId;
+  private ChatMessage.MessageType messageType;
+  private String content;
+  private Integer tokensUsed;
+  private Long processingTimeMs;
+  private String aiModelUsed;
+  private LocalDateTime createdAt;
 }

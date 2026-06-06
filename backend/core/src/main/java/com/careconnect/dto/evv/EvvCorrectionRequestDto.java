@@ -12,33 +12,33 @@ import java.util.Map;
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class EvvCorrectionRequestDto {
     
-    @NotNull
+  @NotNull
     private Long originalRecordId;
     
-    @NotBlank @Size(max = 50)
+  @NotBlank @Size(max = 50)
     private String reasonCode;
     
-    @NotBlank @Size(max = 1000)
+  @NotBlank @Size(max = 1000)
     private String explanation;
     
-    // Updated field values
-    private String serviceType;
-    private String individualName;
-    private LocalDate dateOfService;
-    private OffsetDateTime timeIn;
-    private OffsetDateTime timeOut;
-    private Double locationLat;
-    private Double locationLng;
-    private String locationSource;
-    private String stateCode;
-    private Map<String, Object> deviceInfo;
+  // Updated field values
+  private String serviceType;
+  private String individualName;
+  private LocalDate dateOfService;
+  private OffsetDateTime timeIn;
+  private OffsetDateTime timeOut;
+  private Double locationLat;
+  private Double locationLng;
+  private String locationSource;
+  private String stateCode;
+  private Map<String, Object> deviceInfo;
     
-    // Check-in/check-out location fields for saving to evv_record_location table
-    private Double checkinLocationLat;
-    private Double checkinLocationLng;
-    private String checkinLocationSource;
-    private Double checkoutLocationLat;
-    private Double checkoutLocationLng;
-    private String checkoutLocationSource;
+  // Check-in/check-out location fields for saving to evv_record_location table
+  private Double checkinLocationLat;
+  private Double checkinLocationLng;
+  private String checkinLocationSource;
+  private Double checkoutLocationLat;
+  private Double checkoutLocationLng;
+  private String checkoutLocationSource;
 }
 

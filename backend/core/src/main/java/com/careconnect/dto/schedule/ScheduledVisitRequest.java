@@ -15,25 +15,25 @@ import java.time.LocalTime;
 @AllArgsConstructor
 public class ScheduledVisitRequest {
     
-    @NotNull(message = "Patient ID is required")
+  @NotNull(message = "Patient ID is required")
     private Long patientId;
     
-    @NotNull(message = "Service type is required")
+  @NotNull(message = "Service type is required")
     private String serviceType;
     
-    @NotNull(message = "Scheduled date is required")
+  @NotNull(message = "Scheduled date is required")
     private LocalDate scheduledDate;
     
-    @NotNull(message = "Scheduled time is required")
+  @NotNull(message = "Scheduled time is required")
     private LocalTime scheduledTime;
     
-    @NotNull(message = "Duration is required")
-    @Min(value = 15, message = "Duration must be at least 15 minutes")
-    @Max(value = 480, message = "Duration cannot exceed 480 minutes")
+  @NotNull(message = "Duration is required")
+  @Min(value = 15, message = "Duration must be at least 15 minutes")
+  @Max(value = 480, message = "Duration cannot exceed 480 minutes")
     private Integer durationMinutes;
     
-    @NotNull(message = "Priority is required")
+  @NotNull(message = "Priority is required")
     private String priority;
     
-    private String notes;
+  private String notes;
 }

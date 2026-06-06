@@ -34,53 +34,53 @@ import java.util.List;
 @ConditionalOnProperty(name = "careconnect.deepseek.enabled", havingValue = "true", matchIfMissing = true)
 public class DeepSeekController {
 
-    private final DeepSeekService deepSeekService;
-    private final SecurityUtil securityUtil;
-    private final AuthorizationService authorizationService;
+  private final DeepSeekService deepSeekService;
+  private final SecurityUtil securityUtil;
+  private final AuthorizationService authorizationService;
 
-    // Full JSON in/out (Option B)
-    @RequirePermission(Permission.CREATE_TASKS)
+  // Full JSON in/out (Option B)
+  @RequirePermission(Permission.CREATE_TASKS)
 
-    @PostMapping("/chat")
+  @PostMapping("/chat")
     public ResponseEntity<?> chat(@Valid @RequestBody ChatBody body) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        if (currentUser.isFamilyMember()) {
-            throw new UnauthorizedException("This feature requires ADMIN, CAREGIVER, or PATIENT role");
-        }
-        try {
-            DeepSeekChatRequest req = new DeepSeekChatRequest();
-            req.setModel(body.getModel());
-            req.setMessages(body.getMessages());
-            req.setTemperature(body.getTemperature());
-            req.setMaxTokens(body.getMaxTokens());
-            req.setStream(false);
+    User currentUser = securityUtil.resolveCurrentUser();
+    if (currentUser.isFamilyMember()) {
+      throw new UnauthorizedException("This feature requires ADMIN, CAREGIVER, or PATIENT role");
+    }
+    try {
+      DeepSeekChatRequest req = new DeepSeekChatRequest();
+      req.setModel(body.getModel());
+      req.setMessages(body.getMessages());
+      req.setTemperature(body.getTemperature());
+      req.setMaxTokens(body.getMaxTokens());
+      req.setStream(false);
 
-            DeepSeekResponse resp = deepSeekService.sendChatRequest(req);
-            return ResponseEntity.ok(resp); // return provider-style JSON
-        } catch (Exception e) {
-            log.error("DeepSeek chat error", e);
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+      DeepSeekResponse resp = deepSeekService.sendChatRequest(req);
+      return ResponseEntity.ok(resp); // return provider-style JSON
+    } catch (Exception e) {
+      log.error("DeepSeek chat error", e);
+      return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                     .body(new ErrorPayload("DEEPSEEK_ERROR", e.getMessage()));
-        }
     }
+  }
 
-    // --- Request/Response DTOs for the controller ---
+  // --- Request/Response DTOs for the controller ---
 
-    @Data
-    public static class ChatBody {
-        @NotNull
+  @Data
+  public static class ChatBody {
+    @NotNull
         private String model;                      // e.g. "deepseek-chat" / "deepseek-reasoner"
-        @NotEmpty
+    @NotEmpty
         private List<Message> messages;           // [{role:"system|user|assistant", content:"..."}]
-        @Min(0) @Max(2)
+    @Min(0) @Max(2)
         private Double temperature = 0.7;         // optional
-        @Min(1) @Max(4096)
+    @Min(1) @Max(4096)
         private Integer maxTokens = 512;          // optional
-    }
+  }
 
-    @Data
-    public static class ErrorPayload {
-        private final String code;
-        private final String message;
-    }
+  @Data
+  public static class ErrorPayload {
+    private final String code;
+    private final String message;
+  }
 }

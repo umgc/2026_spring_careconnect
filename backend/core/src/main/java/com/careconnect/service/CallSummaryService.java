@@ -262,6 +262,8 @@ public class CallSummaryService {
         payload = new LinkedHashMap<>();
       }
     }
+    return callSummaryRepository.findTopByCallIdOrderByGeneratedAtDesc(callId.trim());
+  }
 
     final Map<String, Object> response = new LinkedHashMap<>();
     response.put("callId", summary.getCallId());

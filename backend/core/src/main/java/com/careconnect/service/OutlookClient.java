@@ -8,15 +8,15 @@ import java.util.Optional;
 
 @Service
 public class OutlookClient {
-    public record OutlookRaw(String html, Map<String, String> cidDataUrls, Instant received) {}
+  public record OutlookRaw(String html, Map<String, String> cidDataUrls, Instant received) {}
 
-    public Optional<OutlookRaw> fetchLatestDigest(String accessToken) {
-        // TODO: implement real Graph calls; returning empty for now.
-        return Optional.empty();
-    }
+  public Optional<OutlookRaw> fetchLatestDigest(String accessToken) {
+    // TODO: implement real Graph calls; returning empty for now.
+    return Optional.empty();
+  }
 
-    public Optional<OutlookRaw> fetchDigestForDate(String accessToken, LocalDate date) {
-        // TODO: implement real Graph calls with date filtering; returning empty for now.
-        return Optional.empty();
-    }
+  public Optional<OutlookRaw> fetchDigestForDate(String accessToken, LocalDate date) {
+    // TODO: implement real Graph calls with date filtering; returning empty for now.
+    return Optional.empty();
+  }
 }

@@ -23,29 +23,29 @@ import static com.careconnect.service.DeepSeekService.DeepSeekResponse;
 @ConditionalOnProperty(name = "careconnect.deepseek.enabled", havingValue = "true", matchIfMissing = true)
 public class AiSymptomService {
 
-    private final DeepSeekService deepSeekService;
-    private final DeepSeekContextBuilder contextBuilder;
-    private final ObjectMapper objectMapper; // Spring-injected
+  private final DeepSeekService deepSeekService;
+  private final DeepSeekContextBuilder contextBuilder;
+  private final ObjectMapper objectMapper; // Spring-injected
 
-    /**
+  /**
      * Analyze symptom transcript with both allergy and recent symptom context.
      */
-    public AiSymptomDTO.Result analyze(AiSymptomDTO.Request req,
+  public AiSymptomDTO.Result analyze(AiSymptomDTO.Request req,
                                        List<Allergy> allergiesForContext,
                                        List<SymptomEntry> symptomsForContext) {
 
-        String system = "You are a medical assistant. Extract structured symptom info from the user's sentence.\n" +
+    String system = "You are a medical assistant. Extract structured symptom info from the user's sentence.\n" +
             "Return ONLY a compact JSON object:\n" +
             "{\"symptomKey\":\"...\", \"symptomValue\":\"...\", \"severity\":\"MILD|MODERATE|SEVERE\"}.\n" +
             "If something is missing, leave it as an empty string. Do NOT add extra keys or text.\n";
 
-        // Context blocks
-        String allergyBlock = contextBuilder.buildAllergyContext(req.getPatientId(), allergiesForContext);
-        String symptomBlock = contextBuilder.buildSymptomContext(req.getPatientId(), symptomsForContext);
+    // Context blocks
+    String allergyBlock = contextBuilder.buildAllergyContext(req.getPatientId(), allergiesForContext);
+    String symptomBlock = contextBuilder.buildSymptomContext(req.getPatientId(), symptomsForContext);
 
-        Map<String, Object> ctx = Optional.ofNullable(req.getContext()).orElse(Map.of());
+    Map<String, Object> ctx = Optional.ofNullable(req.getContext()).orElse(Map.of());
 
-        String user = String.format(
+    String user = String.format(
             "Patient context (allergies for safety):\n" +
             "%s\n\n" +
             "Recent Symptom History:\n" +
@@ -56,32 +56,32 @@ public class AiSymptomService {
             "Output JSON only.\n",
             allergyBlock, symptomBlock, req.getText(), ctx);
 
-        // Compose & call DeepSeek
-        DeepSeekChatRequest chat = deepSeekService.buildChatRequest(system, user);
-        DeepSeekResponse resp = deepSeekService.sendChatRequest(chat);
+    // Compose & call DeepSeek
+    DeepSeekChatRequest chat = deepSeekService.buildChatRequest(system, user);
+    DeepSeekResponse resp = deepSeekService.sendChatRequest(chat);
 
-        // Shared parsing helpers
-        String content = AiParsingUtils.extractContent(resp);
+    // Shared parsing helpers
+    String content = AiParsingUtils.extractContent(resp);
 
-        AiSymptomDTO.Result out = new AiSymptomDTO.Result();
-        out.setSymptomKey("");
-        out.setSymptomValue("");
-        out.setSeverity("");
-        out.setNotes(Optional.ofNullable(req.getText()).orElse("")); // keep transcript as fallback
+    AiSymptomDTO.Result out = new AiSymptomDTO.Result();
+    out.setSymptomKey("");
+    out.setSymptomValue("");
+    out.setSeverity("");
+    out.setNotes(Optional.ofNullable(req.getText()).orElse("")); // keep transcript as fallback
 
-        JsonNode node = AiParsingUtils.tryParseJson(objectMapper, content);
-        if (node != null) {
-            out.setSymptomKey(AiParsingUtils.asText(node, "symptomKey"));
-            out.setSymptomValue(AiParsingUtils.asText(node, "symptomValue"));
-            out.setSeverity(
+    JsonNode node = AiParsingUtils.tryParseJson(objectMapper, content);
+    if (node != null) {
+      out.setSymptomKey(AiParsingUtils.asText(node, "symptomKey"));
+      out.setSymptomValue(AiParsingUtils.asText(node, "symptomValue"));
+      out.setSeverity(
                     AiParsingUtils.normalizeSeverity(
                             AiParsingUtils.asText(node, "severity")
                     )
-            );
-        } else if (content != null && !content.isBlank()) {
-            log.warn("AI content not strict JSON. Falling back. Content: {}", content);
-        }
-
-        return out;
+      );
+    } else if (content != null && !content.isBlank()) {
+      log.warn("AI content not strict JSON. Falling back. Content: {}", content);
     }
+
+    return out;
+  }
 }

@@ -18,23 +18,23 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class EmailCredentialController {
 
-    private final SecurityUtil securityUtil;
-    private final AuthorizationService authorizationService;
-    private final EmailCredentialRepository credRepo;
+  private final SecurityUtil securityUtil;
+  private final AuthorizationService authorizationService;
+  private final EmailCredentialRepository credRepo;
 
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
 
-    @GetMapping("/email-credentials/status")
+  @GetMapping("/email-credentials/status")
     public ResponseEntity<Boolean> getConnectionStatus(@RequestParam String userId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
 
-        boolean hasValidCredentials = credRepo
+    boolean hasValidCredentials = credRepo
                 .findFirstByUserIdAndProviderOrderByIdDesc(userId, EmailCredential.Provider.GMAIL)
                 .filter(cred -> cred.getAccessTokenEnc() != null && !cred.getAccessTokenEnc().isEmpty())
                 .isPresent();
 
-        return ResponseEntity.ok(hasValidCredentials);
-    }
+    return ResponseEntity.ok(hasValidCredentials);
+  }
 }

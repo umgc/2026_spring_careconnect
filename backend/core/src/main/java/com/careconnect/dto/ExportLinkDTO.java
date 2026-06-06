@@ -12,12 +12,12 @@ import java.time.Instant;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ExportLinkDTO {
-    private String downloadUrl;
-    private String fileName;
-    private String fileType;
-    private Long fileSizeBytes;
-    private String expiresAt;
-    private String status;
-    private String url;         
-    private Instant instantExpiresAt;
+  private String downloadUrl;
+  private String fileName;
+  private String fileType;
+  private Long fileSizeBytes;
+  private String expiresAt;
+  private String status;
+  private String url;         
+  private Instant instantExpiresAt;
 }

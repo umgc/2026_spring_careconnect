@@ -13,29 +13,29 @@ import java.util.Set;
 @Builder
 public class Question {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, columnDefinition = "text")
+  @Column(nullable = false, columnDefinition = "text")
     private String prompt;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 32)
     private QuestionType type;  // TEXT | YES_NO | TRUE_FALSE | NUMBER
 
-    @Column(nullable = false)
-    @Builder.Default
+  @Column(nullable = false)
+  @Builder.Default
     private boolean required = false;
 
-    @Column(nullable = false)
-    @Builder.Default
+  @Column(nullable = false)
+  @Builder.Default
     private boolean active = true;
 
-    @Column(nullable = false)
-    @Builder.Default
+  @Column(nullable = false)
+  @Builder.Default
     private int ordinal = 0;
 
-    @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
+  @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<CheckInQuestion> usedInCheckIns;
 }

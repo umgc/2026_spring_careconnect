@@ -6,5 +6,5 @@ import java.io.IOException;
 import java.util.List;
 
 public interface PdfService {
-    byte[] combineToPdf(List<MultipartFile> files) throws IOException;
+  byte[] combineToPdf(List<MultipartFile> files) throws IOException;
 }

@@ -9,10 +9,10 @@ import com.careconnect.model.ResetToken;
 
 public interface ResetTokenRepository extends JpaRepository<ResetToken, Long> {
 
-    // Method to find a ResetToken by its token value
-    Optional<ResetToken> findByToken(String token);
+  // Method to find a ResetToken by its token value
+  Optional<ResetToken> findByToken(String token);
 
-    // Method to delete a ResetToken by its token value
-    void deleteByToken(String token);
+  // Method to delete a ResetToken by its token value
+  void deleteByToken(String token);
 
 }

@@ -14,27 +14,27 @@ import java.util.List;
 
 public class BedrockChatModel implements ChatModel {
 
-    private final BedrockRuntimeClient client;
-    private final String modelId;
-    private final double temperature;
+  private final BedrockRuntimeClient client;
+  private final String modelId;
+  private final double temperature;
 
-    public BedrockChatModel(String region, String modelId, double temperature) {
-        this.client = BedrockRuntimeClient.builder()
+  public BedrockChatModel(String region, String modelId, double temperature) {
+    this.client = BedrockRuntimeClient.builder()
                 .region(Region.of(region))
                 .build();
-        this.modelId = modelId;
-        this.temperature = temperature;
-    }
+    this.modelId = modelId;
+    this.temperature = temperature;
+  }
 
-    @Override
+  @Override
     public ChatResponse chat(List<ChatMessage> messages) {
 
-        // Convert all messages to a simple text prompt
-        String prompt = messages.stream()
+    // Convert all messages to a simple text prompt
+    String prompt = messages.stream()
             .map(Object::toString)
             .reduce("", (a, b) -> a + "\n" + b);
 
-            String body = """
+    String body = """
             {
                 "inputText": "%s",
                 "textGenerationConfig": {
@@ -42,24 +42,24 @@ public class BedrockChatModel implements ChatModel {
                 "temperature": %f
                 }
             }
-            """.formatted(
-            prompt.replace("\"", "\\\""),
-            temperature
+                """.formatted(
+                prompt.replace("\"", "\\\""),
+                temperature
             );
 
-            InvokeModelRequest request = InvokeModelRequest.builder()
+    InvokeModelRequest request = InvokeModelRequest.builder()
                 .modelId(modelId)
                 .contentType("application/json")
                 .accept("application/json")
                 .body(software.amazon.awssdk.core.SdkBytes.fromUtf8String(body))
                 .build();
 
-            InvokeModelResponse response = client.invokeModel(request);
+    InvokeModelResponse response = client.invokeModel(request);
 
-            String responseBody = response.body().asUtf8String();
+    String responseBody = response.body().asUtf8String();
 
-            return ChatResponse.builder()
+    return ChatResponse.builder()
                 .aiMessage(AiMessage.from(responseBody))
                 .build();
-    }
+  }
 }

@@ -10,8 +10,8 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 public class PaymentReferences {
-    private String paymentLink;
-    private String qrCodeUrl;
-    private String notes;
-    private List<String> supportedMethods;
+  private String paymentLink;
+  private String qrCodeUrl;
+  private String notes;
+  private List<String> supportedMethods;
 }

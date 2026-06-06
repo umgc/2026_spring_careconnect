@@ -22,37 +22,37 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class ConnectionRequestService {
-    private final ConnectionRequestRepository connectionRequestRepo;
-    private final UserRepository userRepo;
-    private final CaregiverPatientLinkRepository linkRepo;
-    private final EmailService emailService;
+  private final ConnectionRequestRepository connectionRequestRepo;
+  private final UserRepository userRepo;
+  private final CaregiverPatientLinkRepository linkRepo;
+  private final EmailService emailService;
     
-    @Autowired(required = false)
+  @Autowired(required = false)
     private NotificationService notificationService;
     
-    @Value("${frontend.base-url:http://localhost:3000}")
+  @Value("${frontend.base-url:http://localhost:3000}")
     private String frontendBaseUrl;
     
-    /**
+  /**
      * Create a connection request from a caregiver to a patient
      */
-    @Transactional
+  @Transactional
     public ConnectionRequest createRequest(Long caregiverId, String patientEmail, 
                                           String relationshipType, String message) {
-        // Find caregiver and patient
-        User caregiver = userRepo.findById(caregiverId)
+    // Find caregiver and patient
+    User caregiver = userRepo.findById(caregiverId)
             .orElseThrow(() -> new IllegalArgumentException("Caregiver not found"));
         
-        User patient = userRepo.findByEmail(patientEmail)
+    User patient = userRepo.findByEmail(patientEmail)
             .orElseThrow(() -> new IllegalArgumentException("Patient not found with email: " + patientEmail));
         
-        // Check if there's already a pending request
-        if (connectionRequestRepo.existsByCaregiverAndPatientAndStatus(caregiver, patient, "PENDING")) {
-            throw new IllegalStateException("There's already a pending connection request to this patient");
-        }
+    // Check if there's already a pending request
+    if (connectionRequestRepo.existsByCaregiverAndPatientAndStatus(caregiver, patient, "PENDING")) {
+      throw new IllegalStateException("There's already a pending connection request to this patient");
+    }
         
-        // Create request
-        ConnectionRequest request = ConnectionRequest.builder()
+    // Create request
+    ConnectionRequest request = ConnectionRequest.builder()
             .caregiver(caregiver)
             .patient(patient)
             .status("PENDING")
@@ -62,17 +62,17 @@ public class ConnectionRequestService {
             .token(UUID.randomUUID().toString())
             .build();
         
-        connectionRequestRepo.save(request);
+    connectionRequestRepo.save(request);
         
-        // Send email to patient
-        sendConnectionRequestEmail(request);
+    // Send email to patient
+    sendConnectionRequestEmail(request);
         
-        // Send Firebase notification to patient about connection request
-        try {
-            if (notificationService != null) {
-                notificationService.sendNotificationToUser(
+    // Send Firebase notification to patient about connection request
+    try {
+      if (notificationService != null) {
+        notificationService.sendNotificationToUser(
                     patient.getId(),
-                    "🔗 New Connection Request",
+                    "Ã°Å¸â€â€” New Connection Request",
                     String.format("%s would like to connect with you as your caregiver", caregiver.getName()),
                     "CONNECTION_REQUEST",
                     Map.of(
@@ -83,42 +83,42 @@ public class ConnectionRequestService {
                         "requestToken", request.getToken(),
                         "requestedAt", request.getRequestedAt().toString()
                     )
-                );
-            }
-        } catch (Exception e) {
-            // Log but don't fail the request creation if notification fails
-            System.err.println("Failed to send connection request notification: " + e.getMessage());
-        }
-        
-        return request;
+        );
+      }
+    } catch (Exception e) {
+      // Log but don't fail the request creation if notification fails
+      System.err.println("Failed to send connection request notification: " + e.getMessage());
     }
+        
+    return request;
+  }
     
-    /**
+  /**
      * Process a patient's response to a connection request
      */
-    @Transactional
+  @Transactional
     public void processResponse(String token, boolean accepted) {
-        ConnectionRequest request = connectionRequestRepo.findByToken(token)
+    ConnectionRequest request = connectionRequestRepo.findByToken(token)
             .orElseThrow(() -> new IllegalArgumentException("Invalid request token"));
         
-        if (!"PENDING".equals(request.getStatus())) {
-            throw new IllegalStateException("This request has already been processed");
-        }
+    if (!"PENDING".equals(request.getStatus())) {
+      throw new IllegalStateException("This request has already been processed");
+    }
         
-        request.setRespondedAt(Instant.now());
-        request.setStatus(accepted ? "ACCEPTED" : "REJECTED");
-        connectionRequestRepo.save(request);
+    request.setRespondedAt(Instant.now());
+    request.setStatus(accepted ? "ACCEPTED" : "REJECTED");
+    connectionRequestRepo.save(request);
         
-        // If accepted, create caregiver-patient link
-        if (accepted) {
-            createCaregiverPatientLink(request);
+    // If accepted, create caregiver-patient link
+    if (accepted) {
+      createCaregiverPatientLink(request);
             
-            // Send Firebase notification to caregiver about acceptance
-            try {
-                if (notificationService != null) {
-                    notificationService.sendNotificationToUser(
+      // Send Firebase notification to caregiver about acceptance
+      try {
+        if (notificationService != null) {
+          notificationService.sendNotificationToUser(
                         request.getCaregiver().getId(),
-                        "✅ Connection Request Accepted",
+                        "Ã¢Å“â€¦ Connection Request Accepted",
                         String.format("%s has accepted your connection request! You are now connected.", 
                                 request.getPatient().getName()),
                         "CONNECTION_ACCEPTED",
@@ -129,46 +129,46 @@ public class ConnectionRequestService {
                             "relationshipType", request.getRelationshipType() != null ? request.getRelationshipType() : "Caregiver",
                             "acceptedAt", request.getRespondedAt().toString()
                         )
-                    );
-                }
-            } catch (Exception e) {
-                // Log but don't fail the acceptance if notification fails
-                System.err.println("Failed to send connection acceptance notification: " + e.getMessage());
-            }
+          );
         }
-        
-        // Send notification to caregiver
-        sendResponseNotificationEmail(request);
+      } catch (Exception e) {
+        // Log but don't fail the acceptance if notification fails
+        System.err.println("Failed to send connection acceptance notification: " + e.getMessage());
+      }
     }
+        
+    // Send notification to caregiver
+    sendResponseNotificationEmail(request);
+  }
     
-    /**
+  /**
      * Create caregiver-patient link
      */
-    private void createCaregiverPatientLink(ConnectionRequest request) {
-        CaregiverPatientLink link = new CaregiverPatientLink(
+  private void createCaregiverPatientLink(ConnectionRequest request) {
+    CaregiverPatientLink link = new CaregiverPatientLink(
             request.getCaregiver(),
             request.getPatient(),
             request.getCaregiver(),
             CaregiverPatientLink.LinkType.PERMANENT
         );
-        link.setStatus(CaregiverPatientLink.LinkStatus.ACTIVE);
-        link.setNotes(request.getRelationshipType());
+    link.setStatus(CaregiverPatientLink.LinkStatus.ACTIVE);
+    link.setNotes(request.getRelationshipType());
         
-        linkRepo.save(link);
-    }
+    linkRepo.save(link);
+  }
     
-    /**
+  /**
      * Send email to patient with connection request
      */
-    private void sendConnectionRequestEmail(ConnectionRequest request) {
-        User caregiver = request.getCaregiver();
-        User patient = request.getPatient();
+  private void sendConnectionRequestEmail(ConnectionRequest request) {
+    User caregiver = request.getCaregiver();
+    User patient = request.getPatient();
         
-        String subject = "CareConnect: Connection Request from " + caregiver.getName();
-        // Use frontend base URL from application properties
-        String baseUrl = frontendBaseUrl;
+    String subject = "CareConnect: Connection Request from " + caregiver.getName();
+    // Use frontend base URL from application properties
+    String baseUrl = frontendBaseUrl;
         
-        String emailBody = String.format(
+    String emailBody = String.format(
                 "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n" +
                 "    <h2 style=\"color: #2c3e50; text-align: center;\">CareConnect Connection Request</h2>\n" +
                 "    \n" +
@@ -226,22 +226,22 @@ public class ConnectionRequestService {
                 request.getToken()
             );
         
-        emailService.sendHtmlEmail(patient.getEmail(), subject, emailBody, "html");
-    }
+    emailService.sendHtmlEmail(patient.getEmail(), subject, emailBody, "html");
+  }
     
-    /**
+  /**
      * Send notification email to caregiver about patient's response
      */
-    private void sendResponseNotificationEmail(ConnectionRequest request) {
-        User caregiver = request.getCaregiver();
-        User patient = request.getPatient();
-        boolean accepted = "ACCEPTED".equals(request.getStatus());
+  private void sendResponseNotificationEmail(ConnectionRequest request) {
+    User caregiver = request.getCaregiver();
+    User patient = request.getPatient();
+    boolean accepted = "ACCEPTED".equals(request.getStatus());
         
-        String subject = "CareConnect: Connection Request " + 
+    String subject = "CareConnect: Connection Request " + 
                         (accepted ? "Accepted" : "Declined") + 
                         " by " + patient.getName();
         
-        String emailBody = String.format(
+    String emailBody = String.format(
                 "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;\">\n" +
                 "    <h2 style=\"color: #2c3e50; text-align: center;\">Connection Request %s</h2>\n" +
                 "    \n" +
@@ -270,26 +270,26 @@ public class ConnectionRequestService {
                     "<p style=\"font-size: 16px; line-height: 1.6; color: #333;\">If you believe this was a mistake, you may send another request at a later time.</p>"
             );
         
-        emailService.sendHtmlEmail(caregiver.getEmail(), subject, emailBody, "html");
-    }
+    emailService.sendHtmlEmail(caregiver.getEmail(), subject, emailBody, "html");
+  }
     
-    /**
+  /**
      * Get pending requests for a patient
      */
-    public List<ConnectionRequest> getPendingRequestsForPatient(Long patientId) {
-        User patient = userRepo.findById(patientId)
+  public List<ConnectionRequest> getPendingRequestsForPatient(Long patientId) {
+    User patient = userRepo.findById(patientId)
             .orElseThrow(() -> new IllegalArgumentException("Patient not found"));
         
-        return connectionRequestRepo.findByPatientAndStatus(patient, "PENDING");
-    }
+    return connectionRequestRepo.findByPatientAndStatus(patient, "PENDING");
+  }
     
-    /**
+  /**
      * Get pending requests sent by a caregiver
      */
-    public List<ConnectionRequest> getPendingRequestsByCaregiver(Long caregiverId) {
-        User caregiver = userRepo.findById(caregiverId)
+  public List<ConnectionRequest> getPendingRequestsByCaregiver(Long caregiverId) {
+    User caregiver = userRepo.findById(caregiverId)
             .orElseThrow(() -> new IllegalArgumentException("Caregiver not found"));
         
-        return connectionRequestRepo.findByCaregiverAndStatus(caregiver, "PENDING");
-    }
+    return connectionRequestRepo.findByCaregiverAndStatus(caregiver, "PENDING");
+  }
 }

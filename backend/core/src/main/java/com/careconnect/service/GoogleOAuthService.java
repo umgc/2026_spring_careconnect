@@ -19,11 +19,11 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class GoogleOAuthService {
 
-    private static final String TOKEN_URL = "https://oauth2.googleapis.com/token";
+  private static final String TOKEN_URL = "https://oauth2.googleapis.com/token";
 
-    private final RestTemplate http;
-    private final EmailCredentialRepository credRepo;
-    private final TokenCryptor tokenCryptor;
+  private final RestTemplate http;
+  private final EmailCredentialRepository credRepo;
+  private final TokenCryptor tokenCryptor;
 
     @Value("${google.oauth.client-id:}")     
     String clientId;
@@ -50,107 +50,107 @@ public class GoogleOAuthService {
             System.out.println("[GoogleOAuth] Using clientId: " + safeId(clientId));
             System.out.println("[GoogleOAuth] Using redirectUri: " + redirectUri);
 
-            GoogleTokenResponse token = postForToken(formForAuthCode(code));
+      GoogleTokenResponse token = postForToken(formForAuthCode(code));
 
-            System.out.println("[GoogleOAuth] Token response received: " + (token != null ? "yes" : "null"));
-            if (token == null || token.accessToken() == null) {
-                throw new IllegalStateException("Google token exchange failed - no access token received");
-            }
+      System.out.println("[GoogleOAuth] Token response received: " + (token != null ? "yes" : "null"));
+      if (token == null || token.accessToken() == null) {
+        throw new IllegalStateException("Google token exchange failed - no access token received");
+      }
 
-            System.out.println("[GoogleOAuth] Access token received, creating EmailCredential");
+      System.out.println("[GoogleOAuth] Access token received, creating EmailCredential");
 
-            EmailCredential ec = new EmailCredential();
-            ec.setUserId(userId);
-            ec.setProvider(EmailCredential.Provider.GMAIL);
-            ec.setAccessTokenEnc(tokenCryptor.encrypt(token.accessToken()));
+      EmailCredential ec = new EmailCredential();
+      ec.setUserId(userId);
+      ec.setProvider(EmailCredential.Provider.GMAIL);
+      ec.setAccessTokenEnc(tokenCryptor.encrypt(token.accessToken()));
 
-            if (token.refreshToken() != null) {
-                System.out.println("[GoogleOAuth] Refresh token present, encrypting");
-                ec.setRefreshTokenEnc(tokenCryptor.encrypt(token.refreshToken()));
-            } else {
-                System.out.println("[GoogleOAuth] No refresh token, checking for existing one");
-                // keep last refresh token if Google omitted it on a subsequent grant
-                Optional.ofNullable(
+      if (token.refreshToken() != null) {
+        System.out.println("[GoogleOAuth] Refresh token present, encrypting");
+        ec.setRefreshTokenEnc(tokenCryptor.encrypt(token.refreshToken()));
+      } else {
+        System.out.println("[GoogleOAuth] No refresh token, checking for existing one");
+        // keep last refresh token if Google omitted it on a subsequent grant
+        Optional.ofNullable(
                         credRepo.findFirstByUserIdAndProviderOrderByIdDesc(userId, EmailCredential.Provider.GMAIL)
                                 .map(EmailCredential::getRefreshTokenEnc)
                                 .orElse(null)
                 ).ifPresent(ec::setRefreshTokenEnc);
-            }
+      }
 
-            Instant exp = token.computeExpiryFromNow();
-            ec.setExpiresAt(exp);
-            System.out.println("[GoogleOAuth] Token expires at: " + exp);
+      Instant exp = token.computeExpiryFromNow();
+      ec.setExpiresAt(exp);
+      System.out.println("[GoogleOAuth] Token expires at: " + exp);
 
-            System.out.println("[GoogleOAuth] Saving EmailCredential to database");
-            credRepo.save(ec);
-            System.out.println("[GoogleOAuth] Token exchange completed successfully");
+      System.out.println("[GoogleOAuth] Saving EmailCredential to database");
+      credRepo.save(ec);
+      System.out.println("[GoogleOAuth] Token exchange completed successfully");
 
-        } catch (Exception e) {
-            System.err.println("[GoogleOAuth] Token exchange failed: " + e.getMessage());
-            e.printStackTrace();
-            throw new RuntimeException("Google OAuth token exchange failed: " + e.getMessage(), e);
-        }
+    } catch (Exception e) {
+      System.err.println("[GoogleOAuth] Token exchange failed: " + e.getMessage());
+      e.printStackTrace();
+      throw new RuntimeException("Google OAuth token exchange failed: " + e.getMessage(), e);
     }
+  }
 
-    // refresh utility
-    public EmailCredential ensureFreshToken(EmailCredential current) {
-        if (current.getExpiresAt() != null &&
+  // refresh utility
+  public EmailCredential ensureFreshToken(EmailCredential current) {
+    if (current.getExpiresAt() != null &&
                 current.getExpiresAt().isAfter(Instant.now().plusSeconds(120))) {
-            return current; // still fresh
-        }
-
-        String refresh = tokenCryptor.decrypt(current.getRefreshTokenEnc());
-        if (refresh == null || refresh.isBlank()) return current;
-
-        GoogleTokenResponse token = postForToken(formForRefresh(refresh));
-
-        if (token != null && token.accessToken() != null) {
-            current.setAccessTokenEnc(tokenCryptor.encrypt(token.accessToken()));
-            current.setExpiresAt(token.computeExpiryFromNow());
-            credRepo.save(current);
-        }
-        return current;
+      return current; // still fresh
     }
 
-    private GoogleTokenResponse postForToken(MultiValueMap<String, String> form) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+    String refresh = tokenCryptor.decrypt(current.getRefreshTokenEnc());
+    if (refresh == null || refresh.isBlank()) return current;
 
-        HttpEntity<MultiValueMap<String, String>> req = new HttpEntity<>(form, headers);
+    GoogleTokenResponse token = postForToken(formForRefresh(refresh));
 
-        ResponseEntity<GoogleTokenResponse> resp =
+    if (token != null && token.accessToken() != null) {
+      current.setAccessTokenEnc(tokenCryptor.encrypt(token.accessToken()));
+      current.setExpiresAt(token.computeExpiryFromNow());
+      credRepo.save(current);
+    }
+    return current;
+  }
+
+  private GoogleTokenResponse postForToken(MultiValueMap<String, String> form) {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+    headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+
+    HttpEntity<MultiValueMap<String, String>> req = new HttpEntity<>(form, headers);
+
+    ResponseEntity<GoogleTokenResponse> resp =
                 http.postForEntity(TOKEN_URL, req, GoogleTokenResponse.class);
 
-        if (resp.getStatusCode().is2xxSuccessful()) {
-            return resp.getBody();
-        }
-        System.err.println("[GoogleOAuth] Non-2xx from token endpoint: " + resp.getStatusCode());
-        return null;
-        // If you want stronger error handling, inspect resp.getBody() for error and throw.
+    if (resp.getStatusCode().is2xxSuccessful()) {
+      return resp.getBody();
     }
+    System.err.println("[GoogleOAuth] Non-2xx from token endpoint: " + resp.getStatusCode());
+    return null;
+    // If you want stronger error handling, inspect resp.getBody() for error and throw.
+  }
 
-    private MultiValueMap<String, String> formForAuthCode(String code) {
-        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("code", code);
-        form.add("client_id", clientId);
-        form.add("client_secret", clientSecret);
-        form.add("redirect_uri", redirectUri);
-        form.add("grant_type", "authorization_code");
-        return form;
-    }
+  private MultiValueMap<String, String> formForAuthCode(String code) {
+    MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+    form.add("code", code);
+    form.add("client_id", clientId);
+    form.add("client_secret", clientSecret);
+    form.add("redirect_uri", redirectUri);
+    form.add("grant_type", "authorization_code");
+    return form;
+  }
 
-    private MultiValueMap<String, String> formForRefresh(String refreshToken) {
-        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("refresh_token", refreshToken);
-        form.add("client_id", clientId);
-        form.add("client_secret", clientSecret);
-        form.add("grant_type", "refresh_token");
-        return form;
-    }
+  private MultiValueMap<String, String> formForRefresh(String refreshToken) {
+    MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+    form.add("refresh_token", refreshToken);
+    form.add("client_id", clientId);
+    form.add("client_secret", clientSecret);
+    form.add("grant_type", "refresh_token");
+    return form;
+  }
 
-    private String safeId(String id) {
-        if (id == null) return "null";
-        return id.length() <= 12 ? id : id.substring(0, 12) + "...";
-    }
+  private String safeId(String id) {
+    if (id == null) return "null";
+    return id.length() <= 12 ? id : id.substring(0, 12) + "...";
+  }
 }

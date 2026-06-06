@@ -6,16 +6,16 @@ import java.util.List;
 
 public interface QuestionRepository extends JpaRepository<Question, Long> {
 
-    // Return all active/inactive questions
-    List<Question> findByActive(Boolean active);
-    List<Question> findAllByActiveTrueOrderByOrdinalAsc();
+  // Return all active/inactive questions
+  List<Question> findByActive(Boolean active);
+  List<Question> findAllByActiveTrueOrderByOrdinalAsc();
 
-    // (Optional niceties)
-    List<Question> findAllByActiveTrue();
-    List<Question> findAllByActiveFalse();
+  // (Optional niceties)
+  List<Question> findAllByActiveTrue();
+  List<Question> findAllByActiveFalse();
 
-    List<Question> findAllByOrderByOrdinalAsc();
+  List<Question> findAllByOrderByOrdinalAsc();
 
-    List<Question> findAllByActiveFalseOrderByOrdinalAsc();
+  List<Question> findAllByActiveFalseOrderByOrdinalAsc();
 }
 

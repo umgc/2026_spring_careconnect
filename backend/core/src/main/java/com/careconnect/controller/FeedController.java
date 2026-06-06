@@ -43,31 +43,31 @@ import java.util.UUID;
 public class FeedController {
 
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    @Autowired
+  @Autowired
     private FeedService feedService;
 
-    @Autowired
+  @Autowired
     private UserRepository userRepository;
 
-    @Autowired
+  @Autowired
     private PatientRepository patientRepository;
 
-    @Autowired
+  @Autowired
     private CaregiverRepository caregiverRepository;
 
-    @GetMapping("/all")
-    @Operation(
+  @GetMapping("/all")
+  @Operation(
         summary = "Get global feed",
         description = "Retrieve all posts from the global feed. Requires authentication."
     )
-    @ApiResponses({
-        @ApiResponse(
+  @ApiResponses({
+    @ApiResponse(
             responseCode = "200",
             description = "Global feed retrieved successfully",
             content = @Content(
@@ -75,7 +75,7 @@ public class FeedController {
                     schema = @Schema(implementation = PostWithCommentCountDto.class, type = "array")
             )
         ),
-        @ApiResponse(
+    @ApiResponse(
             responseCode = "403",
             description = "Not authenticated",
             content = @Content(
@@ -83,68 +83,68 @@ public class FeedController {
                 examples = @ExampleObject(value = "{\n    \"error\": \"Not authenticated\"\n}")
             )
         )
-    })
+  })
     public ResponseEntity<?> getGlobalFeed() {
-        // RBAC: Defense-in-depth - ensure caller is authenticated
-        securityUtil.resolveCurrentUser();
-        List<PostWithCommentCountDto> posts = feedService.getAllPostsWithCommentCount();
-        return ResponseEntity.ok(posts);
-    }
+    // RBAC: Defense-in-depth - ensure caller is authenticated
+    securityUtil.resolveCurrentUser();
+    List<PostWithCommentCountDto> posts = feedService.getAllPostsWithCommentCount();
+    return ResponseEntity.ok(posts);
+  }
 
-    @GetMapping("/user/{userId}")
+  @GetMapping("/user/{userId}")
     public ResponseEntity<?> getUserFeed(@PathVariable Long userId) {
 
-        // Get user from JWT token (email is the subject).
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String email = authentication.getName();
-        User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("User not found");
-        }
+    // Get user from JWT token (email is the subject).
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    String email = authentication.getName();
+    User user = userRepository.findByEmail(email).orElse(null);
+    if (user == null) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).body("User not found");
+    }
         
-        // Allow users to view their own feed, or admins to view any feed
-        if (!user.getId().equals(userId) && !user.getRole().name().equals("ADMIN")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied");
-        }
-
-        List<Post> posts = feedService.getPostsByUser(userId);
-        return ResponseEntity.ok(posts);
+    // Allow users to view their own feed, or admins to view any feed
+    if (!user.getId().equals(userId) && !user.getRole().name().equals("ADMIN")) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied");
     }
 
-    @GetMapping("/friends-feed")
+    List<Post> posts = feedService.getPostsByUser(userId);
+    return ResponseEntity.ok(posts);
+  }
+
+  @GetMapping("/friends-feed")
     public ResponseEntity<?> getFriendsFeed() {
-        // (Updated) Removed manual authentication check
+    // (Updated) Removed manual authentication check
 
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String email = auth.getName();
-        User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("User not found");
-        }
-
-        List<PostWithCommentCountDto> posts = feedService.getPostsByUserAndFriends(user.getId());
-        return ResponseEntity.ok(posts);
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    String email = auth.getName();
+    User user = userRepository.findByEmail(email).orElse(null);
+    if (user == null) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).body("User not found");
     }
 
-    @PostMapping(value = "/create", consumes = "application/json")
+    List<PostWithCommentCountDto> posts = feedService.getPostsByUserAndFriends(user.getId());
+    return ResponseEntity.ok(posts);
+  }
+
+  @PostMapping(value = "/create", consumes = "application/json")
     public ResponseEntity<?> createPost(@RequestBody Post postData) {
 
-        // Get user from JWT token (email is the subject)
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        String email = authentication.getName();
-        User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("User not found");
-        }
+    // Get user from JWT token (email is the subject)
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    String email = authentication.getName();
+    User user = userRepository.findByEmail(email).orElse(null);
+    if (user == null) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).body("User not found");
+    }
 
-        // Verify the post belongs to the authenticated user
-        if (!user.getId().equals(postData.getUserId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Cannot create post as another user");
-        }
-        try {
-            Post savedPost = feedService.createPost(user.getId(), postData.getContent(), null);
+    // Verify the post belongs to the authenticated user
+    if (!user.getId().equals(postData.getUserId())) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Cannot create post as another user");
+    }
+    try {
+      Post savedPost = feedService.createPost(user.getId(), postData.getContent(), null);
 
-            PostWithCommentCountDto dto = new PostWithCommentCountDto(
+      PostWithCommentCountDto dto = new PostWithCommentCountDto(
                     savedPost.getId(),
                     savedPost.getUserId(),
                     savedPost.getContent(),
@@ -154,25 +154,25 @@ public class FeedController {
                     resolveDisplayName(user)
             );
 
-            return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+      return ResponseEntity.status(HttpStatus.CREATED).body(dto);
 
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error creating post: " + e.getMessage());
-        }
+    } catch (Exception e) {
+      return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error creating post: " + e.getMessage());
     }
+  }
 
-    private String resolveDisplayName(User user) {
-        if (user.getRole() == Role.PATIENT) {
-            return patientRepository.findByUserId(user.getId())
+  private String resolveDisplayName(User user) {
+    if (user.getRole() == Role.PATIENT) {
+      return patientRepository.findByUserId(user.getId())
                     .map(p -> p.getFirstName() + " " + p.getLastName())
                     .orElse(user.getEmail());
-        } else if (user.getRole() == Role.CAREGIVER) {
-            return caregiverRepository.findByUserId(user.getId())
+    } else if (user.getRole() == Role.CAREGIVER) {
+      return caregiverRepository.findByUserId(user.getId())
                     .map(c -> c.getFirstName() + " " + c.getLastName())
                     .orElse(user.getEmail());
-        } else {
-            return user.getEmail();
-        }
+    } else {
+      return user.getEmail();
     }
+  }
 }
 

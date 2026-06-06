@@ -13,16 +13,16 @@ import lombok.Builder;
 @AllArgsConstructor
 @Builder
 public class PatientCaregiverRelationship {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(name = "patient_id")
+  @Column(name = "patient_id")
     private Long patientId;
     
-    @Column(name = "caregiver_user_id")
+  @Column(name = "caregiver_user_id")
     private Long caregiverUserId;
     
-    @Column(name = "relationship_type")
+  @Column(name = "relationship_type")
     private String relationshipType; // PRIMARY, SECONDARY, 
 }

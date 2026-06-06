@@ -15,19 +15,19 @@ import java.util.List;
 
 @RestController @RequestMapping("/v1/api/evv/records") @RequiredArgsConstructor
 public class EvvQueryController {
-    private final EvvRecordRepository evvRecordRepository;
-    private final SecurityUtil securityUtil;
-    private final AuthorizationService authorizationService;
+  private final EvvRecordRepository evvRecordRepository;
+  private final SecurityUtil securityUtil;
+  private final AuthorizationService authorizationService;
 
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
 
-    @GetMapping
+  @GetMapping
     public List<EvvRecord> list(@RequestParam(required = false) String status, @RequestParam(required = false) Long caregiverId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireAdminOrCaregiver(currentUser);
-        if (status != null && caregiverId != null) return evvRecordRepository.findByCaregiverIdAndStatus(caregiverId, status);
-        if (status != null) return evvRecordRepository.findByStatus(status);
-        return evvRecordRepository.findAll();
-    }
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireAdminOrCaregiver(currentUser);
+    if (status != null && caregiverId != null) return evvRecordRepository.findByCaregiverIdAndStatus(caregiverId, status);
+    if (status != null) return evvRecordRepository.findByStatus(status);
+    return evvRecordRepository.findAll();
+  }
 }

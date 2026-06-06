@@ -13,11 +13,11 @@ import lombok.Data;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserResponse {
-    private Long id;
-    private String name;
-    private String email;
-    private com.careconnect.security.Role role;
-    private boolean emailVerified;
-    private String profileImageUrl;
-    private String status;
+  private Long id;
+  private String name;
+  private String email;
+  private com.careconnect.security.Role role;
+  private boolean emailVerified;
+  private String profileImageUrl;
+  private String status;
 }

@@ -24,187 +24,187 @@ import java.util.*;
 @RequestMapping("/v1/api/friends")
 public class FriendController {
 
-    @Autowired
+  @Autowired
     private SecurityUtil securityUtil;
 
-    @Autowired
+  @Autowired
     private AuthorizationService authorizationService;
 
-    @Autowired
+  @Autowired
     private GamificationService gamificationService;
 
-    @Autowired
+  @Autowired
     private FriendRequestRepository friendRequestRepo;
 
-    @Autowired
+  @Autowired
     private UserRepository userRepo;
 
-    @Autowired
+  @Autowired
     private FriendshipRepository friendshipRepository;
 
-    // ✅ 1. Send friend request
-    @RequirePermission(Permission.CREATE_TASKS)
+  // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ 1. Send friend request
+  @RequirePermission(Permission.CREATE_TASKS)
 
-    @PostMapping("/request")
+  @PostMapping("/request")
     public ResponseEntity<?> sendFriendRequest(@RequestBody Map<String, Long> payload) throws UnauthorizedException {
-        Long fromUserId = payload.get("fromUserId");
-        Long toUserId = payload.get("toUserId");
+    Long fromUserId = payload.get("fromUserId");
+    Long toUserId = payload.get("toUserId");
 
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, fromUserId);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, fromUserId);
 
-        boolean exists = friendRequestRepo.existsByFromUserIdAndToUserId(fromUserId, toUserId);
-        if (exists) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Friend request already sent.");
-        }
-
-        FriendRequest request = new FriendRequest();
-        request.setFromUserId(fromUserId);
-        request.setToUserId(toUserId);
-        request.setStatus("pending");
-        request.setCreatedAt(new Date());
-
-        friendRequestRepo.save(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body("Friend request sent.");
+    boolean exists = friendRequestRepo.existsByFromUserIdAndToUserId(fromUserId, toUserId);
+    if (exists) {
+      return ResponseEntity.status(HttpStatus.CONFLICT).body("Friend request already sent.");
     }
 
-    // ✅ 2. Get all pending friend requests TO a user
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+    FriendRequest request = new FriendRequest();
+    request.setFromUserId(fromUserId);
+    request.setToUserId(toUserId);
+    request.setStatus("pending");
+    request.setCreatedAt(new Date());
 
-    @GetMapping("/requests/{userId}")
+    friendRequestRepo.save(request);
+    return ResponseEntity.status(HttpStatus.CREATED).body("Friend request sent.");
+  }
+
+  // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ 2. Get all pending friend requests TO a user
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+
+  @GetMapping("/requests/{userId}")
     public ResponseEntity<List<Map<String, Object>>> getPendingRequests(@PathVariable Long userId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, userId);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, userId);
 
-        List<FriendRequest> requests = friendRequestRepo.findByToUserIdAndStatus(userId, "pending");
+    List<FriendRequest> requests = friendRequestRepo.findByToUserIdAndStatus(userId, "pending");
 
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (FriendRequest req : requests) {
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", req.getId());
-            map.put("fromUserId", req.getFromUserId());
-            map.put("toUserId", req.getToUserId());
-            map.put("status", req.getStatus());
-            map.put("createdAt", req.getCreatedAt());
+    List<Map<String, Object>> result = new ArrayList<>();
+    for (FriendRequest req : requests) {
+      Map<String, Object> map = new HashMap<>();
+      map.put("id", req.getId());
+      map.put("fromUserId", req.getFromUserId());
+      map.put("toUserId", req.getToUserId());
+      map.put("status", req.getStatus());
+      map.put("createdAt", req.getCreatedAt());
 
-            userRepo.findById(req.getFromUserId()).ifPresent(user -> {
-                map.put("from_username", user.getName());
-                map.put("from_email", user.getEmail());
-            });
+      userRepo.findById(req.getFromUserId()).ifPresent(user -> {
+        map.put("from_username", user.getName());
+        map.put("from_email", user.getEmail());
+      });
 
-            result.add(map);
-        }
-
-        return ResponseEntity.ok(result);
+      result.add(map);
     }
 
-    // ✅ 3. Accept a friend request
-    @RequirePermission(Permission.CREATE_TASKS)
+    return ResponseEntity.ok(result);
+  }
 
-    @PostMapping("/accept")
+  // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ 3. Accept a friend request
+  @RequirePermission(Permission.CREATE_TASKS)
+
+  @PostMapping("/accept")
     public ResponseEntity<?> acceptFriendRequest(@RequestBody Map<String, Long> body) throws UnauthorizedException {
-        Long requestId = body.get("requestId");
+    Long requestId = body.get("requestId");
 
-        Optional<FriendRequest> opt = friendRequestRepo.findById(requestId);
-        if (opt.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Request not found");
+    Optional<FriendRequest> opt = friendRequestRepo.findById(requestId);
+    if (opt.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Request not found");
 
-        FriendRequest req = opt.get();
+    FriendRequest req = opt.get();
 
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, req.getToUserId());
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, req.getToUserId());
 
-        if (!"pending".equals(req.getStatus())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Request already handled");
-        }
+    if (!"pending".equals(req.getStatus())) {
+      return ResponseEntity.status(HttpStatus.CONFLICT).body("Request already handled");
+    }
 
-        req.setStatus("accepted");
-        friendRequestRepo.save(req);
+    req.setStatus("accepted");
+    friendRequestRepo.save(req);
 
-        Optional<User> fromUserOpt = userRepo.findById(req.getFromUserId());
-        Optional<User> toUserOpt = userRepo.findById(req.getToUserId());
+    Optional<User> fromUserOpt = userRepo.findById(req.getFromUserId());
+    Optional<User> toUserOpt = userRepo.findById(req.getToUserId());
 
-        if (fromUserOpt.isEmpty() || toUserOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("User not found");
-        }
+    if (fromUserOpt.isEmpty() || toUserOpt.isEmpty()) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("User not found");
+    }
 
-        User fromUser = fromUserOpt.get();
-        User toUser = toUserOpt.get();
+    User fromUser = fromUserOpt.get();
+    User toUser = toUserOpt.get();
 
-        Friendship friendship = Friendship.builder()
+    Friendship friendship = Friendship.builder()
                 .user1(fromUser)
                 .user2(toUser)
                 .status("CONFIRMED")
                 .build();
 
-        friendshipRepository.save(friendship);
+    friendshipRepository.save(friendship);
 
-        long friendCount = friendshipRepository.countByUserId(fromUser.getId());
+    long friendCount = friendshipRepository.countByUserId(fromUser.getId());
 
-        if (friendCount == 1) { // this is the first confirmed friend added
-            gamificationService.unlockAchievement(
+    if (friendCount == 1) { // this is the first confirmed friend added
+      gamificationService.unlockAchievement(
                     fromUser.getId(), "Added First Friend", 50
-            );
-        }
-
-        return ResponseEntity.ok("Friend request accepted and friendship created");
+      );
     }
 
-    // ✅ 4. Reject a friend request
-    @RequirePermission(Permission.CREATE_TASKS)
+    return ResponseEntity.ok("Friend request accepted and friendship created");
+  }
 
-    @PostMapping("/reject")
+  // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ 4. Reject a friend request
+  @RequirePermission(Permission.CREATE_TASKS)
+
+  @PostMapping("/reject")
     public ResponseEntity<?> rejectFriendRequest(@RequestBody Map<String, Long> body) throws UnauthorizedException {
-        Long requestId = body.get("requestId");
+    Long requestId = body.get("requestId");
 
-        Optional<FriendRequest> opt = friendRequestRepo.findById(requestId);
-        if (opt.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Request not found");
+    Optional<FriendRequest> opt = friendRequestRepo.findById(requestId);
+    if (opt.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Request not found");
 
-        FriendRequest req = opt.get();
+    FriendRequest req = opt.get();
 
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, req.getToUserId());
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, req.getToUserId());
 
-        if (!"pending".equals(req.getStatus())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Request already handled");
-        }
-
-        req.setStatus("rejected");
-        friendRequestRepo.save(req);
-
-        return ResponseEntity.ok("Friend request rejected");
+    if (!"pending".equals(req.getStatus())) {
+      return ResponseEntity.status(HttpStatus.CONFLICT).body("Request already handled");
     }
 
-    @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
+    req.setStatus("rejected");
+    friendRequestRepo.save(req);
+
+    return ResponseEntity.ok("Friend request rejected");
+  }
+
+  @RequirePermission(Permission.VIEW_ASSIGNED_PATIENTS)
 
 
-    @GetMapping("/list/{userId}")
+  @GetMapping("/list/{userId}")
     public ResponseEntity<List<Map<String, Object>>> getFriends(@PathVariable Long userId) throws UnauthorizedException {
-        User currentUser = securityUtil.resolveCurrentUser();
-        authorizationService.requireSelfOrAdmin(currentUser, userId);
+    User currentUser = securityUtil.resolveCurrentUser();
+    authorizationService.requireSelfOrAdmin(currentUser, userId);
 
-        List<FriendRequest> acceptedRequests = friendRequestRepo.findByStatus("accepted");
+    List<FriendRequest> acceptedRequests = friendRequestRepo.findByStatus("accepted");
 
-        List<Long> friendIds = new ArrayList<>();
-        for (FriendRequest req : acceptedRequests) {
-            if (req.getFromUserId().equals(userId)) {
-                friendIds.add(req.getToUserId());
-            } else if (req.getToUserId().equals(userId)) {
-                friendIds.add(req.getFromUserId());
-            }
-        }
-
-        List<Map<String, Object>> friends = new ArrayList<>();
-        for (Long id : friendIds) {
-            userRepo.findById(id).ifPresent(user -> {
-                Map<String, Object> map = new HashMap<>();
-                map.put("id", user.getId());
-                map.put("name", user.getName());
-                map.put("email", user.getEmail());
-                friends.add(map);
-            });
-        }
-
-        return ResponseEntity.ok(friends);
+    List<Long> friendIds = new ArrayList<>();
+    for (FriendRequest req : acceptedRequests) {
+      if (req.getFromUserId().equals(userId)) {
+        friendIds.add(req.getToUserId());
+      } else if (req.getToUserId().equals(userId)) {
+        friendIds.add(req.getFromUserId());
+      }
     }
+
+    List<Map<String, Object>> friends = new ArrayList<>();
+    for (Long id : friendIds) {
+      userRepo.findById(id).ifPresent(user -> {
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", user.getId());
+        map.put("name", user.getName());
+        map.put("email", user.getEmail());
+        friends.add(map);
+      });
+    }
+
+    return ResponseEntity.ok(friends);
+  }
 
 }

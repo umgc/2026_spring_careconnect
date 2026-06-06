@@ -13,28 +13,28 @@ import java.time.Instant;
 @AllArgsConstructor
 @Builder
 public class WearableMetric extends Auditable {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-   @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_user_id")
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "patient_user_id")
     private User patient;
 
-    @Enumerated(EnumType.STRING)
+  @Enumerated(EnumType.STRING)
     private MetricType metric;
 
-    @Column(name = "metric_value", nullable = false)   
+  @Column(name = "metric_value", nullable = false)   
     private Double metricValue;                       
 
-    @Column(name = "recorded_at", nullable = false)
+  @Column(name = "recorded_at", nullable = false)
     private Instant recordedAt;
 
-    public enum MetricType {
+  public enum MetricType {
         HEART_RATE,
         SPO2,
         TEMPERATURE,
         BLOOD_PRESSURE_SYS,
         BLOOD_PRESSURE_DIA,
         WEIGHT
-    }
+  }
 }

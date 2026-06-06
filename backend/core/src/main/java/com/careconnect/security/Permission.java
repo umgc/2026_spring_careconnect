@@ -216,85 +216,85 @@ public enum Permission {
     VIEW_AUDIT_LOGS("View system audit logs");
     
     
-    // ========== Instance Variables ==========
+  // ========== Instance Variables ==========
     
-    /**
+  /**
      * Human-readable description of what this permission allows.
      */
-    private final String description;
+  private final String description;
     
     
-    // ========== Constructor ==========
+  // ========== Constructor ==========
     
-    /**
+  /**
      * Private constructor called automatically for each enum constant.
      * 
      * @param description Human-readable description of the permission
      */
-    Permission(String description) {
-        this.description = description;
-    }
+  Permission(String description) {
+    this.description = description;
+  }
 
-    // ========== Public Methods ==========
+  // ========== Public Methods ==========
 
-    /**
+  /**
      * Gets the human-readable description of this permission.
      *
      * @return Description explaining what this permission allows
      */
-    public String getDescription() {
-        return description;
-    }
+  public String getDescription() {
+    return description;
+  }
     
-    /**
+  /**
      * Gets the permission name formatted for display.
      * Converts CREATE_TASKS to "Create Tasks" with each word capitalized.
      * 
      * @return Formatted permission name with proper capitalization
      * 
      * @example
-     * Permission.CREATE_TASKS.getDisplayName() returns "Create Tasks"
-     * Permission.VIEW_HEALTH_DATA.getDisplayName() returns "View Health Data"
+    * Permission.CREATE_TASKS.getDisplayName() returns "Create Tasks"
+    * Permission.VIEW_HEALTH_DATA.getDisplayName() returns "View Health Data"
      */
-    public String getDisplayName() {
-        // Split on underscores: CREATE_TASKS -> ["CREATE", "TASKS"]
-        String[] words = this.name().split("_");
-        StringBuilder result = new StringBuilder();
+  public String getDisplayName() {
+    // Split on underscores: CREATE_TASKS -> ["CREATE", "TASKS"]
+    String[] words = this.name().split("_");
+    StringBuilder result = new StringBuilder();
         
-        for (String word : words) {
-            if (result.length() > 0) {
-                result.append(" ");
-            }
-            // Capitalize first letter, lowercase the rest
-            // "CREATE" -> "Create"
-            result.append(Character.toUpperCase(word.charAt(0)))
+    for (String word : words) {
+      if (result.length() > 0) {
+        result.append(" ");
+      }
+      // Capitalize first letter, lowercase the rest
+      // "CREATE" -> "Create"
+      result.append(Character.toUpperCase(word.charAt(0)))
                   .append(word.substring(1).toLowerCase());
-        }
-        
-        return result.toString();
     }
+        
+    return result.toString();
+  }
     
-    /**
+  /**
      * Checks if this is an admin-only permission.
      * 
      * @return true if permission is restricted to admins
      */
-    public boolean isAdminOnly() {
-        return this == VIEW_ALL_USERS || 
+  public boolean isAdminOnly() {
+    return this == VIEW_ALL_USERS || 
                this == MANAGE_USERS || 
                this == ASSIGN_ROLES || 
                this == VIEW_ALL_PATIENTS || 
                this == DELETE_PATIENTS ||
                this == VIEW_AUDIT_LOGS;
-    }
+  }
     
-    /**
+  /**
      * Returns a string representation of this permission.
      * 
      * @return Permission name and description
      */
-    @Override
+  @Override
     public String toString() {
-        return this.name() + ": " + description;
-    }
+    return this.name() + ": " + description;
+  }
 }

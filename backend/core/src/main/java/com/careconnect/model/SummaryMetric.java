@@ -19,29 +19,29 @@ import java.time.Instant;
 @AllArgsConstructor
 @Builder
 public class SummaryMetric extends Auditable {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_user_id", nullable = false)
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "patient_user_id", nullable = false)
     private Patient patient;
 
-    @Column(name = "period_start", nullable = false)
+  @Column(name = "period_start", nullable = false)
     private Instant periodStart;
 
-    @Column(name = "period_end", nullable = false)
+  @Column(name = "period_end", nullable = false)
     private Instant periodEnd;
 
-    @Column(name = "adherence_rate")
+  @Column(name = "adherence_rate")
     private Double adherenceRate;
 
-    @Column(name = "avg_heart_rate")
+  @Column(name = "avg_heart_rate")
     private Double avgHeartRate;
 
-    // createdAt and updatedAt are inherited from Auditable
+  // createdAt and updatedAt are inherited from Auditable
 
-    public Instant getGeneratedAt() {
-        return getGeneratedAt();
-    }
+  public Instant getGeneratedAt() {
+    return getGeneratedAt();
+  }
 }

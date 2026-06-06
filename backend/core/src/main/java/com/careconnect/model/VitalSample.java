@@ -12,53 +12,53 @@ import java.time.Instant;
 @Builder
 public class VitalSample {
     
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_id", nullable = false)
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
     
-    @Column(name = "timestamp", nullable = false)
+  @Column(name = "timestamp", nullable = false)
     private Instant timestamp;
     
-    @Column(name = "heart_rate")
+  @Column(name = "heart_rate")
     private Double heartRate;
     
-    @Column(name = "spo2")
+  @Column(name = "spo2")
     private Double spo2;
     
-    @Column(name = "systolic")
+  @Column(name = "systolic")
     private Integer systolic;
     
-    @Column(name = "diastolic")
+  @Column(name = "diastolic")
     private Integer diastolic;
     
-    @Column(name = "weight")
+  @Column(name = "weight")
     private Double weight;
     
-    @Column(name = "mood_value")
+  @Column(name = "mood_value")
     private Integer moodValue; // 1-10 scale
     
-    @Column(name = "pain_value")
+  @Column(name = "pain_value")
     private Integer painValue; // 1-10 scale
     
-    @Column(name = "created_at", nullable = false, updatable = false)
+  @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
     
-    @Column(name = "updated_at")
+  @Column(name = "updated_at")
     private Instant updatedAt;
     
-    @PrePersist
+  @PrePersist
     protected void onCreate() {
-        Instant now = Instant.now();
-        this.createdAt = now;
-        this.updatedAt = now;
-    }
+    Instant now = Instant.now();
+    this.createdAt = now;
+    this.updatedAt = now;
+  }
     
-    @PreUpdate
+  @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = Instant.now();
-    }
+    this.updatedAt = Instant.now();
+  }
 }

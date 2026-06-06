@@ -9,13 +9,13 @@ import java.util.Optional;
 
 public interface InvoiceRepository extends JpaRepository<Invoice, String>, JpaSpecificationExecutor<Invoice> {
 
-    // Exact match on provider + total + invoiceNumber, newest first
-    Optional<Invoice> findTopByProviderNameIgnoreCaseAndTotalAndInvoiceNumberOrderByCreatedAtDesc(
+  // Exact match on provider + total + invoiceNumber, newest first
+  Optional<Invoice> findTopByProviderNameIgnoreCaseAndTotalAndInvoiceNumberOrderByCreatedAtDesc(
             String providerName, BigDecimal total, String invoiceNumber
     );
 
-    // Fallback: provider + total in a window, newest first
-    Optional<Invoice> findTopByProviderNameIgnoreCaseAndTotalBetweenOrderByCreatedAtDesc(
+  // Fallback: provider + total in a window, newest first
+  Optional<Invoice> findTopByProviderNameIgnoreCaseAndTotalBetweenOrderByCreatedAtDesc(
             String providerName, BigDecimal minTotal, BigDecimal maxTotal
     );
 }

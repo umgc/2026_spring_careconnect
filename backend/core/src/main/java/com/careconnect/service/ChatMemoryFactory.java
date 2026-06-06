@@ -24,10 +24,10 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class ChatMemoryFactory {
     
-    private final ChatMessageRepository chatMessageRepository;
-    private final ChatMemoryConfig chatMemoryConfig;
+  private final ChatMessageRepository chatMessageRepository;
+  private final ChatMemoryConfig chatMemoryConfig;
     
-    /**
+  /**
      * Create a ChatMemory instance for the given conversation and configuration
      * 
      * @param conversation The chat conversation
@@ -35,38 +35,38 @@ public class ChatMemoryFactory {
      * @param useDatabase Whether to use database persistence (true) or in-memory (false)
      * @return ChatMemory instance
      */
-    public ChatMemory createChatMemory(ChatConversation conversation, 
+  public ChatMemory createChatMemory(ChatConversation conversation, 
                                      UserAIConfig aiConfig, 
                                      boolean useDatabase) {
         
-        int maxMessages = getMaxMessages(aiConfig);
+    int maxMessages = getMaxMessages(aiConfig);
         
-        if (useDatabase) {
-            log.debug("Creating database-persistent ChatMemory for conversation {} with {} max messages", 
+    if (useDatabase) {
+      log.debug("Creating database-persistent ChatMemory for conversation {} with {} max messages", 
                 conversation.getConversationId(), maxMessages);
-            return new DatabaseChatMemory(chatMessageRepository, conversation, maxMessages);
-        } else {
-            log.debug("Creating in-memory ChatMemory for conversation {} with {} max messages", 
+      return new DatabaseChatMemory(chatMessageRepository, conversation, maxMessages);
+    } else {
+      log.debug("Creating in-memory ChatMemory for conversation {} with {} max messages", 
                 conversation.getConversationId(), maxMessages);
-            return MessageWindowChatMemory.withMaxMessages(maxMessages);
-        }
+      return MessageWindowChatMemory.withMaxMessages(maxMessages);
     }
+  }
     
-    /**
+  /**
      * Create a database-persistent ChatMemory (recommended for production)
      */
-    public ChatMemory createDatabaseChatMemory(ChatConversation conversation, UserAIConfig aiConfig) {
-        return createChatMemory(conversation, aiConfig, true);
-    }
+  public ChatMemory createDatabaseChatMemory(ChatConversation conversation, UserAIConfig aiConfig) {
+    return createChatMemory(conversation, aiConfig, true);
+  }
     
-    /**
+  /**
      * Create an in-memory ChatMemory (useful for testing or temporary conversations)
      */
-    public ChatMemory createInMemoryChatMemory(ChatConversation conversation, UserAIConfig aiConfig) {
-        return createChatMemory(conversation, aiConfig, false);
-    }
+  public ChatMemory createInMemoryChatMemory(ChatConversation conversation, UserAIConfig aiConfig) {
+    return createChatMemory(conversation, aiConfig, false);
+  }
     
-    /**
+  /**
      * Create a session-based ChatMemory with database persistence and timeout
      * 
      * This provides the best user experience:
@@ -75,39 +75,39 @@ public class ChatMemoryFactory {
      * - Automatic cleanup after timeout
      * - Limited context window (10-20 messages)
      */
-    public ChatMemory createSessionBasedChatMemory(ChatConversation conversation, UserAIConfig aiConfig) {
-        int maxMessages = getMaxMessages(aiConfig);
-        // Limit to healthcare-safe message count
-        int safeMaxMessages = Math.min(maxMessages, 15);
+  public ChatMemory createSessionBasedChatMemory(ChatConversation conversation, UserAIConfig aiConfig) {
+    int maxMessages = getMaxMessages(aiConfig);
+    // Limit to healthcare-safe message count
+    int safeMaxMessages = Math.min(maxMessages, 15);
         
-        log.debug("Creating session-based ChatMemory for conversation {} with {} max messages and 15-minute timeout", 
+    log.debug("Creating session-based ChatMemory for conversation {} with {} max messages and 15-minute timeout", 
             conversation.getConversationId(), safeMaxMessages);
         
-        return new SessionBasedChatMemory(chatMessageRepository, conversation, safeMaxMessages, 15); // 15-minute timeout
-    }
+    return new SessionBasedChatMemory(chatMessageRepository, conversation, safeMaxMessages, 15); // 15-minute timeout
+  }
     
-    /**
+  /**
      * Create a session-based ChatMemory with custom timeout
      */
-    public ChatMemory createSessionBasedChatMemory(ChatConversation conversation, UserAIConfig aiConfig, long timeoutMinutes) {
-        int maxMessages = getMaxMessages(aiConfig);
-        int safeMaxMessages = Math.min(maxMessages, 15);
+  public ChatMemory createSessionBasedChatMemory(ChatConversation conversation, UserAIConfig aiConfig, long timeoutMinutes) {
+    int maxMessages = getMaxMessages(aiConfig);
+    int safeMaxMessages = Math.min(maxMessages, 15);
         
-        log.debug("Creating session-based ChatMemory for conversation {} with {} max messages and {} minute timeout", 
+    log.debug("Creating session-based ChatMemory for conversation {} with {} max messages and {} minute timeout", 
             conversation.getConversationId(), safeMaxMessages, timeoutMinutes);
         
-        return new SessionBasedChatMemory(chatMessageRepository, conversation, safeMaxMessages, timeoutMinutes);
-    }
+    return new SessionBasedChatMemory(chatMessageRepository, conversation, safeMaxMessages, timeoutMinutes);
+  }
     
-    /**
+  /**
      * Get the maximum number of messages from AI config or use configured defaults
      */
-    private int getMaxMessages(UserAIConfig aiConfig) {
-        if (aiConfig != null && aiConfig.getConversationHistoryLimit() != null) {
-            return aiConfig.getConversationHistoryLimit();
-        }
-        // TODO: Check if user has premium subscription
-        // For now, use default limit
-        return chatMemoryConfig.getDefaultMaxMessages();
+  private int getMaxMessages(UserAIConfig aiConfig) {
+    if (aiConfig != null && aiConfig.getConversationHistoryLimit() != null) {
+      return aiConfig.getConversationHistoryLimit();
     }
+    // TODO: Check if user has premium subscription
+    // For now, use default limit
+    return chatMemoryConfig.getDefaultMaxMessages();
+  }
 }

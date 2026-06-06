@@ -276,6 +276,7 @@ public class RolePermissionService {
      * Can do:
      * - View and complete own tasks
      * - View and record own health data
+     * - View and manage own medications
      * - Communicate with caregivers
      *
      * Cannot do:
@@ -295,6 +296,10 @@ public class RolePermissionService {
             // Health Data (own data only)
             Permission.VIEW_HEALTH_DATA,
             Permission.RECORD_HEALTH_DATA,
+
+            // Medications (own medications only)
+            Permission.VIEW_MEDICATIONS,
+            Permission.MANAGE_MEDICATIONS,
 
             // Communication
             Permission.SEND_MESSAGES,

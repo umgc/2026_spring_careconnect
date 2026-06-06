@@ -38,11 +38,11 @@ public class RolePermissionServiceTest {
     }
 
     @Test
-    @DisplayName("Patient should have exactly 6 permissions")
+    @DisplayName("Patient should have exactly 8 permissions")
     public void testPatientHasCorrectPermissionCount() throws Exception {
         Set<Permission> patientPerms = RolePermissionService.getPermissionsForRole(Role.PATIENT);
-        assertEquals(6, patientPerms.size(),
-            "Patient should have exactly 6 permissions");
+        assertEquals(8, patientPerms.size(),
+            "Patient should have exactly 8 permissions");
     }
 
     @Test
@@ -177,6 +177,13 @@ public class RolePermissionServiceTest {
     }
 
     @Test
+    @DisplayName("Patient should have medication permissions")
+    public void testPatientHasMedicationPermissions() throws Exception {
+        assertTrue(RolePermissionService.hasPermission(Role.PATIENT, Permission.VIEW_MEDICATIONS));
+        assertTrue(RolePermissionService.hasPermission(Role.PATIENT, Permission.MANAGE_MEDICATIONS));
+    }
+
+    @Test
     @DisplayName("Patient should NOT have patient management permissions")
     public void testPatientDoesNotHavePatientManagementPermissions() throws Exception {
         assertFalse(RolePermissionService.hasPermission(Role.PATIENT, Permission.VIEW_ASSIGNED_PATIENTS));
@@ -294,7 +301,7 @@ public class RolePermissionServiceTest {
     public void testGetPermissionCount() throws Exception {
         assertEquals(28, RolePermissionService.getPermissionCount(Role.ADMIN));
         assertEquals(21, RolePermissionService.getPermissionCount(Role.CAREGIVER));
-        assertEquals(6, RolePermissionService.getPermissionCount(Role.PATIENT));
+        assertEquals(8, RolePermissionService.getPermissionCount(Role.PATIENT));
         assertEquals(3, RolePermissionService.getPermissionCount(Role.FAMILY_MEMBER));
     }
 
@@ -360,7 +367,7 @@ public class RolePermissionServiceTest {
         
         assertEquals(28, summary.get("Administrator"));
         assertEquals(21, summary.get("Caregiver"));
-        assertEquals(6, summary.get("Patient"));
+        assertEquals(8, summary.get("Patient"));
         assertEquals(3, summary.get("Family Member"));
     }
 

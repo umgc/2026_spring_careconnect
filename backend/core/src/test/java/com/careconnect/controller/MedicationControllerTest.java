@@ -1,7 +1,9 @@
 package com.careconnect.controller;
 
 import com.careconnect.dto.MedicationDTO;
+import com.careconnect.model.User;
 import com.careconnect.security.AuthorizationService;
+import com.careconnect.security.UnauthorizedException;
 import com.careconnect.service.MedicationService;
 import com.careconnect.util.SecurityUtil;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,7 @@ class MedicationControllerTest {
     @Mock private MedicationService medicationService;
     @Mock private SecurityUtil securityUtil;
     @Mock private AuthorizationService authorizationService;
+    @Mock private User currentUser;
 
     @InjectMocks
     private MedicationController controller;
@@ -31,6 +34,11 @@ class MedicationControllerTest {
     private static final Long PATIENT_ID    = 1L;
     private static final Long MEDICATION_ID = 42L;
     private static final Long CAREGIVER_ID  = 7L;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        when(securityUtil.resolveCurrentUser()).thenReturn(currentUser);
+    }
 
     private MedicationDTO dto(String name) {
         final MedicationDTO d = new MedicationDTO(null, null, name, null, null, null, null, null, null, null, null, null, null, null);
@@ -126,6 +134,8 @@ class MedicationControllerTest {
     @Test
     void approveMedication_returnsOkWithMessageAndApprovedDto() throws Exception {
         final MedicationDTO approved = dto("Approved-Med");
+        when(currentUser.isCaregiver()).thenReturn(true);
+        when(currentUser.isAdmin()).thenReturn(false);
         when(medicationService.approveMedication(PATIENT_ID, MEDICATION_ID)).thenReturn(approved);
 
         final ResponseEntity<?> response = controller.approveMedication(PATIENT_ID, MEDICATION_ID);
@@ -139,7 +149,19 @@ class MedicationControllerTest {
         verify(medicationService).approveMedication(PATIENT_ID, MEDICATION_ID);
     }
 
-    //  deleteMedication 
+    @Test
+    void approveMedication_patientUser_isRejected() {
+        when(currentUser.isCaregiver()).thenReturn(false);
+        when(currentUser.isAdmin()).thenReturn(false);
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                UnauthorizedException.class,
+                () -> controller.approveMedication(PATIENT_ID, MEDICATION_ID)
+        );
+        verify(medicationService, never()).approveMedication(anyLong(), anyLong());
+    }
+
+    // ─── deleteMedication ─────────────────────────────────────────────────────
 
     @Test
     void deleteMedication_deactivatesAndReturnsMessage() throws Exception {
@@ -159,6 +181,8 @@ class MedicationControllerTest {
 
     @Test
     void deleteMedicationByCaregiver_hardDeletesAndReturnsMessage() throws Exception {
+        when(currentUser.isCaregiver()).thenReturn(true);
+        when(currentUser.isAdmin()).thenReturn(false);
         doNothing().when(medicationService).hardDeleteMedication(PATIENT_ID, MEDICATION_ID, CAREGIVER_ID);
 
         final ResponseEntity<?> response = controller.deleteMedicationByCaregiver(PATIENT_ID, MEDICATION_ID, CAREGIVER_ID);
@@ -169,5 +193,17 @@ class MedicationControllerTest {
         assertThat(body).isNotNull();
         assertThat(body.get("message")).isEqualTo("Medication deleted successfully");
         verify(medicationService).hardDeleteMedication(PATIENT_ID, MEDICATION_ID, CAREGIVER_ID);
+    }
+
+    @Test
+    void deleteMedicationByCaregiver_patientUser_isRejected() {
+        when(currentUser.isCaregiver()).thenReturn(false);
+        when(currentUser.isAdmin()).thenReturn(false);
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                UnauthorizedException.class,
+                () -> controller.deleteMedicationByCaregiver(PATIENT_ID, MEDICATION_ID, CAREGIVER_ID)
+        );
+        verify(medicationService, never()).hardDeleteMedication(anyLong(), anyLong(), anyLong());
     }
 }

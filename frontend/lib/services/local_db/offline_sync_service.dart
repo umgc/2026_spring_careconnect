@@ -4,8 +4,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
-
-import 'app_database_stub.dart' if (dart.library.io) 'app_database.dart';
+import 'app_database.dart';
 import 'offline_sync_row.dart';
 import '../auth_token_manager.dart';
 

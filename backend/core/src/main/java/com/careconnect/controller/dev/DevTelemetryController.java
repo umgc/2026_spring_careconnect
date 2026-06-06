@@ -1,5 +1,4 @@
 package com.careconnect.controller.dev;
-
 import com.careconnect.model.TelemetryEvent;
 import com.careconnect.service.TelemetryService;
 import com.careconnect.service.TelemetryToggleService;

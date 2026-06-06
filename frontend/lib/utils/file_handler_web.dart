@@ -1,52 +1,25 @@
-// file_handler_web.dart
-import 'dart:js_interop';
 import 'dart:typed_data';
+import 'dart:js_interop';
 import 'package:web/web.dart' as web;
-import 'dart:io' as io;
-import '../abstracts/file_handler.dart';
 
-class WebFileHandler implements FileHandler {
-  @override
-  Future<void> downloadFile(String fileName, Uint8List bytes, String contentType) async {
-    try {
-      final jsArray = bytes.toJS;
-      final blob = web.Blob(
-        [jsArray].toJS,
-        web.BlobPropertyBag(type: contentType),
-      );
-      final url = web.URL.createObjectURL(blob);
-      final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
-      anchor.href = url;
-      anchor.style.display = 'none';
-      anchor.download = fileName;
-      web.document.body!.appendChild(anchor);
-      anchor.click();
-      web.document.body!.removeChild(anchor);
-      web.URL.revokeObjectURL(url);
-    } catch (e) {
-      throw Exception('Web download failed: $e');
-    }
-  }
+Future<void> downloadFile(
+  String fileName,
+  Uint8List bytes, [
+  String? contentType,
+]) async {
+  final blob = web.Blob(
+    [bytes.toJS].toJS,
+    web.BlobPropertyBag(type: contentType ?? 'application/octet-stream'),
+  );
 
-  @override
-  Future<FileUploadResult> processPickedFile(String? path, String? fileName, Uint8List? bytes) async {
-    if (bytes == null || fileName == null) {
-      throw Exception('Web file processing requires bytes and filename');
-    }
+  final url = web.URL.createObjectURL(blob);
+  final anchor = web.HTMLAnchorElement()
+    ..href = url
+    ..download = fileName
+    ..style.display = 'none';
 
-    // Create temporary file for web
-    final tempDir = io.Directory.systemTemp;
-    final tempFile = io.File('${tempDir.path}/$fileName');
-    await tempFile.writeAsBytes(bytes);
-
-    return FileUploadResult(
-      filePath: tempFile.path,
-      isTemporary: true,
-    );
-  }
-}
-
-// Platform-specific implementation for web platform
-FileHandler _createPlatformHandler() {
-  return WebFileHandler();
+  web.document.body?.append(anchor);
+  anchor.click();
+  anchor.remove();
+  web.URL.revokeObjectURL(url);
 }

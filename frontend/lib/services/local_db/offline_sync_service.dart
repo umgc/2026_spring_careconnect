@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
-import 'app_database.dart';
+import 'app_database_web.dart' if (dart.library.io) 'app_database.dart';
 import 'offline_sync_row.dart';
 import '../auth_token_manager.dart';
 
@@ -82,8 +82,7 @@ class OfflineSyncService {
     String? body,
   }) async {
     final normalizedHeaders = _normalizeHeaders(headers ?? <String, String>{});
-    final normalizedBody =
-        (body == null || body.isEmpty) ? null : body;
+    final normalizedBody = (body == null || body.isEmpty) ? null : body;
     final createdAt = DateTime.now().toUtc();
     final fingerprint = _buildFingerprint(
       method: method,
@@ -427,9 +426,9 @@ class OfflineSyncService {
 
   String _humanizeField(String raw) {
     final withSpaces = raw.replaceAll(RegExp(r'[_-]+'), ' ').replaceAllMapped(
-      RegExp(r'([a-z])([A-Z])'),
-      (m) => '${m.group(1)} ${m.group(2)}',
-    );
+          RegExp(r'([a-z])([A-Z])'),
+          (m) => '${m.group(1)} ${m.group(2)}',
+        );
     final trimmed = withSpaces.trim();
     if (trimmed.isEmpty) {
       return 'Field';

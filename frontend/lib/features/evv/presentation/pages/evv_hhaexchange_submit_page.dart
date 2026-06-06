@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../../services/evv_service.dart';
 import '../../../../widgets/app_bar_helper.dart';
 import '../../../../widgets/common_drawer.dart';
-import '../../../../utils/file_handler_web.dart';
+import '../../../../utils/file_handler.dart';
 
 /// Allows a caregiver to review their APPROVED EVV visit records and
 /// manually trigger submission to HHAExchange
@@ -72,13 +72,15 @@ class _EvvHhaExchangeSubmitPageState extends State<EvvHhaExchangeSubmitPage> {
 
     // Step 1: Download the payload JSON before attempting submission.
     try {
-      debugPrint('[HHAExchange] Starting payload fetch for ${ids.length} records');
+      debugPrint(
+          '[HHAExchange] Starting payload fetch for ${ids.length} records');
       setState(() {
         _resultMessage = 'Fetching payload for download...';
         _resultSuccess = true; // Show as success while fetching
       });
       final payloadJson = await _evvService.getHhaExchangePayload(ids);
-      debugPrint('[HHAExchange] Payload fetched successfully, length: ${payloadJson.length}');
+      debugPrint(
+          '[HHAExchange] Payload fetched successfully, length: ${payloadJson.length}');
       await _downloadPayloadFile(payloadJson, ids);
       setState(() {
         _resultMessage = 'Payload downloaded. Submitting to HHAExchange...';
@@ -88,7 +90,8 @@ class _EvvHhaExchangeSubmitPageState extends State<EvvHhaExchangeSubmitPage> {
       // Non-fatal – log the issue but proceed with submission attempt.
       debugPrint('[HHAExchange] Could not fetch payload for download: $e');
       setState(() {
-        _resultMessage = 'Warning: Could not download payload ($e). Continuing with submission...';
+        _resultMessage =
+            'Warning: Could not download payload ($e). Continuing with submission...';
         _resultSuccess = false;
       });
       // Wait a moment to show the warning
@@ -122,7 +125,8 @@ class _EvvHhaExchangeSubmitPageState extends State<EvvHhaExchangeSubmitPage> {
   /// Triggers a browser download of [payloadJson] as a timestamped JSON file.
   Future<void> _downloadPayloadFile(String payloadJson, List<int> ids) async {
     try {
-      debugPrint('[HHAExchange] Starting payload download for ${ids.length} records');
+      debugPrint(
+          '[HHAExchange] Starting payload download for ${ids.length} records');
 
       // Show download started notification
       if (mounted) {
@@ -132,8 +136,8 @@ class _EvvHhaExchangeSubmitPageState extends State<EvvHhaExchangeSubmitPage> {
       }
 
       // Pretty-print the JSON for readability.
-      final pretty = const JsonEncoder.withIndent('  ')
-          .convert(jsonDecode(payloadJson));
+      final pretty =
+          const JsonEncoder.withIndent('  ').convert(jsonDecode(payloadJson));
       final ts = DateTime.now()
           .toIso8601String()
           .replaceAll(':', '-')
@@ -143,11 +147,8 @@ class _EvvHhaExchangeSubmitPageState extends State<EvvHhaExchangeSubmitPage> {
       debugPrint('[HHAExchange] Creating file with filename: $filename');
 
       // Convert JSON string to bytes
-      final bytes = utf8.encode(pretty) as Uint8List;
-
-      // Use the proper web file handler
-      final fileHandler = WebFileHandler();
-      await fileHandler.downloadFile(filename, bytes, 'application/json');
+      final bytes = Uint8List.fromList(utf8.encode(pretty));
+      await downloadFile(filename, bytes, 'application/json');
 
       debugPrint('[HHAExchange] Payload download completed successfully');
 
@@ -227,9 +228,9 @@ class _EvvHhaExchangeSubmitPageState extends State<EvvHhaExchangeSubmitPage> {
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               width: double.infinity,
-              color: _resultSuccess ? Colors.green.shade100 : Colors.red.shade100,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color:
+                  _resultSuccess ? Colors.green.shade100 : Colors.red.shade100,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
                 children: [
                   Icon(
@@ -388,8 +389,7 @@ class _RecordTile extends StatelessWidget {
         value: checked,
         onChanged: onChanged,
         controlAffinity: ListTileControlAffinity.leading,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         title: Text(
           patientName,
           style: const TextStyle(fontWeight: FontWeight.w600),

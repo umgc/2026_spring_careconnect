@@ -1,6 +1,7 @@
 package com.careconnect.security;
 
 import com.careconnect.model.User;
+import com.careconnect.repository.PatientRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -16,10 +17,12 @@ public class AuthorizationServiceTest {
 
     private AuthorizationService authorizationService;
     private User mockUser;
+    private PatientRepository patientRepository;
 
     @BeforeEach
     void setUp() {
-        authorizationService = new AuthorizationService();
+        patientRepository = mock(PatientRepository.class);
+        authorizationService = new AuthorizationService(patientRepository);
         mockUser = mock(User.class);
         lenient().when(mockUser.getEmail()).thenReturn("test@example.com");
         lenient().when(mockUser.getId()).thenReturn(1L);
@@ -289,9 +292,10 @@ public class AuthorizationServiceTest {
             when(mockUser.isAdmin()).thenReturn(false);
             when(mockUser.isPatient()).thenReturn(true);
             when(mockUser.getId()).thenReturn(1L);
+            when(patientRepository.existsByIdAndUserId(10L, 1L)).thenReturn(true);
 
             assertDoesNotThrow(
-                () -> authorizationService.requirePatientAccess(mockUser, 1L));
+                () -> authorizationService.requirePatientAccess(mockUser, 10L));
         }
 
         @Test
@@ -300,6 +304,7 @@ public class AuthorizationServiceTest {
             when(mockUser.isAdmin()).thenReturn(false);
             when(mockUser.isPatient()).thenReturn(true);
             when(mockUser.getId()).thenReturn(1L);
+            when(patientRepository.existsByIdAndUserId(2L, 1L)).thenReturn(false);
 
             UnauthorizedException ex = assertThrows(UnauthorizedException.class,
                 () -> authorizationService.requirePatientAccess(mockUser, 2L));
@@ -313,6 +318,7 @@ public class AuthorizationServiceTest {
             when(mockUser.isPatient()).thenReturn(false);
             when(mockUser.isCaregiver()).thenReturn(true);
             when(mockUser.hasPermission(Permission.VIEW_ASSIGNED_PATIENTS)).thenReturn(true);
+            when(patientRepository.hasAccessByCaregiverId(5L, 1L)).thenReturn(true);
 
             assertDoesNotThrow(
                 () -> authorizationService.requirePatientAccess(mockUser, 5L));
@@ -329,6 +335,20 @@ public class AuthorizationServiceTest {
             UnauthorizedException ex = assertThrows(UnauthorizedException.class,
                 () -> authorizationService.requirePatientAccess(mockUser, 5L));
             assertTrue(ex.getMessage().contains("does not have permission to view patient data"));
+        }
+
+        @Test
+        @DisplayName("Should deny caregiver without active access to patient")
+        void shouldDenyCaregiverWithoutPatientAccess() {
+            when(mockUser.isAdmin()).thenReturn(false);
+            when(mockUser.isPatient()).thenReturn(false);
+            when(mockUser.isCaregiver()).thenReturn(true);
+            when(mockUser.hasPermission(Permission.VIEW_ASSIGNED_PATIENTS)).thenReturn(true);
+            when(patientRepository.hasAccessByCaregiverId(5L, 1L)).thenReturn(false);
+
+            UnauthorizedException ex = assertThrows(UnauthorizedException.class,
+                () -> authorizationService.requirePatientAccess(mockUser, 5L));
+            assertTrue(ex.getMessage().contains("Caregiver does not have access to this patient"));
         }
 
         @Test

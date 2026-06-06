@@ -2,8 +2,10 @@ package com.careconnect.service;
 
 import com.careconnect.dto.MedicationDTO;
 import com.careconnect.exception.AppException;
+import com.careconnect.model.Caregiver;
 import com.careconnect.model.Medication;
 import com.careconnect.model.Patient;
+import com.careconnect.repository.CaregiverRepository;
 import com.careconnect.repository.MedicationRepository;
 import com.careconnect.repository.PatientRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +22,11 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class MedicationService {
 
-  private final MedicationRepository medicationRepository;
-  private final PatientRepository patientRepository;
-  private final NotificationService notificationService;
-  private final CaregiverPatientLinkService caregiverPatientLinkService;
+    private final MedicationRepository medicationRepository;
+    private final PatientRepository patientRepository;
+    private final CaregiverRepository caregiverRepository;
+    private final NotificationService notificationService;
+    private final CaregiverPatientLinkService caregiverPatientLinkService;
 
   // -------------------------------------------------------
   // Basic retrieval methods
@@ -153,14 +156,15 @@ public class MedicationService {
       throw new AppException(HttpStatus.FORBIDDEN, "Medication does not belong to patient");
     }
 
-    medication.setIsActive(true);
-    medication.setApprovalStatus("APPROVED");
-    medication.setUpdatedAt(Instant.now());
-    Medication updated = medicationRepository.save(medication);
+        medication.setIsActive(true);
+        medication.setApprovalStatus("APPROVED");
+        medication.setUpdatedAt(Instant.now());
+        Medication updated = medicationRepository.save(medication);
+        Long patientUserId = medication.getPatient().getUser().getId();
 
-    // Optional: Send dummy approval notification
-    notificationService.sendNotificationToUser(
-                patientId,
+        // Optional: Send dummy approval notification
+        notificationService.sendNotificationToUser(
+                patientUserId,
                 "Medication Approved",
                 "Your medication '" + medication.getMedicationName() + "' was approved.",
                 "MEDICATION_APPROVED",
@@ -182,14 +186,15 @@ public class MedicationService {
       throw new AppException(HttpStatus.FORBIDDEN, "Medication does not belong to patient");
     }
 
-    medication.setIsActive(false);
-    medication.setApprovalStatus("REMOVAL_PENDING");
-    medication.setUpdatedAt(Instant.now());
-    medicationRepository.save(medication);
+        medication.setIsActive(false);
+        medication.setApprovalStatus("REMOVAL_PENDING");
+        medication.setUpdatedAt(Instant.now());
+        medicationRepository.save(medication);
+        Long patientUserId = medication.getPatient().getUser().getId();
 
-    // Dummy removal notification
-    notificationService.sendNotificationToUser(
-                patientId,
+        // Dummy removal notification
+        notificationService.sendNotificationToUser(
+                patientUserId,
                 "Medication Removal Requested",
                 "Your medication '" + medication.getMedicationName() + "' has been marked for removal.",
                 "MEDICATION_REMOVED",
@@ -204,9 +209,14 @@ public class MedicationService {
     public void hardDeleteMedication(Long patientId, Long medicationId, Long caregiverId) {
     Medication medication = medicationRepository.findById(medicationId)
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Medication not found with id: " + medicationId));
+        Caregiver caregiver = caregiverRepository.findById(caregiverId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Caregiver not found with id: " + caregiverId));
 
-    if (!caregiverPatientLinkService.hasActiveLink(caregiverId, patientId)) {
-      throw new AppException(HttpStatus.FORBIDDEN, 
+        Long patientUserId = medication.getPatient().getUser().getId();
+        Long caregiverUserId = caregiver.getUser().getId();
+
+        if (!caregiverPatientLinkService.hasActiveLink(caregiverUserId, patientUserId)) {
+            throw new AppException(HttpStatus.FORBIDDEN, 
                 "Caregiver does not have active link to patient");   
     }
         
@@ -220,9 +230,9 @@ public class MedicationService {
     // Hard delete from database
     medicationRepository.delete(medication);
 
-    // Send notification to patient
-    notificationService.sendNotificationToUser(
-                patientId,
+        // Send notification to patient
+        notificationService.sendNotificationToUser(
+                patientUserId,
                 "Medication Deleted",
                 "Your medication '" + medication.getMedicationName() + "' has been removed by your caregiver.",
                 "MEDICATION_DELETED",
